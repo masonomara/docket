@@ -59,9 +59,11 @@ dist
 !.env.example
 .wrangler/
 
+
 .prettierrc
 .editorconfig
-.vscode
+.vscode/
 /docs/archive
 /docs/99*
 CLAUDE.md
+/devTools

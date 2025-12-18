@@ -181,3 +181,11 @@ Authorization code received. OAuth flow working:
 1. Opened: `https://app.clio.com/oauth/authorize?response_type=code&client_id=CLIO_CLIENT_ID&redirect_uri=http://127.0.0.1:8787/callback&state=test123`
 2. Approved permissions on Clio "Approve/Deny Permissions" screen
 3. Redirected to: `http://127.0.0.1:8787/callback?code=HEKQCpWAjKE5UtHfbZL8&state=test123`
+
+### 4.3 Tested Agents Playground
+
+Bot message handling working via M365 Agents Playground. Bot Framework requires POSTing replies back to `serviceUrl`, not returning them in the response body.:
+
+1. Added `/api/messages` endpoint to worker (Bot Framework Activity protocol)
+2. Launched: `npx @microsoft/m365agentsplayground -e "http://127.0.0.1:8787/api/messages" -c "emulator"`
+3. Sent messages in playground UI, bot replies appear correctly
