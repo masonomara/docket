@@ -15,6 +15,10 @@
   "r2_buckets": [{ "bucket_name": "docket-storage", "binding": "R2" }],
   "vectorize": [{ "binding": "VECTORIZE", "index_name": "docket-vectors" }],
   "ai": { "binding": "AI" },
+  "vars": {
+    "APPLE_APP_BUNDLE_IDENTIFIER": "com.omaratechnologydesign.docket",
+    "BETTER_AUTH_URL": "https://docketadmin.com"
+  },
   "durable_objects": {
     "bindings": [{ "name": "TENANT", "class_name": "TenantDO" }]
   },

@@ -1,0 +1,17 @@
+# Better Auth
+BETTER_AUTH_SECRET=  # Generate with: openssl rand -base64 32
+
+# Clio Integration
+CLIO_APP_ID=
+CLIO_CLIENT_ID=
+CLIO_CLIENT_SECRET=
+
+# Apple OAuth
+APPLE_CLIENT_ID=
+APPLE_CLIENT_SECRET=  # JWT generated from Apple Developer Portal
+APPLE_KEY_ID=
+APPLE_TEAM_ID=
+
+# Google OAuth
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=

@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
+import { getAuth } from "./lib/auth";
 
 // Types
 
@@ -10,6 +11,13 @@ export interface Env {
   VECTORIZE: VectorizeIndex;
   CLIO_CLIENT_ID: string;
   CLIO_CLIENT_SECRET: string;
+  BETTER_AUTH_SECRET: string;
+  BETTER_AUTH_URL: string;
+  APPLE_CLIENT_ID: string;
+  APPLE_CLIENT_SECRET: string;
+  APPLE_APP_BUNDLE_IDENTIFIER: string;
+  GOOGLE_CLIENT_ID: string;
+  GOOGLE_CLIENT_SECRET: string;
 }
 
 interface BotActivity {
@@ -193,7 +201,8 @@ async function handleDemo(req: Request, env: Env): Promise<Response> {
     })) as { data: number[][] };
     await env.VECTORIZE.upsert([{ id: "demo", values: data[0] }]);
     const q = await env.VECTORIZE.query(data[0], { topK: 1 });
-    vecStatus = data[0].length === 768 && q.matches.length > 0 ? "pass" : "fail";
+    vecStatus =
+      data[0].length === 768 && q.matches.length > 0 ? "pass" : "fail";
     vecDetail = "768-dimension embeddings";
   } catch {
     vecDetail = "Connection failed";
@@ -236,9 +245,12 @@ async function handleDemo(req: Request, env: Env): Promise<Response> {
   // 8. All tests pass
   const corePassing = checks
     .filter((c) =>
-      ["D1 Database", "R2 Storage", "Vector Search", "Durable Objects"].includes(
-        c.name
-      )
+      [
+        "D1 Database",
+        "R2 Storage",
+        "Vector Search",
+        "Durable Objects",
+      ].includes(c.name)
     )
     .every((c) => c.status === "pass");
   checks.push({
@@ -312,7 +324,11 @@ async function handleDemo(req: Request, env: Env): Promise<Response> {
     h1 { font-size: 2.5rem; font-weight: 700; margin-bottom: 8px; }
     .subtitle { color: #94a3b8; font-size: 1.1rem; }
     .status-banner {
-      background: ${allGood ? "linear-gradient(135deg, #059669 0%, #10b981 100%)" : "linear-gradient(135deg, #dc2626 0%, #ef4444 100%)"};
+      background: ${
+        allGood
+          ? "linear-gradient(135deg, #059669 0%, #10b981 100%)"
+          : "linear-gradient(135deg, #dc2626 0%, #ef4444 100%)"
+      };
       border-radius: 16px;
       padding: 24px;
       text-align: center;
@@ -424,7 +440,11 @@ async function handleDemo(req: Request, env: Env): Promise<Response> {
 
     <div class="status-banner">
       <h2>${allGood ? "All Systems Operational" : "Setup In Progress"}</h2>
-      <p>${allGood ? "Phase 2 complete. Ready to proceed." : `${failed} item${failed !== 1 ? "s" : ""} need attention.`}</p>
+      <p>${
+        allGood
+          ? "Phase 2 complete. Ready to proceed."
+          : `${failed} item${failed !== 1 ? "s" : ""} need attention.`
+      }</p>
     </div>
 
     <div class="stats">
@@ -447,7 +467,9 @@ async function handleDemo(req: Request, env: Env): Promise<Response> {
         .map(
           (c) => `
         <div class="check-item check-${c.status}">
-          <div class="check-icon">${c.status === "pass" ? "✓" : c.status === "fail" ? "✗" : "○"}</div>
+          <div class="check-icon">${
+            c.status === "pass" ? "✓" : c.status === "fail" ? "✗" : "○"
+          }</div>
           <div class="check-content">
             <div class="check-name">${c.name}</div>
             <div class="check-desc">${c.description}</div>
@@ -470,7 +492,10 @@ async function handleDemo(req: Request, env: Env): Promise<Response> {
     </div>
 
     <footer>
-      <p>Last verified: ${new Date().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}</p>
+      <p>Last verified: ${new Date().toLocaleString("en-US", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      })}</p>
     </footer>
   </div>
 </body>
@@ -596,6 +621,13 @@ const routes: Record<string, RouteHandler> = {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+
+    // Better Auth handles /api/auth/* routes
+    if (url.pathname.startsWith("/api/auth")) {
+      const auth = getAuth(env);
+      return auth.handler(request);
+    }
+
     const handler = routes[url.pathname];
 
     if (handler) {
