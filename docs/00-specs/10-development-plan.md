@@ -53,7 +53,7 @@ Each phase needs to have simple unit, integration (if applicable), and end-to-en
 - [x] Auth tables exist (`user`, `session`, `account`, `verification`)
 - [x] Cross-tenant tables exist (`org`, `workspace_bindings`, `channel_user_links`, `api_keys`, `invitations`)
 - [x] Subscription tables exist (`subscriptions`, `tier_limits`, `role_permissions`, `org_members`)
-- [x] KB tables exist (`kb_chunks`, `kb_formulas`, `kb_benchmarks`)
+- [x] KB table exists (`kb_chunks`)
 - [x] Org Context table exists (`org_context_chunks`)
 - [x] Tier limits seeded (4 tiers)
 - [x] Role permissions seeded (24 rows: 3 roles × 8 permissions)
@@ -121,24 +121,24 @@ Each phase needs to have simple unit, integration (if applicable), and end-to-en
 
 **Checklist:**
 
-- [ ] Shared KB markdown files created in `/kb` directory
+- [x] KB folder structure created (`/kb/federal/`, `/kb/jurisdictions/`, `/kb/practice-types/`, `/kb/firm-sizes/`)
+- [ ] Placeholder KB markdown files created
 - [ ] Build-time KB function implemented (full rebuild on deploy)
-- [ ] KB clearing: delete all `kb_chunks`, `kb_formulas`, `kb_benchmarks` rows
+- [ ] KB clearing: delete all `kb_chunks` rows
 - [ ] KB clearing: delete all non-org embeddings from Vectorize
+- [ ] Metadata extraction from folder path (jurisdiction, practice_type, firm_size)
 - [ ] Markdown parsing respects section boundaries
-- [ ] Formula extraction (pattern: `**Name**: formula`)
-- [ ] Benchmark extraction from markdown tables
 - [ ] Chunk size ~500 characters
 - [ ] Embeddings via Workers AI (`@cf/baai/bge-base-en-v1.5`)
-- [ ] Insert to D1 (`kb_chunks`, `kb_formulas`, `kb_benchmarks`) and Vectorize
+- [ ] Insert to D1 (`kb_chunks`) and Vectorize with `{ category, jurisdiction, practice_type, firm_size }` metadata
 - [ ] Org Context upload validation (MIME + extension: PDF/DOCX/MD, 25MB limit, filename sanitization)
 - [ ] Raw file storage in R2 (`/orgs/{org_id}/docs/{file_id}`)
 - [ ] Text parsing (pdf-parse for PDF, mammoth for DOCX, direct for MD)
 - [ ] Org Context chunks stored in D1 (`org_context_chunks`)
-- [ ] Org Context embeddings upserted to Vectorize with `{ org_id }` metadata
+- [ ] Org Context embeddings upserted to Vectorize with `{ org_id, jurisdiction, practice_type, firm_size }` metadata (inherited from org settings)
 - [ ] Delete/update flow (delete from D1, Vectorize, R2; updates = delete + re-upload)
-- [ ] RAG retrieval: two parallel Vectorize queries (KB unfiltered, Org Context filtered by org_id, topK: 5)
-- [ ] Token budget enforcement (3000 tokens, priority: formulas > benchmarks > KB narrative > Org Context)
+- [ ] RAG retrieval: two parallel Vectorize queries (KB filtered by jurisdiction/practice_type/firm_size, Org Context filtered by org_id, topK: 5)
+- [ ] Token budget enforcement (3000 tokens for RAG context)
 - [ ] Graceful degradation on RAG failure (return empty context, log error)
 - [ ] Unit tests passing
 - [ ] Integration tests passing
@@ -156,7 +156,7 @@ Each phase needs to have simple unit, integration (if applicable), and end-to-en
 - [ ] Constructor uses `blockConcurrencyWhile()` for migrations + schema loading
 - [ ] `PRAGMA user_version` for DO SQLite migration tracking
 - [ ] DO SQLite tables (conversations, messages, pending_confirmations, org_settings, clio_schema_cache)
-- [ ] `ChannelMessage` interface (channel, orgId, userId, userRole, conversationId, conversationScope, message, metadata)
+- [ ] `ChannelMessage` interface (channel, orgId, userId, userRole, conversationId, conversationScope, message, jurisdiction, practiceType, firmSize, metadata)
 - [ ] `POST /process-message` endpoint
 - [ ] Channel Adapter routing (unified format)
 - [ ] ChannelMessage validation
@@ -317,8 +317,6 @@ Each phase needs to have simple unit, integration (if applicable), and end-to-en
 
 Features considered but deferred:
 
-- Industry Knowledge Bases — Criminal Defense, Immigration, etc. filtered by metafilter
-- Location Knowledge Bases — Federal, State, etc. filtered by metafilter
 - Slack Adapter:
   - Magic link auth (expiry, single-use, rate limiting, brute-force protection)
   - Slack Events API integration

@@ -31,8 +31,6 @@ describe("D1 Storage Schema", () => {
       "tier_limits",
       "role_permissions",
       "kb_chunks",
-      "kb_formulas",
-      "kb_benchmarks",
       "org_context_chunks",
     ];
 

@@ -3,6 +3,9 @@
 CREATE TABLE `org` (
   `id` text PRIMARY KEY NOT NULL,
   `name` text NOT NULL,
+  `jurisdiction` text,
+  `practice_type` text,
+  `firm_size` text CHECK (`firm_size` IN ('solo', 'small', 'mid', 'large')),
   `created_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
   `updated_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL
 );

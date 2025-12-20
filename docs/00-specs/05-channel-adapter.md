@@ -27,6 +27,10 @@ export interface ChannelMessage {
     | "channel"
     | "api";
   message: string;
+  // Org settings for KB filtering (from D1 org table)
+  jurisdiction: string;
+  practiceType: string;
+  firmSize: "solo" | "small" | "mid" | "large";
   metadata?: {
     threadId?: string;
     teamsChannelId?: string;
@@ -67,8 +71,9 @@ One user belongs to exactly one Docket org. Resolution path:
 
 1. Extract `user.aadObjectId` from activity
 2. Query D1: `user.aadObjectId` → `user_id` → `org_id` + `role`
-3. For groupChat/teams: validate workspace is linked to user's org
-4. Route to org's DO with `conversationId` from activity
+3. Query D1: `org_id` → `jurisdiction` + `practice_type` + `firm_size` (for KB filtering)
+4. For groupChat/teams: validate workspace is linked to user's org
+5. Route to org's DO with `conversationId` from activity
 
 **Conversation Isolation:**
 

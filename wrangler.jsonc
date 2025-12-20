@@ -9,8 +9,8 @@
     {
       "binding": "DB",
       "database_name": "docket-db",
-      "database_id": "afb86a9d-5697-401d-b55a-6079a7aa8779",
-      "preview_database_id": "65a65170-e100-49d6-b8d9-7a9476b98a75",
+      "database_id": "ed591ebb-f0b5-4cf4-b0e9-c95e049af3ab",
+      "preview_database_id": "abeb3c6f-7e94-47f2-af75-8807eae64f6f",
       "migrations_dir": "migrations"
     }
   ],

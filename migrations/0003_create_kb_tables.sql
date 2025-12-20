@@ -7,37 +7,22 @@ CREATE TABLE `kb_chunks` (
   `source` text NOT NULL,
   `section` text,
   `chunk_index` integer NOT NULL,
+  `category` text,
+  `jurisdiction` text,
+  `practice_type` text,
+  `firm_size` text,
   `created_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL
 );
 --> statement-breakpoint
 CREATE INDEX `kb_chunks_source_idx` ON `kb_chunks` (`source`);
 --> statement-breakpoint
-
--- Extracted formulas (billing rates, calculations, etc.)
-CREATE TABLE `kb_formulas` (
-  `id` text PRIMARY KEY NOT NULL,
-  `name` text NOT NULL,
-  `formula` text NOT NULL,
-  `description` text,
-  `source` text NOT NULL,
-  `created_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL
-);
+CREATE INDEX `kb_chunks_category_idx` ON `kb_chunks` (`category`);
 --> statement-breakpoint
-CREATE INDEX `kb_formulas_source_idx` ON `kb_formulas` (`source`);
+CREATE INDEX `kb_chunks_jurisdiction_idx` ON `kb_chunks` (`jurisdiction`);
 --> statement-breakpoint
-
--- Industry benchmarks (realization rates, etc.)
-CREATE TABLE `kb_benchmarks` (
-  `id` text PRIMARY KEY NOT NULL,
-  `name` text NOT NULL,
-  `value` text NOT NULL,
-  `unit` text,
-  `context` text,
-  `source` text NOT NULL,
-  `created_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL
-);
+CREATE INDEX `kb_chunks_practice_type_idx` ON `kb_chunks` (`practice_type`);
 --> statement-breakpoint
-CREATE INDEX `kb_benchmarks_source_idx` ON `kb_benchmarks` (`source`);
+CREATE INDEX `kb_chunks_firm_size_idx` ON `kb_chunks` (`firm_size`);
 --> statement-breakpoint
 
 -- Organization-specific context documents

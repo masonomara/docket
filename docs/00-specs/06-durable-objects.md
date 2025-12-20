@@ -14,9 +14,9 @@ One DO per organization. Each org's DO coordinates tenant state, conversation lo
 
 Endpoint: `POST /process-message`
 
-1. Channel Adapter sends `ChannelMessage` (user_id, org_id, role, conversationId, conversationScope, message) to DO
+1. Channel Adapter sends `ChannelMessage` (user_id, org_id, role, conversationId, conversationScope, message, jurisdiction, practiceType, firmSize) to DO
 2. DO verifies user's role from SQLite
-3. DO generates embedding via Workers AI, queries Vectorize for Knowledge Base + Org Context chunks
+3. DO generates embedding via Workers AI, queries Vectorize for Knowledge Base + Org Context chunks (filtered by jurisdiction, practiceType, firmSize)
 4. DO loads Clio Schema from memory cache (populated from SQLite in constructor)
 5. DO builds system prompt: RAG context + Clio Schema + Org Context
 6. DO appends last 15 messages from this `conversationId`'s history, calls Workers AI

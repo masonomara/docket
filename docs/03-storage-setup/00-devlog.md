@@ -66,7 +66,7 @@ Created `migrations/0002_create_subscription_tables.sql` with `org_members`, `su
 
 ### 3.3 Created Knowledge Base Tables Migration
 
-Created `migrations/0003_create_kb_tables.sql` with `kb_chunks`, `kb_formulas`, `kb_benchmarks`, `org_context_chunks`.
+Created `migrations/0003_create_kb_tables.sql` with `kb_chunks`, `org_context_chunks`.
 
 ### 3.4 Applied Migrations
 

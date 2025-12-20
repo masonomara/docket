@@ -96,17 +96,11 @@ Add markdown files with legal best practices:
 
 ## Statute of Limitations
 
-**SOL Formula**: Incident Date + Jurisdiction Limit
-
 Most personal injury: 2 years from incident.
 Medical malpractice: Often 2-3 years, discovery rule may apply.
 Contract disputes: Typically 4-6 years.
 
-| Case Type           | Typical Limit | Notes                   |
-| ------------------- | ------------- | ----------------------- |
-| Personal Injury     | 2 years       | From date of injury     |
-| Medical Malpractice | 2-3 years     | Discovery rule varies   |
-| Contract            | 4-6 years     | Written vs oral differs |
+Always verify with local rules as jurisdiction-specific variations apply.
 ```
 
 ### Step 2: The KB Builder Service
@@ -122,23 +116,6 @@ interface KBChunk {
   source: string;
   section: string | null;
   chunkIndex: number;
-}
-
-interface KBFormula {
-  id: string;
-  name: string;
-  formula: string;
-  description: string | null;
-  source: string;
-}
-
-interface KBBenchmark {
-  id: string;
-  name: string;
-  value: string;
-  unit: string | null;
-  context: string | null;
-  source: string;
 }
 
 /**
@@ -177,75 +154,6 @@ function chunkText(text: string, maxChars = 500): string[] {
 }
 
 /**
- * Extracts formulas from markdown using pattern: **Name**: formula
- */
-function extractFormulas(content: string, source: string): KBFormula[] {
-  const formulas: KBFormula[] = [];
-  const pattern = /\*\*([^*]+)\*\*:\s*(.+?)(?=\n|$)/g;
-
-  let match;
-  while ((match = pattern.exec(content)) !== null) {
-    const [, name, formula] = match;
-    // Only include if it looks like a formula (has calculation terms)
-    if (
-      formula.includes("+") ||
-      formula.includes("×") ||
-      formula.includes("=")
-    ) {
-      formulas.push({
-        id: `formula_${source}_${formulas.length}`,
-        name: name.trim(),
-        formula: formula.trim(),
-        description: null,
-        source,
-      });
-    }
-  }
-
-  return formulas;
-}
-
-/**
- * Extracts benchmarks from markdown tables.
- * Tables must have headers including "value" or "rate" or numeric columns.
- */
-function extractBenchmarks(content: string, source: string): KBBenchmark[] {
-  const benchmarks: KBBenchmark[] = [];
-
-  // Match markdown tables
-  const tablePattern = /\|(.+)\|\n\|[-:\s|]+\|\n((?:\|.+\|\n?)+)/g;
-
-  let match;
-  while ((match = tablePattern.exec(content)) !== null) {
-    const headers = match[1].split("|").map((h) => h.trim().toLowerCase());
-    const rows = match[2].trim().split("\n");
-
-    for (const row of rows) {
-      const cells = row
-        .split("|")
-        .slice(1, -1)
-        .map((c) => c.trim());
-      if (cells.length >= 2) {
-        // First column is name, look for numeric values
-        const name = cells[0];
-        const value = cells.find((c) => /\d/.test(c)) || cells[1];
-
-        benchmarks.push({
-          id: `benchmark_${source}_${benchmarks.length}`,
-          name,
-          value,
-          unit: null,
-          context: cells.slice(2).join(" ") || null,
-          source,
-        });
-      }
-    }
-  }
-
-  return benchmarks;
-}
-
-/**
  * Generates embeddings for text using Workers AI.
  * Batches requests (max 100 per call) to avoid rate limits.
  */
@@ -270,17 +178,10 @@ async function generateEmbeddings(
  * Called before rebuilding to ensure clean state.
  */
 async function clearKB(env: Env): Promise<void> {
-  // Clear D1 tables
-  await env.DB.batch([
-    env.DB.prepare("DELETE FROM kb_chunks"),
-    env.DB.prepare("DELETE FROM kb_formulas"),
-    env.DB.prepare("DELETE FROM kb_benchmarks"),
-  ]);
+  await env.DB.prepare("DELETE FROM kb_chunks").run();
 
-  // Clear KB embeddings from Vectorize (those without org_id metadata)
-  // Note: Vectorize doesn't support bulk delete by query, so we need to
-  // list and delete by IDs. For KB, we track IDs in D1.
-  // In practice, we rebuild the entire index.
+  // Note: Vectorize bulk delete by query not supported.
+  // KB embeddings are cleared by upserting with same IDs (overwrite).
 }
 
 /**
@@ -289,12 +190,10 @@ async function clearKB(env: Env): Promise<void> {
 export async function buildKB(
   env: Env,
   kbFiles: Map<string, string>
-): Promise<{ chunks: number; formulas: number; benchmarks: number }> {
+): Promise<{ chunks: number }> {
   await clearKB(env);
 
   const allChunks: KBChunk[] = [];
-  const allFormulas: KBFormula[] = [];
-  const allBenchmarks: KBBenchmark[] = [];
 
   // Process each KB file
   for (const [filename, content] of kbFiles) {
@@ -315,9 +214,6 @@ export async function buildKB(
         chunkIndex: i,
       });
     }
-
-    allFormulas.push(...extractFormulas(content, filename));
-    allBenchmarks.push(...extractBenchmarks(content, filename));
   }
 
   // Generate embeddings for all chunks
@@ -338,34 +234,6 @@ export async function buildKB(
     )
   );
 
-  // Insert formulas into D1
-  if (allFormulas.length > 0) {
-    const formulaStmt = env.DB.prepare(
-      `INSERT INTO kb_formulas (id, name, formula, description, source)
-       VALUES (?, ?, ?, ?, ?)`
-    );
-
-    await env.DB.batch(
-      allFormulas.map((f) =>
-        formulaStmt.bind(f.id, f.name, f.formula, f.description, f.source)
-      )
-    );
-  }
-
-  // Insert benchmarks into D1
-  if (allBenchmarks.length > 0) {
-    const benchmarkStmt = env.DB.prepare(
-      `INSERT INTO kb_benchmarks (id, name, value, unit, context, source)
-       VALUES (?, ?, ?, ?, ?, ?)`
-    );
-
-    await env.DB.batch(
-      allBenchmarks.map((b) =>
-        benchmarkStmt.bind(b.id, b.name, b.value, b.unit, b.context, b.source)
-      )
-    );
-  }
-
   // Upsert embeddings to Vectorize
   const vectors = allChunks.map((chunk, i) => ({
     id: chunk.id,
@@ -378,11 +246,7 @@ export async function buildKB(
     await env.VECTORIZE.upsert(vectors.slice(i, i + 100));
   }
 
-  return {
-    chunks: allChunks.length,
-    formulas: allFormulas.length,
-    benchmarks: allBenchmarks.length,
-  };
+  return { chunks: allChunks.length };
 }
 ```
 
@@ -390,13 +254,9 @@ export async function buildKB(
 
 1. **`chunkText()`** — Splits markdown into ~500 character pieces, respecting section headers. We want coherent chunks, not arbitrary splits mid-sentence.
 
-2. **`extractFormulas()`** — Finds patterns like `**SOL Formula**: Incident Date + Jurisdiction Limit`. Formulas are prioritized in RAG results because they're actionable.
+2. **`generateEmbeddings()`** — Calls Workers AI in batches. The model accepts up to 100 texts per call.
 
-3. **`extractBenchmarks()`** — Parses markdown tables for reference metrics. Legal professionals need concrete numbers.
-
-4. **`generateEmbeddings()`** — Calls Workers AI in batches. The model accepts up to 100 texts per call.
-
-5. **`buildKB()`** — Orchestrates the full rebuild: clear old data, process files, generate embeddings, store everything.
+3. **`buildKB()`** — Orchestrates the full rebuild: clear old data, process files, generate embeddings, store everything.
 
 ## Part 4: Org Context Upload Flow
 
@@ -683,8 +543,6 @@ Create `src/services/rag-retrieval.ts`:
 import { Env } from "../index";
 
 interface RAGContext {
-  formulas: Array<{ name: string; formula: string; source: string }>;
-  benchmarks: Array<{ name: string; value: string; source: string }>;
   kbChunks: Array<{ content: string; source: string }>;
   orgChunks: Array<{ content: string; source: string }>;
 }
@@ -734,7 +592,7 @@ export async function retrieveRAGContext(
     const orgIds = orgResults.matches.map((m) => m.id);
 
     // Parallel D1 fetches
-    const [kbChunks, orgChunks, formulas, benchmarks] = await Promise.all([
+    const [kbChunks, orgChunks] = await Promise.all([
       // Fetch KB chunk text
       kbIds.length > 0
         ? env.DB.prepare(
@@ -756,83 +614,28 @@ export async function retrieveRAGContext(
             .bind(...orgIds)
             .all<{ content: string; source: string }>()
         : Promise.resolve({ results: [] }),
-
-      // Fetch formulas from same sources as retrieved chunks
-      kbIds.length > 0
-        ? env.DB.prepare(
-            `SELECT DISTINCT name, formula, source FROM kb_formulas
-             WHERE source IN (SELECT DISTINCT source FROM kb_chunks WHERE id IN (${kbIds
-               .map(() => "?")
-               .join(",")}))`
-          )
-            .bind(...kbIds)
-            .all<{ name: string; formula: string; source: string }>()
-        : Promise.resolve({ results: [] }),
-
-      // Fetch benchmarks from same sources
-      kbIds.length > 0
-        ? env.DB.prepare(
-            `SELECT DISTINCT name, value, source FROM kb_benchmarks
-             WHERE source IN (SELECT DISTINCT source FROM kb_chunks WHERE id IN (${kbIds
-               .map(() => "?")
-               .join(",")}))`
-          )
-            .bind(...kbIds)
-            .all<{ name: string; value: string; source: string }>()
-        : Promise.resolve({ results: [] }),
     ]);
 
-    // Apply token budget with priority
+    // Apply token budget
     return applyTokenBudget({
-      formulas: formulas.results,
-      benchmarks: benchmarks.results,
       kbChunks: kbChunks.results,
       orgChunks: orgChunks.results,
     });
   } catch (error) {
     // Graceful degradation: return empty context on failure
     console.error("[RAG] Retrieval error:", error);
-    return {
-      formulas: [],
-      benchmarks: [],
-      kbChunks: [],
-      orgChunks: [],
-    };
+    return { kbChunks: [], orgChunks: [] };
   }
 }
 
 /**
- * Applies token budget, prioritizing by information type.
- * Priority: formulas > benchmarks > KB narrative > Org Context
+ * Applies token budget to RAG context.
  */
 function applyTokenBudget(context: RAGContext): RAGContext {
   let remainingChars = TOKEN_BUDGET * CHARS_PER_TOKEN;
-  const result: RAGContext = {
-    formulas: [],
-    benchmarks: [],
-    kbChunks: [],
-    orgChunks: [],
-  };
+  const result: RAGContext = { kbChunks: [], orgChunks: [] };
 
-  // 1. Formulas (highest priority)
-  for (const f of context.formulas) {
-    const len = f.name.length + f.formula.length + f.source.length + 20;
-    if (len <= remainingChars) {
-      result.formulas.push(f);
-      remainingChars -= len;
-    }
-  }
-
-  // 2. Benchmarks
-  for (const b of context.benchmarks) {
-    const len = b.name.length + b.value.length + b.source.length + 20;
-    if (len <= remainingChars) {
-      result.benchmarks.push(b);
-      remainingChars -= len;
-    }
-  }
-
-  // 3. KB chunks
+  // KB chunks first
   for (const c of context.kbChunks) {
     const len = c.content.length + c.source.length + 20;
     if (len <= remainingChars) {
@@ -841,7 +644,7 @@ function applyTokenBudget(context: RAGContext): RAGContext {
     }
   }
 
-  // 4. Org Context chunks (lowest priority)
+  // Org Context chunks
   for (const c of context.orgChunks) {
     const len = c.content.length + c.source.length + 20;
     if (len <= remainingChars) {
@@ -857,38 +660,12 @@ function applyTokenBudget(context: RAGContext): RAGContext {
  * Formats RAG context for injection into system prompt.
  */
 export function formatRAGContext(context: RAGContext): string {
-  const sections: string[] = [];
-
-  if (context.formulas.length > 0) {
-    sections.push(
-      "### Formulas\n" +
-        context.formulas
-          .map((f) => `**${f.name}**: ${f.formula}\n*Source: ${f.source}*`)
-          .join("\n\n")
-    );
-  }
-
-  if (context.benchmarks.length > 0) {
-    sections.push(
-      "### Benchmarks\n" +
-        context.benchmarks
-          .map((b) => `- ${b.name}: ${b.value} *(${b.source})*`)
-          .join("\n")
-    );
-  }
-
-  if (context.kbChunks.length > 0) {
-    sections.push(
-      "### Best Practices\n" +
+  const kbSection =
+    context.kbChunks.length > 0
+      ? "## Knowledge Base Context\n\n" +
         context.kbChunks
           .map((c) => `${c.content}\n*Source: ${c.source}*`)
           .join("\n\n")
-    );
-  }
-
-  const kbSection =
-    sections.length > 0
-      ? "## Knowledge Base Context\n\n" + sections.join("\n\n")
       : "";
 
   const orgSection =
@@ -914,12 +691,7 @@ We allocate ~3,000 tokens for RAG context. Why?
 - Response buffer: ~2,000 tokens
 - **RAG context: ~3,000 tokens**
 
-Priority ordering ensures the most actionable information survives truncation:
-
-1. **Formulas** — Direct calculations users can apply
-2. **Benchmarks** — Concrete reference numbers
-3. **KB narrative** — General guidance
-4. **Org Context** — Firm-specific (useful but less universal)
+When the budget is exceeded, chunks are truncated starting from the end.
 
 ## Part 6: Testing Strategy
 
@@ -959,41 +731,6 @@ More content under a different section.`;
       const chunks = chunkText(text, 400);
 
       expect(chunks.length).toBe(2);
-    });
-  });
-
-  describe("extractFormulas", () => {
-    it("finds formula patterns", async () => {
-      const content = `
-**SOL Formula**: Incident Date + Jurisdiction Limit
-**Not a formula**: Just some text
-**Billing Rate**: Hours × Rate = Total
-      `;
-
-      const { extractFormulas } = await import("../src/services/kb-builder");
-      const formulas = extractFormulas(content, "test.md");
-
-      expect(formulas.length).toBe(2);
-      expect(formulas[0].name).toBe("SOL Formula");
-      expect(formulas[1].name).toBe("Billing Rate");
-    });
-  });
-
-  describe("extractBenchmarks", () => {
-    it("parses markdown tables", async () => {
-      const content = `
-| Metric | Value | Notes |
-|--------|-------|-------|
-| Retention Rate | 85% | Excellent |
-| Collection Rate | 92% | Above average |
-      `;
-
-      const { extractBenchmarks } = await import("../src/services/kb-builder");
-      const benchmarks = extractBenchmarks(content, "test.md");
-
-      expect(benchmarks.length).toBe(2);
-      expect(benchmarks[0].name).toBe("Retention Rate");
-      expect(benchmarks[0].value).toBe("85%");
     });
   });
 });
@@ -1060,20 +797,6 @@ describe("RAG Integration", () => {
         "deadlines.md",
         "Deadlines",
         0
-      )
-      .run();
-
-    // Seed a formula
-    await env.DB.prepare(
-      `INSERT INTO kb_formulas (id, name, formula, description, source)
-       VALUES (?, ?, ?, ?, ?)`
-    )
-      .bind(
-        "formula_test_0",
-        "SOL Calculation",
-        "Incident Date + Jurisdiction Limit",
-        null,
-        "deadlines.md"
       )
       .run();
   });
@@ -1178,8 +901,6 @@ async function handleKBDemo(req: Request, env: Env): Promise<Response> {
       raw: context,
       formatted,
       stats: {
-        formulas: context.formulas.length,
-        benchmarks: context.benchmarks.length,
         kbChunks: context.kbChunks.length,
         orgChunks: context.orgChunks.length,
       },
@@ -1301,8 +1022,6 @@ function buildKBDemoPage(): string {
       // Show stats
       const statsEl = document.getElementById('stats');
       statsEl.innerHTML = \`
-        <div class="stat"><div class="stat-value">\${data.stats.formulas}</div><div class="stat-label">Formulas</div></div>
-        <div class="stat"><div class="stat-value">\${data.stats.benchmarks}</div><div class="stat-label">Benchmarks</div></div>
         <div class="stat"><div class="stat-value">\${data.stats.kbChunks}</div><div class="stat-label">KB Chunks</div></div>
         <div class="stat"><div class="stat-value">\${data.stats.orgChunks}</div><div class="stat-label">Org Chunks</div></div>
       \`;
@@ -1379,7 +1098,6 @@ const routes: Record<string, (req: Request, env: Env) => Promise<Response>> = {
 1. **KB Builder** (`src/services/kb-builder.ts`)
 
    - Chunks markdown into ~500 char segments
-   - Extracts formulas and benchmarks
    - Generates embeddings via Workers AI
    - Stores in D1 + Vectorize
 
@@ -1393,7 +1111,7 @@ const routes: Record<string, (req: Request, env: Env) => Promise<Response>> = {
 3. **RAG Retrieval** (`src/services/rag-retrieval.ts`)
 
    - Parallel Vectorize queries (KB + Org Context)
-   - Token budget enforcement with priority
+   - Token budget enforcement
    - Graceful degradation on errors
 
 4. **Demo Endpoint** (`/demo/kb`)

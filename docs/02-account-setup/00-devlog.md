@@ -27,7 +27,7 @@ wrangler login
 
 ```bash
 npx wrangler d1 create docket-db
-# database_id: afb86a9d-5697-401d-b55a-6079a7aa8779
+# database_id: ed591ebb-f0b5-4cf4-b0e9-c95e049af3ab
 ```
 
 ```jsonc
@@ -35,7 +35,7 @@ npx wrangler d1 create docket-db
   {
     "binding": "docket_db",
     "database_name": "docket-db",
-    "database_id": "afb86a9d-5697-401d-b55a-6079a7aa8779"
+    "database_id": "ed591ebb-f0b5-4cf4-b0e9-c95e049af3ab"
   }
 ]
 ```
