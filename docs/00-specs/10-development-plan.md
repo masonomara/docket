@@ -8,10 +8,6 @@ Find 3-4 people to interview.
 
 ## Phase 2: Accounts & Project Init
 
-**Overview:**
-
-Accounts exist, credentials are secure, and each service responds correctly.
-
 **Checklist:**
 
 - [x] Cloudflare account created
@@ -70,15 +66,19 @@ Accounts exist, credentials are secure, and each service responds correctly.
 
 ## Phase 4: Auth Foundation
 
-Setup Auth foundation:
+**Checklist:**
 
-- Better Auth setup with D1, factory function pattern for Workers runtime
-- Channel identity linking (D1 `channel_user_links`)
-- Apple SSO
-- Google SOO
-- Invitation flow
-- Key rotation mechanism
-- GDPR deletion flow
+- [x] Better Auth factory function working
+- [x] Email/password auth tested
+- [x] Google SSO credentials stored
+- [x] Apple SSO credentials stored (with JWT rotation plan)
+- [x] Channel linking service implemented
+- [x] Invitation processing on signup
+- [x] Key rotation mechanism documented
+- [x] GDPR deletion flow implemented
+- [x] Unit tests passing
+- [x] Integration tests passing
+- [x] Demo page deployed
 
 ## Phase 5: Knowledge Base
 

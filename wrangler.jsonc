@@ -2,7 +2,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "docket",
   "main": "src/index.ts",
-  "compatibility_date": "2025-12-17",
+  "compatibility_date": "2025-09-06",
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
   "d1_databases": [
@@ -10,18 +10,25 @@
       "binding": "DB",
       "database_name": "docket-db",
       "database_id": "afb86a9d-5697-401d-b55a-6079a7aa8779",
+      "preview_database_id": "65a65170-e100-49d6-b8d9-7a9476b98a75",
       "migrations_dir": "migrations"
     }
   ],
-  "r2_buckets": [{ "bucket_name": "docket-storage", "binding": "R2" }],
+  "r2_buckets": [
+    {
+      "bucket_name": "docket-storage",
+      "binding": "R2",
+      "preview_bucket_name": "docket-storage-preview"
+    }
+  ],
   "vectorize": [{ "binding": "VECTORIZE", "index_name": "docket-vectors" }],
   "ai": { "binding": "AI" },
-  "vars": {
-    "APPLE_APP_BUNDLE_IDENTIFIER": "com.omaratechnologydesign.docket",
-    "BETTER_AUTH_URL": "https://docketadmin.com"
-  },
   "durable_objects": {
     "bindings": [{ "name": "TENANT", "class_name": "TenantDO" }]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TenantDO"] }]
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TenantDO"] }],
+  "routes": [
+    { "pattern": "docketadmin.com/*", "zone_name": "docketadmin.com" },
+    { "pattern": "www.docketadmin.com/*", "zone_name": "docketadmin.com" }
+  ]
 }

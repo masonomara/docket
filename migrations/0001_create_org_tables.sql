@@ -43,7 +43,7 @@ CREATE TABLE `invitations` (
   `id` text PRIMARY KEY NOT NULL,
   `email` text NOT NULL,
   `org_id` text NOT NULL,
-  `role` text NOT NULL DEFAULT 'member' CHECK (`role` IN ('owner', 'admin', 'member')),
+  `role` text NOT NULL DEFAULT 'member' CHECK (`role` IN ('admin', 'member')),
   `invited_by` text NOT NULL,
   `created_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
   `expires_at` integer NOT NULL,
@@ -78,3 +78,14 @@ CREATE INDEX `api_keys_user_idx` ON `api_keys` (`user_id`);
 CREATE INDEX `api_keys_org_idx` ON `api_keys` (`org_id`);
 --> statement-breakpoint
 CREATE UNIQUE INDEX `api_keys_hash_idx` ON `api_keys` (`key_hash`);
+--> statement-breakpoint
+
+-- Auto-update updated_at on modification
+CREATE TRIGGER `org_updated_at`
+AFTER UPDATE ON `org`
+FOR EACH ROW
+WHEN NEW.`updated_at` = OLD.`updated_at`
+BEGIN
+  UPDATE `org` SET `updated_at` = cast(unixepoch('subsecond') * 1000 as integer)
+  WHERE `id` = OLD.`id`;
+END;

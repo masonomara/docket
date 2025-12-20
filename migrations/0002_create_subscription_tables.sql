@@ -5,7 +5,8 @@ CREATE TABLE `org_members` (
   `id` text PRIMARY KEY NOT NULL,
   `user_id` text NOT NULL,
   `org_id` text NOT NULL,
-  `role` text NOT NULL DEFAULT 'member' CHECK (`role` IN ('owner', 'admin', 'member')),
+  `role` text NOT NULL DEFAULT 'member' CHECK (`role` IN ('admin', 'member')),
+  `is_owner` integer NOT NULL DEFAULT 0,
   `created_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
   FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE cascade,
   FOREIGN KEY (`org_id`) REFERENCES `org`(`id`) ON UPDATE no action ON DELETE cascade
@@ -55,9 +56,9 @@ VALUES
   ('enterprise', -1, -1, -1, 100, 1, 1);
 --> statement-breakpoint
 
--- Role-based permissions
+-- Role-based permissions (owner permissions checked via is_owner flag)
 CREATE TABLE `role_permissions` (
-  `role` text NOT NULL CHECK (`role` IN ('owner', 'admin', 'member')),
+  `role` text NOT NULL CHECK (`role` IN ('admin', 'member')),
   `permission` text NOT NULL,
   `allowed` integer NOT NULL DEFAULT 0,
   PRIMARY KEY (`role`, `permission`)
@@ -67,18 +68,7 @@ CREATE TABLE `role_permissions` (
 -- Seed role permissions
 INSERT INTO `role_permissions` (`role`, `permission`, `allowed`)
 VALUES
-  -- Owner: full access
-  ('owner', 'org_manage', 1),
-  ('owner', 'org_billing', 1),
-  ('owner', 'org_invite', 1),
-  ('owner', 'org_context_manage', 1),
-  ('owner', 'clio_read', 1),
-  ('owner', 'clio_create', 1),
-  ('owner', 'clio_update', 1),
-  ('owner', 'clio_delete', 1),
-  -- Admin: no billing or org settings
-  ('admin', 'org_manage', 0),
-  ('admin', 'org_billing', 0),
+  -- Admin: can invite and manage context, full Clio access
   ('admin', 'org_invite', 1),
   ('admin', 'org_context_manage', 1),
   ('admin', 'clio_read', 1),
@@ -86,11 +76,20 @@ VALUES
   ('admin', 'clio_update', 1),
   ('admin', 'clio_delete', 1),
   -- Member: read only
-  ('member', 'org_manage', 0),
-  ('member', 'org_billing', 0),
   ('member', 'org_invite', 0),
   ('member', 'org_context_manage', 0),
   ('member', 'clio_read', 1),
   ('member', 'clio_create', 0),
   ('member', 'clio_update', 0),
   ('member', 'clio_delete', 0);
+--> statement-breakpoint
+
+-- Auto-update updated_at on modification
+CREATE TRIGGER `subscriptions_updated_at`
+AFTER UPDATE ON `subscriptions`
+FOR EACH ROW
+WHEN NEW.`updated_at` = OLD.`updated_at`
+BEGIN
+  UPDATE `subscriptions` SET `updated_at` = cast(unixepoch('subsecond') * 1000 as integer)
+  WHERE `id` = OLD.`id`;
+END;
