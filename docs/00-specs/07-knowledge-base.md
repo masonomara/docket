@@ -9,9 +9,13 @@ All users access both sections. Role restrictions apply only to editing Org Cont
 The Durable Object makes two parallel Vectorize queries with the same embedding. Results inject into the system prompt alongside Clio Schema:
 
 - `retrieveKBContext(query, jurisdiction, practiceType, firmSize)` → Vectorize with compound filter for Shared KB chunks
-- `retrieveOrgContext(query, orgId)` → Vectorize (filter `{ org_id }`) for firm-specific Org Context chunks
+- `retrieveOrgContext(query, orgId)` → Vectorize (filter `{ type: "org", org_id }`) for firm-specific Org Context chunks
 
-KB filtering uses org settings (jurisdiction, practiceType, firmSize) passed via ChannelMessage. General content (Clio workflows, etc.) always included. Org Context inherits org settings on upload.
+KB filtering uses org settings (jurisdiction, practiceType, firmSize) passed via ChannelMessage. General content and federal jurisdiction always included. Org Context is filtered by `org_id` only.
+
+**Vector Type Separation:** All vectors include a `type` field (`"kb"` or `"org"`) to prevent cross-contamination when filtering on fields that may not exist on all vectors.
+
+**Graceful Degradation:** Each org setting is optional. KB query always includes `general` + `federal`, then adds filters for each setting that exists. An org with only `practiceType` set gets general + federal + matching practice type content.
 
 **Configuration:**
 
@@ -33,11 +37,11 @@ KB filtering uses org settings (jurisdiction, practiceType, firmSize) passed via
 1. Admin uploads file on Docket website
 2. Validate: MIME type + extension (PDF, DOCX, MD only), size limit (25MB), sanitize filename
 3. Stores raw file in R2: `/orgs/{org_id}/docs/{file_id}` (file_id is UUID)
-4. Parse to text (PDF: pdf-parse, DOCX: mammoth, MD: direct) - wrap in try/catch, log failures
+4. Parse to text (PDF: `unpdf`, DOCX: `mammoth`, MD: direct) - wrap in try/catch, log failures
 5. Chunk text (~500 chars, chunk*id format: `{org_id}*{file*id}*{chunk_index}`)
 6. Store chunks in D1 `org_context_chunks`
 7. Generate embeddings (~100 chunks per batch)
-8. Upsert to Vectorize with metadata `{ org_id, jurisdiction, practice_type, firm_size }` (inherited from org settings)
+8. Upsert to Vectorize with metadata `{ type: "org", org_id, source }`
 
 **Delete/Update:**
 
@@ -50,8 +54,8 @@ KB filtering uses org settings (jurisdiction, practiceType, firmSize) passed via
 
 Vectorize: Embeddings only
 
-- Shared KB embeddings (general always included; others filtered by `{ jurisdiction, practice_type, firm_size }`)
-- Org Context embeddings (filtered by `{ org_id }`)
+- Shared KB embeddings: `{ type: "kb", category?, jurisdiction?, practice_type?, firm_size? }`
+- Org Context embeddings: `{ type: "org", org_id, source }`
 
 D1: Chunked text
 
@@ -82,14 +86,28 @@ R2: Raw uploaded files at `/orgs/{org_id}/docs/{file_id}`
 
 ## Knowledge Base Creation at Build-Time
 
-Full rebuild on each deploy ensures KB stays in sync with source markdown. No incremental updates. KB built at deploy. Function would:
+Full rebuild on each deploy ensures KB stays in sync with source markdown. No incremental updates.
 
-1. Clear old data: Delete all rows from `kb_chunks`; delete all non-org embeddings from Vectorize
-2. Read markdown files from `/kb` directory (folder structure determines metadata)
-3. Extract metadata from folder path (see structure below)
-4. Chunk at ~500 characters, respecting section boundaries
-5. Generate embeddings via Workers AI
-6. Insert to D1 and Vectorize with metadata `{ category, jurisdiction, practice_type, firm_size }`
+**Build process:**
+
+1. Run `npm run kb:manifest` — Node.js script reads `/kb` folder, outputs JSON manifest
+2. Run `wrangler deploy` — Manifest bundled with worker
+3. Call `POST /admin/seed-kb` — Triggers KB rebuild from manifest
+
+**Seed function:**
+
+1. Query D1 for all existing KB chunk IDs
+2. Delete those IDs from Vectorize (batches of 100)
+3. Delete all rows from `kb_chunks` in D1
+4. Read files from bundled manifest (folder structure determines metadata)
+5. Extract metadata from folder path (see structure below)
+6. Chunk at ~500 characters, respecting section boundaries
+7. Generate embeddings via Workers AI
+8. Insert to D1 and Vectorize with metadata `{ type: "kb", category?, jurisdiction?, practice_type?, firm_size? }`
+
+**Why explicit ID deletion:** Vectorize doesn't support filter-based deletion. Upserting with same IDs only works if file paths don't change. Tracking IDs ensures removed/renamed files don't leave orphaned vectors.
+
+**Why manifest approach:** Workers can't access filesystem at runtime. Build script reads files, bundles as JSON, worker imports at deploy time.
 
 **KB Folder Structure:**
 
@@ -129,15 +147,26 @@ Full rebuild on each deploy ensures KB stays in sync with source markdown. No in
 **Vectorize Query Filter:**
 
 ```typescript
-filter: {
-  $or: [
-    { category: "general" },
-    { jurisdiction: { $in: [org.jurisdiction, "federal"] } },
-    { practice_type: org.practiceType },
-    { firm_size: org.firmSize }
-  ]
+// Build filter dynamically based on available settings
+const orClauses = [
+  { category: "general" },
+  { jurisdiction: "federal" }, // Always include federal
+];
+
+if (org.jurisdiction) {
+  orClauses.push({ jurisdiction: org.jurisdiction });
 }
+if (org.practiceType) {
+  orClauses.push({ practice_type: org.practiceType });
+}
+if (org.firmSize) {
+  orClauses.push({ firm_size: org.firmSize });
+}
+
+filter: { type: "kb", $or: orClauses }
 ```
+
+Each setting is optional. An org with only `practiceType` set gets: general + federal + matching practice type.
 
 ## Error Handling
 

@@ -53,7 +53,6 @@ describe("D1 Storage Schema", () => {
       .bind("test-user-role", "role-test@example.com", "Test", now, now)
       .run();
 
-    // Insert valid role
     await env.DB.prepare(
       `INSERT OR IGNORE INTO org_members (id, user_id, org_id, role)
        VALUES (?, ?, ?, ?)`

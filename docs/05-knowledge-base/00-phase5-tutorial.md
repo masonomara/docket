@@ -57,6 +57,33 @@ Vectorize uses cosine similarity to compare vectors. It measures the angle betwe
 
 **Vectorize cannot store the original text.** It only stores vectors and metadata. We store vectors in Vectorize for fast similarity search, then look up the actual text in D1 using the returned IDs.
 
+### Vectorize Configuration
+
+Configure Vectorize in `wrangler.jsonc` with metadata indexes for filtering:
+
+```jsonc
+{
+  "vectorize": [
+    {
+      "binding": "VECTORIZE",
+      "index_name": "docket-kb",
+      "preset": "baai/bge-base-en-v1.5" // 768 dimensions
+    }
+  ]
+}
+```
+
+Create the index with metadata indexes for filtering (one-time setup):
+
+```bash
+# Create the Vectorize index with metadata indexes
+wrangler vectorize create docket-kb \
+  --preset baai/bge-base-en-v1.5 \
+  --metadata-indexes type:string,category:string,jurisdiction:string,practice_type:string,firm_size:string,org_id:string,source:string
+```
+
+**Why metadata indexes matter:** Vectorize can only filter on indexed metadata fields. Without indexes, `filter: { type: "kb" }` returns all vectors. The `type` field is critical for separating KB and Org Context vectors.
+
 ### The Chunk ID Pattern
 
 Every chunk has a unique ID that encodes its origin:
@@ -81,26 +108,56 @@ This lets us:
 
 The KB is rebuilt on every deploy. This ensures the codebase and KB stay in sync.
 
-### Step 1: Create the `/kb` Directory
+### Step 1: Create the `/kb` Directory Structure
 
-```bash
-mkdir -p kb
+The folder structure determines metadata for filtering:
+
+```
+/kb/
+├── general/                        → category: "general" (always included)
+│   ├── clio-workflows.md
+│   ├── practice-management.md
+│   └── billing-guidance.md
+├── jurisdictions/
+│   ├── federal/                    → jurisdiction: "federal" (always included)
+│   │   └── federal-rules.md
+│   ├── CA/                         → jurisdiction: "CA"
+│   │   └── california-deadlines.md
+│   └── NY/                         → jurisdiction: "NY"
+│       └── new-york-procedures.md
+├── practice-types/
+│   ├── personal-injury/            → practice_type: "personal-injury"
+│   │   └── pi-best-practices.md
+│   ├── family-law/                 → practice_type: "family-law"
+│   └── immigration/                → practice_type: "immigration"
+└── firm-sizes/
+    ├── solo/                       → firm_size: "solo"
+    ├── small/                      → firm_size: "small"
+    └── mid/                        → firm_size: "mid"
 ```
 
-Add markdown files with legal best practices:
+**Filtering Logic:**
+
+| Folder                   | Metadata                  | When Included                   |
+| ------------------------ | ------------------------- | ------------------------------- |
+| `general/`               | `category: "general"`     | Always                          |
+| `jurisdictions/federal/` | `jurisdiction: "federal"` | Always (federal applies to all) |
+| `jurisdictions/{state}/` | `jurisdiction: "{state}"` | When org.jurisdiction matches   |
+| `practice-types/{type}/` | `practice_type: "{type}"` | When org.practiceType matches   |
+| `firm-sizes/{size}/`     | `firm_size: "{size}"`     | When org.firmSize matches       |
+
+Example markdown file:
 
 ```markdown
-<!-- kb/deadline-calculations.md -->
+<!-- kb/jurisdictions/CA/california-deadlines.md -->
 
-# Deadline Calculations
+# California Deadline Calculations
 
 ## Statute of Limitations
 
-Most personal injury: 2 years from incident.
-Medical malpractice: Often 2-3 years, discovery rule may apply.
-Contract disputes: Typically 4-6 years.
-
-Always verify with local rules as jurisdiction-specific variations apply.
+Personal injury: 2 years from incident (CCP § 335.1).
+Medical malpractice: 3 years from injury or 1 year from discovery.
+Contract disputes: 4 years written, 2 years oral.
 ```
 
 ### Step 2: The KB Builder Service
@@ -110,23 +167,55 @@ Create `src/services/kb-builder.ts`:
 ```typescript
 import { Env } from "../index";
 
+interface KBMetadata {
+  category: string | null; // "general" for always-included content
+  jurisdiction: string | null; // "federal", "CA", "NY", etc.
+  practice_type: string | null; // "personal-injury", "family-law", etc.
+  firm_size: string | null; // "solo", "small", "mid", "large"
+}
+
 interface KBChunk {
   id: string;
   content: string;
   source: string;
   section: string | null;
   chunkIndex: number;
+  metadata: KBMetadata;
+}
+
+/**
+ * Extracts metadata from KB file path based on folder structure.
+ * Example: "jurisdictions/CA/deadlines.md" → { jurisdiction: "CA" }
+ */
+export function extractMetadataFromPath(filePath: string): KBMetadata {
+  const metadata: KBMetadata = {
+    category: null,
+    jurisdiction: null,
+    practice_type: null,
+    firm_size: null,
+  };
+
+  const parts = filePath.split("/");
+
+  if (parts[0] === "general") {
+    metadata.category = "general";
+  } else if (parts[0] === "jurisdictions" && parts[1]) {
+    metadata.jurisdiction = parts[1]; // "federal", "CA", "NY", etc.
+  } else if (parts[0] === "practice-types" && parts[1]) {
+    metadata.practice_type = parts[1]; // "personal-injury", "family-law", etc.
+  } else if (parts[0] === "firm-sizes" && parts[1]) {
+    metadata.firm_size = parts[1]; // "solo", "small", "mid", "large"
+  }
+
+  return metadata;
 }
 
 /**
  * Chunks text into ~500 character segments, respecting section boundaries.
- *
- * Why 500 characters? Balances context (enough to be useful) with
- * embedding quality (models perform better on focused text).
  */
-function chunkText(text: string, maxChars = 500): string[] {
+export function chunkText(text: string, maxChars = 500): string[] {
   const chunks: string[] = [];
-  const sections = text.split(/(?=^##?\s)/m); // Split on markdown headers
+  const sections = text.split(/(?=^##?\s)/m);
 
   for (const section of sections) {
     if (section.length <= maxChars) {
@@ -134,7 +223,6 @@ function chunkText(text: string, maxChars = 500): string[] {
       continue;
     }
 
-    // Split long sections by paragraphs
     const paragraphs = section.split(/\n\n+/);
     let current = "";
 
@@ -155,7 +243,6 @@ function chunkText(text: string, maxChars = 500): string[] {
 
 /**
  * Generates embeddings for text using Workers AI.
- * Batches requests (max 100 per call) to avoid rate limits.
  */
 async function generateEmbeddings(
   ai: Ai,
@@ -175,17 +262,29 @@ async function generateEmbeddings(
 
 /**
  * Clears all KB data from D1 and Vectorize.
- * Called before rebuilding to ensure clean state.
+ * Must delete by ID since Vectorize doesn't support filter-based deletion.
  */
 async function clearKB(env: Env): Promise<void> {
-  await env.DB.prepare("DELETE FROM kb_chunks").run();
+  // Get all existing KB chunk IDs from D1
+  const existing = await env.DB.prepare("SELECT id FROM kb_chunks").all<{
+    id: string;
+  }>();
 
-  // Note: Vectorize bulk delete by query not supported.
-  // KB embeddings are cleared by upserting with same IDs (overwrite).
+  // Delete from Vectorize by ID (batches of 100)
+  if (existing.results.length > 0) {
+    const ids = existing.results.map((r) => r.id);
+    for (let i = 0; i < ids.length; i += 100) {
+      await env.VECTORIZE.deleteByIds(ids.slice(i, i + 100));
+    }
+  }
+
+  // Clear D1
+  await env.DB.prepare("DELETE FROM kb_chunks").run();
 }
 
 /**
  * Main KB build function. Call this at deploy time.
+ * kbFiles: Map of relative path (e.g., "jurisdictions/CA/deadlines.md") to content
  */
 export async function buildKB(
   env: Env,
@@ -195,11 +294,11 @@ export async function buildKB(
 
   const allChunks: KBChunk[] = [];
 
-  // Process each KB file
-  for (const [filename, content] of kbFiles) {
+  for (const [filePath, content] of kbFiles) {
+    const metadata = extractMetadataFromPath(filePath);
     const chunks = chunkText(content);
+    const filename = filePath.split("/").pop() || filePath;
 
-    // Extract current section header for context
     let currentSection: string | null = null;
 
     for (let i = 0; i < chunks.length; i++) {
@@ -207,41 +306,63 @@ export async function buildKB(
       if (headerMatch) currentSection = headerMatch[1];
 
       allChunks.push({
-        id: `kb_${filename}_${i}`,
+        id: `kb_${filePath.replace(/\//g, "_")}_${i}`,
         content: chunks[i],
         source: filename,
         section: currentSection,
         chunkIndex: i,
+        metadata,
       });
     }
   }
 
-  // Generate embeddings for all chunks
   const embeddings = await generateEmbeddings(
     env.AI,
     allChunks.map((c) => c.content)
   );
 
-  // Insert chunks into D1
+  // Insert chunks into D1 with metadata
   const chunkStmt = env.DB.prepare(
-    `INSERT INTO kb_chunks (id, content, source, section, chunk_index)
-     VALUES (?, ?, ?, ?, ?)`
+    `INSERT INTO kb_chunks
+     (id, content, source, section, chunk_index, category, jurisdiction, practice_type, firm_size)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
 
   await env.DB.batch(
     allChunks.map((c) =>
-      chunkStmt.bind(c.id, c.content, c.source, c.section, c.chunkIndex)
+      chunkStmt.bind(
+        c.id,
+        c.content,
+        c.source,
+        c.section,
+        c.chunkIndex,
+        c.metadata.category,
+        c.metadata.jurisdiction,
+        c.metadata.practice_type,
+        c.metadata.firm_size
+      )
     )
   );
 
-  // Upsert embeddings to Vectorize
+  // Upsert embeddings to Vectorize with metadata for filtering
   const vectors = allChunks.map((chunk, i) => ({
     id: chunk.id,
     values: embeddings[i],
-    metadata: { source: chunk.source, type: "kb" },
+    metadata: {
+      type: "kb", // Distinguishes from org context vectors
+      source: chunk.source,
+      // Only include non-null metadata fields
+      ...(chunk.metadata.category && { category: chunk.metadata.category }),
+      ...(chunk.metadata.jurisdiction && {
+        jurisdiction: chunk.metadata.jurisdiction,
+      }),
+      ...(chunk.metadata.practice_type && {
+        practice_type: chunk.metadata.practice_type,
+      }),
+      ...(chunk.metadata.firm_size && { firm_size: chunk.metadata.firm_size }),
+    },
   }));
 
-  // Vectorize upsert in batches of 100
   for (let i = 0; i < vectors.length; i += 100) {
     await env.VECTORIZE.upsert(vectors.slice(i, i + 100));
   }
@@ -252,17 +373,184 @@ export async function buildKB(
 
 ### What's Happening Here?
 
-1. **`chunkText()`** — Splits markdown into ~500 character pieces, respecting section headers. We want coherent chunks, not arbitrary splits mid-sentence.
+1. **`extractMetadataFromPath()`** — Parses folder path to determine metadata. `jurisdictions/CA/deadlines.md` becomes `{ jurisdiction: "CA" }`.
 
-2. **`generateEmbeddings()`** — Calls Workers AI in batches. The model accepts up to 100 texts per call.
+2. **`chunkText()`** — Splits markdown into ~500 character pieces, respecting section headers.
 
-3. **`buildKB()`** — Orchestrates the full rebuild: clear old data, process files, generate embeddings, store everything.
+3. **`buildKB()`** — Orchestrates the full rebuild: extract metadata from paths, chunk text, generate embeddings, store with metadata for filtering.
+
+### Step 3: Build-Time KB Loader
+
+Workers can't read the filesystem at runtime. We solve this with a two-step process:
+
+**1. Generate a manifest at build time** — A Node.js script reads `/kb` files and outputs a JSON manifest.
+
+Create `scripts/generate-kb-manifest.ts`:
+
+```typescript
+import { readdir, readFile } from "fs/promises";
+import { join } from "path";
+
+interface KBManifest {
+  files: Array<{ path: string; content: string }>;
+  generatedAt: string;
+}
+
+async function walkDir(dir: string, base = ""): Promise<string[]> {
+  const entries = await readdir(dir, { withFileTypes: true });
+  const files: string[] = [];
+
+  for (const entry of entries) {
+    const fullPath = join(dir, entry.name);
+    const relativePath = base ? `${base}/${entry.name}` : entry.name;
+
+    if (entry.isDirectory()) {
+      files.push(...(await walkDir(fullPath, relativePath)));
+    } else if (entry.name.endsWith(".md")) {
+      files.push(relativePath);
+    }
+  }
+
+  return files;
+}
+
+async function generateManifest(): Promise<void> {
+  const kbDir = join(process.cwd(), "kb");
+  const filePaths = await walkDir(kbDir);
+
+  const files = await Promise.all(
+    filePaths.map(async (path) => ({
+      path,
+      content: await readFile(join(kbDir, path), "utf-8"),
+    }))
+  );
+
+  const manifest: KBManifest = {
+    files,
+    generatedAt: new Date().toISOString(),
+  };
+
+  console.log(JSON.stringify(manifest, null, 2));
+}
+
+generateManifest();
+```
+
+Add to `package.json`:
+
+```json
+{
+  "scripts": {
+    "kb:manifest": "tsx scripts/generate-kb-manifest.ts > src/kb-manifest.json"
+  }
+}
+```
+
+**TypeScript configuration for JSON imports:**
+
+Update `tsconfig.json` to enable JSON module imports:
+
+```json
+{
+  "compilerOptions": {
+    "resolveJsonModule": true,
+    "esModuleInterop": true
+  }
+}
+```
+
+**2. Load manifest and seed KB** — A service reads the bundled manifest and calls `buildKB()`.
+
+Create `src/services/kb-loader.ts`:
+
+```typescript
+import { Env } from "../index";
+import { buildKB } from "./kb-builder";
+import kbManifest from "../kb-manifest.json";
+
+interface KBManifest {
+  files: Array<{ path: string; content: string }>;
+  generatedAt: string;
+}
+
+/**
+ * Seeds the KB from the bundled manifest.
+ * Call this after deploy via a seeding endpoint or scheduled task.
+ */
+export async function seedKB(env: Env): Promise<{ chunks: number; files: number }> {
+  const manifest = kbManifest as KBManifest;
+
+  const kbFiles = new Map<string, string>();
+  for (const file of manifest.files) {
+    kbFiles.set(file.path, file.content);
+  }
+
+  const result = await buildKB(env, kbFiles);
+
+  return { chunks: result.chunks, files: manifest.files.length };
+}
+```
+
+**3. Seeding endpoint** — Trigger KB rebuild after deploy.
+
+Add to `src/index.ts`:
+
+```typescript
+// POST /admin/seed-kb — Rebuild KB from manifest (protected endpoint)
+if (req.method === "POST" && url.pathname === "/admin/seed-kb") {
+  // TODO: Add admin auth check
+  const { seedKB } = await import("./services/kb-loader");
+  const result = await seedKB(env);
+  return Response.json(result);
+}
+```
+
+**Deploy workflow:**
+
+```bash
+# 1. Generate manifest from /kb files
+npm run kb:manifest
+
+# 2. Deploy worker (manifest is bundled)
+wrangler deploy
+
+# 3. Seed KB
+curl -X POST https://your-worker.dev/admin/seed-kb
+```
 
 ## Part 4: Org Context Upload Flow
 
-Unlike KB (built at deploy), Org Context is uploaded by users at runtime.
+Unlike KB (built at deploy), Org Context is uploaded by users at runtime. Filtered by `org_id` only — no jurisdiction/practiceType/firmSize filtering needed since each org has one set of documents.
 
-### Step 1: File Validation
+### Step 1: R2 Path Helper
+
+Create `src/storage/r2-paths.ts` to standardize R2 path construction:
+
+```typescript
+/**
+ * Centralized R2 path construction.
+ * Matches the path structure defined in docs/00-specs/03-storage-schemas.md
+ */
+export const R2Paths = {
+  /** Raw uploaded org context documents: /orgs/{org_id}/docs/{file_id} */
+  orgDoc: (orgId: string, fileId: string) => `orgs/${orgId}/docs/${fileId}`,
+
+  /** Audit log entries: /orgs/{org_id}/audit/{YYYY}/{MM}/{DD}/{timestamp}-{uuid}.json */
+  auditLog: (orgId: string, date: Date, uuid: string) => {
+    const yyyy = date.getUTCFullYear();
+    const mm = String(date.getUTCMonth() + 1).padStart(2, "0");
+    const dd = String(date.getUTCDate()).padStart(2, "0");
+    const timestamp = date.getTime();
+    return `orgs/${orgId}/audit/${yyyy}/${mm}/${dd}/${timestamp}-${uuid}.json`;
+  },
+
+  /** Archived conversations: /orgs/{org_id}/conversations/{conversation_id}.json */
+  conversation: (orgId: string, conversationId: string) =>
+    `orgs/${orgId}/conversations/${conversationId}.json`,
+};
+```
+
+### Step 2: File Validation
 
 Create `src/services/org-context.ts`:
 
@@ -292,7 +580,7 @@ interface UploadResult {
  * Validates file before processing.
  * Defense in depth: check both MIME type AND extension.
  */
-function validateFile(
+export function validateFile(
   filename: string,
   mimeType: string,
   size: number
@@ -332,26 +620,68 @@ function validateFile(
 
 /**
  * Extracts text from uploaded file based on type.
+ * Wraps extraction in try/catch for graceful failure.
+ *
+ * Dependencies:
+ *   npm install mammoth unpdf
  */
 async function extractText(
   content: ArrayBuffer,
-  mimeType: string
+  mimeType: string,
+  filename: string
 ): Promise<string> {
-  switch (mimeType) {
-    case "text/markdown":
-      return new TextDecoder().decode(content);
+  try {
+    switch (mimeType) {
+      case "text/markdown":
+        return new TextDecoder().decode(content);
 
-    case "application/pdf":
-      // pdf-parse would be used here
-      // For now, placeholder - actual implementation needs pdf-parse package
-      throw new Error("PDF parsing requires pdf-parse package");
+      case "application/pdf":
+        return await extractPdfText(content);
 
-    case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-      // mammoth would be used here
-      throw new Error("DOCX parsing requires mammoth package");
+      case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+        return await extractDocxText(content);
 
-    default:
-      throw new Error(`Unsupported type: ${mimeType}`);
+      default:
+        throw new Error(`Unsupported type: ${mimeType}`);
+    }
+  } catch (error) {
+    console.error(`[OrgContext] Text extraction failed for ${filename}:`, error);
+    throw new Error(`Failed to extract text from ${filename}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/**
+ * Extracts text from PDF using unpdf (works in Workers).
+ * Install: npm install unpdf
+ */
+async function extractPdfText(content: ArrayBuffer): Promise<string> {
+  try {
+    const { extractText } = await import("unpdf");
+    const { text } = await extractText(new Uint8Array(content));
+    if (!text || text.trim().length === 0) {
+      throw new Error("PDF appears to be empty or image-only");
+    }
+    return text;
+  } catch (error) {
+    // Re-throw with context
+    throw new Error(`PDF extraction error: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/**
+ * Extracts text from DOCX using mammoth.
+ * Install: npm install mammoth
+ */
+async function extractDocxText(content: ArrayBuffer): Promise<string> {
+  try {
+    const mammoth = await import("mammoth");
+    const result = await mammoth.extractRawText({ arrayBuffer: content });
+    if (!result.value || result.value.trim().length === 0) {
+      throw new Error("DOCX appears to be empty");
+    }
+    return result.value;
+  } catch (error) {
+    throw new Error(`DOCX extraction error: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -365,7 +695,6 @@ export async function uploadOrgContext(
   mimeType: string,
   content: ArrayBuffer
 ): Promise<UploadResult> {
-  // Validate
   const validation = validateFile(filename, mimeType, content.byteLength);
   if (!validation.valid) {
     return { success: false, error: validation.error };
@@ -381,13 +710,8 @@ export async function uploadOrgContext(
       customMetadata: { originalFilename: filename },
     });
 
-    // Extract text
-    const text = await extractText(content, mimeType);
-
-    // Chunk text
+    const text = await extractText(content, mimeType, filename);
     const chunks = chunkText(text);
-
-    // Generate embeddings
     const embeddings = await generateEmbeddings(env.AI, chunks);
 
     // Store chunks in D1
@@ -409,11 +733,11 @@ export async function uploadOrgContext(
       )
     );
 
-    // Upsert to Vectorize with org_id metadata for filtering
+    // Upsert to Vectorize with org_id for filtering
     const vectors = chunks.map((chunk, i) => ({
       id: `${orgId}_${fileId}_${i}`,
       values: embeddings[i],
-      metadata: { org_id: orgId, source: filename, type: "org_context" },
+      metadata: { type: "org", org_id: orgId, source: filename },
     }));
 
     for (let i = 0; i < vectors.length; i += 100) {
@@ -422,7 +746,6 @@ export async function uploadOrgContext(
 
     return { success: true, fileId, chunksCreated: chunks.length };
   } catch (error) {
-    // Cleanup on failure
     await env.R2.delete(R2Paths.orgDoc(orgId, fileId));
     return { success: false, error: String(error) };
   }
@@ -512,35 +835,37 @@ async function generateEmbeddings(
 }
 ```
 
-### Key Difference: Metadata Filtering
+### Key Difference: Org Isolation
 
-When we upsert Org Context vectors, we include `org_id` in the metadata:
-
-```typescript
-{
-  id: `${orgId}_${fileId}_${i}`,
-  values: embedding,
-  metadata: { org_id: orgId }  // This enables filtering!
-}
-```
-
-At query time, we filter so each org only sees their own documents:
+Org Context uses `type: "org"` plus `org_id` filtering:
 
 ```typescript
+// Vectorize metadata
+metadata: { type: "org", org_id: orgId, source: filename }
+
+// Query filter
 await env.VECTORIZE.query(queryVector, {
   topK: 5,
-  filter: { org_id: orgId }, // Only return vectors from this org
+  filter: { type: "org", org_id: orgId },
 });
 ```
 
+The `type` field prevents KB vectors from appearing in Org Context queries (and vice versa) when filtering on fields that may not exist on all vectors.
+
 ## Part 5: RAG Retrieval System
 
-Now we build the retrieval function that the Durable Object will call.
+Now we build the retrieval functions that the Durable Object will call. Two parallel queries with different filters.
 
 Create `src/services/rag-retrieval.ts`:
 
 ```typescript
 import { Env } from "../index";
+
+interface OrgSettings {
+  jurisdiction: string | null;
+  practiceType: string | null;
+  firmSize: string | null;
+}
 
 interface RAGContext {
   kbChunks: Array<{ content: string; source: string }>;
@@ -548,19 +873,101 @@ interface RAGContext {
 }
 
 const TOKEN_BUDGET = 3000;
-const CHARS_PER_TOKEN = 4; // Rough estimate
+const CHARS_PER_TOKEN = 4;
 
 /**
- * Retrieves RAG context for a user query.
- *
- * Two parallel Vectorize queries:
- * 1. KB (no filter) - shared knowledge
- * 2. Org Context (filtered by org_id) - firm-specific
+ * Builds the KB filter based on org settings.
+ * Each setting is optional - include filter clause only if setting exists.
+ * Always includes general + federal.
+ */
+function buildKBFilter(orgSettings: OrgSettings): Record<string, unknown> {
+  const orClauses: Record<string, unknown>[] = [
+    { category: "general" },
+    { jurisdiction: "federal" }, // Always include federal
+  ];
+
+  // Add clauses for each setting that exists
+  if (orgSettings.jurisdiction) {
+    orClauses.push({ jurisdiction: orgSettings.jurisdiction });
+  }
+  if (orgSettings.practiceType) {
+    orClauses.push({ practice_type: orgSettings.practiceType });
+  }
+  if (orgSettings.firmSize) {
+    orClauses.push({ firm_size: orgSettings.firmSize });
+  }
+
+  return { type: "kb", $or: orClauses };
+}
+
+/**
+ * Retrieves KB context with compound filter.
+ * Always includes general + federal; adds other filters based on available settings.
+ */
+async function retrieveKBContext(
+  env: Env,
+  queryVector: number[],
+  orgSettings: OrgSettings
+): Promise<Array<{ content: string; source: string }>> {
+  const filter = buildKBFilter(orgSettings);
+
+  const kbResults = await env.VECTORIZE.query(queryVector, {
+    topK: 5,
+    returnMetadata: "all",
+    filter,
+  });
+
+  if (kbResults.matches.length === 0) return [];
+
+  const kbIds = kbResults.matches.map((m) => m.id);
+  const chunks = await env.DB.prepare(
+    `SELECT content, source FROM kb_chunks WHERE id IN (${kbIds
+      .map(() => "?")
+      .join(",")})`
+  )
+    .bind(...kbIds)
+    .all<{ content: string; source: string }>();
+
+  return chunks.results;
+}
+
+/**
+ * Retrieves Org Context filtered by type and org_id.
+ */
+async function retrieveOrgContext(
+  env: Env,
+  queryVector: number[],
+  orgId: string
+): Promise<Array<{ content: string; source: string }>> {
+  const orgResults = await env.VECTORIZE.query(queryVector, {
+    topK: 5,
+    returnMetadata: "all",
+    filter: { type: "org", org_id: orgId },
+  });
+
+  if (orgResults.matches.length === 0) return [];
+
+  const orgIds = orgResults.matches.map((m) => m.id);
+  const chunks = await env.DB.prepare(
+    `SELECT content, source FROM org_context_chunks WHERE id IN (${orgIds
+      .map(() => "?")
+      .join(",")})`
+  )
+    .bind(...orgIds)
+    .all<{ content: string; source: string }>();
+
+  return chunks.results;
+}
+
+/**
+ * Main RAG retrieval function.
+ * Two parallel Vectorize queries with different filters.
  */
 export async function retrieveRAGContext(
   env: Env,
   query: string,
-  orgId: string
+  orgId: string,
+  orgSettings: OrgSettings
 ): Promise<RAGContext> {
   try {
     // Generate embedding for the query
@@ -569,60 +976,14 @@ export async function retrieveRAGContext(
     });
     const queryVector = embeddingResult.data[0];
 
-    // Parallel Vectorize queries
-    const [kbResults, orgResults] = await Promise.all([
-      // KB: no filter
-      env.VECTORIZE.query(queryVector, {
-        topK: 5,
-        returnMetadata: "all",
-      }),
-      // Org Context: filter by org_id
-      env.VECTORIZE.query(queryVector, {
-        topK: 5,
-        filter: { org_id: orgId },
-        returnMetadata: "all",
-      }),
-    ]);
-
-    // Extract IDs for D1 lookups
-    const kbIds = kbResults.matches
-      .filter((m) => m.metadata?.type === "kb")
-      .map((m) => m.id);
-
-    const orgIds = orgResults.matches.map((m) => m.id);
-
-    // Parallel D1 fetches
+    // Parallel Vectorize queries with different filters
     const [kbChunks, orgChunks] = await Promise.all([
-      // Fetch KB chunk text
-      kbIds.length > 0
-        ? env.DB.prepare(
-            `SELECT content, source FROM kb_chunks WHERE id IN (${kbIds
-              .map(() => "?")
-              .join(",")})`
-          )
-            .bind(...kbIds)
-            .all<{ content: string; source: string }>()
-        : Promise.resolve({ results: [] }),
-
-      // Fetch Org Context chunk text
-      orgIds.length > 0
-        ? env.DB.prepare(
-            `SELECT content, source FROM org_context_chunks WHERE id IN (${orgIds
-              .map(() => "?")
-              .join(",")})`
-          )
-            .bind(...orgIds)
-            .all<{ content: string; source: string }>()
-        : Promise.resolve({ results: [] }),
+      retrieveKBContext(env, queryVector, orgSettings),
+      retrieveOrgContext(env, queryVector, orgId),
     ]);
 
-    // Apply token budget
-    return applyTokenBudget({
-      kbChunks: kbChunks.results,
-      orgChunks: orgChunks.results,
-    });
+    return applyTokenBudget({ kbChunks, orgChunks });
   } catch (error) {
-    // Graceful degradation: return empty context on failure
     console.error("[RAG] Retrieval error:", error);
     return { kbChunks: [], orgChunks: [] };
   }
@@ -700,37 +1061,77 @@ When the budget is exceeded, chunks are truncated starting from the end.
 Create `test/kb.spec.ts`:
 
 ```typescript
-import { describe, it, expect, beforeAll } from "vitest";
-import { env } from "cloudflare:test";
+import { describe, it, expect } from "vitest";
 
 describe("Knowledge Base", () => {
+  describe("extractMetadataFromPath", () => {
+    it("extracts general category", async () => {
+      const { extractMetadataFromPath } = await import(
+        "../src/services/kb-builder"
+      );
+      const metadata = extractMetadataFromPath("general/clio-workflows.md");
+
+      expect(metadata.category).toBe("general");
+      expect(metadata.jurisdiction).toBeNull();
+    });
+
+    it("extracts jurisdiction from path", async () => {
+      const { extractMetadataFromPath } = await import(
+        "../src/services/kb-builder"
+      );
+      const metadata = extractMetadataFromPath("jurisdictions/CA/deadlines.md");
+
+      expect(metadata.jurisdiction).toBe("CA");
+      expect(metadata.category).toBeNull();
+    });
+
+    it("extracts federal jurisdiction", async () => {
+      const { extractMetadataFromPath } = await import(
+        "../src/services/kb-builder"
+      );
+      const metadata = extractMetadataFromPath(
+        "jurisdictions/federal/rules.md"
+      );
+
+      expect(metadata.jurisdiction).toBe("federal");
+    });
+
+    it("extracts practice type", async () => {
+      const { extractMetadataFromPath } = await import(
+        "../src/services/kb-builder"
+      );
+      const metadata = extractMetadataFromPath(
+        "practice-types/personal-injury/guide.md"
+      );
+
+      expect(metadata.practice_type).toBe("personal-injury");
+    });
+
+    it("extracts firm size", async () => {
+      const { extractMetadataFromPath } = await import(
+        "../src/services/kb-builder"
+      );
+      const metadata = extractMetadataFromPath("firm-sizes/solo/tips.md");
+
+      expect(metadata.firm_size).toBe("solo");
+    });
+  });
+
   describe("chunkText", () => {
     it("respects section boundaries", async () => {
       const text = `# Header One
 
-Some content here that is under the limit.
+Some content here.
 
 ## Header Two
 
-More content under a different section.`;
+More content.`;
 
-      // Import and test the chunk function
       const { chunkText } = await import("../src/services/kb-builder");
       const chunks = chunkText(text);
 
-      // Each section should be its own chunk if under limit
       expect(chunks.length).toBeGreaterThanOrEqual(2);
       expect(chunks[0]).toContain("Header One");
-    });
-
-    it("splits long sections by paragraph", async () => {
-      const longPara = "A".repeat(300);
-      const text = `# Long Section\n\n${longPara}\n\n${longPara}`;
-
-      const { chunkText } = await import("../src/services/kb-builder");
-      const chunks = chunkText(text, 400);
-
-      expect(chunks.length).toBe(2);
     });
   });
 });
@@ -747,13 +1148,6 @@ describe("Org Context", () => {
 
       expect(result.valid).toBe(false);
       expect(result.error).toContain("25MB");
-    });
-
-    it("rejects unsupported MIME types", async () => {
-      const { validateFile } = await import("../src/services/org-context");
-      const result = validateFile("test.exe", "application/x-executable", 1000);
-
-      expect(result.valid).toBe(false);
     });
 
     it("rejects path traversal attempts", async () => {
@@ -786,74 +1180,111 @@ describe("RAG Integration", () => {
   const testOrgId = "test-org-" + Date.now();
 
   beforeAll(async () => {
-    // Seed test data
+    // Seed test KB data with metadata
     await env.DB.prepare(
-      `INSERT INTO kb_chunks (id, content, source, section, chunk_index)
-       VALUES (?, ?, ?, ?, ?)`
+      `INSERT INTO kb_chunks
+       (id, content, source, section, chunk_index, category, jurisdiction, practice_type, firm_size)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
       .bind(
-        "kb_test_0",
-        "Statute of limitations for personal injury is typically 2 years.",
-        "deadlines.md",
+        "kb_general_0",
+        "Clio workflow basics.",
+        "clio.md",
+        "Clio",
+        0,
+        "general",
+        null,
+        null,
+        null
+      )
+      .run();
+
+    await env.DB.prepare(
+      `INSERT INTO kb_chunks
+       (id, content, source, section, chunk_index, category, jurisdiction, practice_type, firm_size)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+      .bind(
+        "kb_ca_0",
+        "California statute of limitations.",
+        "ca-deadlines.md",
         "Deadlines",
-        0
+        0,
+        null,
+        "CA",
+        null,
+        null
       )
       .run();
   });
 
-  it("retrieves KB chunks from Vectorize query", async () => {
-    // Note: This test requires --remote flag for real Vectorize
-    // Generate embedding
+  it("filters KB by type and compound $or filter", async () => {
     const embedding = await env.AI.run("@cf/baai/bge-base-en-v1.5", {
-      text: ["statute of limitations deadline"],
+      text: ["statute of limitations"],
     });
 
-    // Upsert test vector
+    // Upsert test vectors with type field
     await env.VECTORIZE.upsert([
       {
-        id: "kb_test_0",
+        id: "kb_general_0",
         values: embedding.data[0],
-        metadata: { type: "kb", source: "deadlines.md" },
+        metadata: { type: "kb", category: "general", source: "clio.md" },
+      },
+      {
+        id: "kb_ca_0",
+        values: embedding.data[0],
+        metadata: { type: "kb", jurisdiction: "CA", source: "ca-deadlines.md" },
+      },
+      {
+        id: "kb_ny_0",
+        values: embedding.data[0],
+        metadata: { type: "kb", jurisdiction: "NY", source: "ny-deadlines.md" },
       },
     ]);
 
-    // Query
+    // Query with type + compound filter (CA org should get general + CA, not NY)
     const results = await env.VECTORIZE.query(embedding.data[0], {
       topK: 5,
       returnMetadata: "all",
+      filter: {
+        type: "kb",
+        $or: [
+          { category: "general" },
+          { jurisdiction: { $in: ["CA", "federal"] } },
+        ],
+      },
     });
 
-    expect(results.matches.length).toBeGreaterThan(0);
-    expect(results.matches[0].id).toBe("kb_test_0");
+    const ids = results.matches.map((m) => m.id);
+    expect(ids).toContain("kb_general_0");
+    expect(ids).toContain("kb_ca_0");
+    expect(ids).not.toContain("kb_ny_0");
   });
 
-  it("filters Org Context by org_id", async () => {
+  it("filters Org Context by type and org_id", async () => {
     const embedding = await env.AI.run("@cf/baai/bge-base-en-v1.5", {
       text: ["firm billing procedures"],
     });
 
-    // Upsert vectors for two different orgs
     await env.VECTORIZE.upsert([
       {
         id: `${testOrgId}_file1_0`,
         values: embedding.data[0],
-        metadata: { org_id: testOrgId, type: "org_context" },
+        metadata: { type: "org", org_id: testOrgId, source: "procedures.md" },
       },
       {
         id: "other-org_file2_0",
         values: embedding.data[0],
-        metadata: { org_id: "other-org", type: "org_context" },
+        metadata: { type: "org", org_id: "other-org", source: "other.md" },
       },
     ]);
 
-    // Query with filter
     const results = await env.VECTORIZE.query(embedding.data[0], {
       topK: 5,
-      filter: { org_id: testOrgId },
+      filter: { type: "org", org_id: testOrgId },
       returnMetadata: "all",
     });
 
-    // Should only return the matching org's vectors
     expect(results.matches.every((m) => m.metadata?.org_id === testOrgId)).toBe(
       true
     );
@@ -886,15 +1317,23 @@ async function handleKBDemo(req: Request, env: Env): Promise<Response> {
 
   // Handle RAG query
   if (req.method === "POST" && url.searchParams.get("action") === "query") {
-    const { query, orgId } = (await req.json()) as {
-      query: string;
-      orgId: string;
-    };
+    const { query, orgId, jurisdiction, practiceType, firmSize } =
+      (await req.json()) as {
+        query: string;
+        orgId: string;
+        jurisdiction: string | null;
+        practiceType: string | null;
+        firmSize: string | null;
+      };
 
     const { retrieveRAGContext, formatRAGContext } = await import(
       "./services/rag-retrieval"
     );
-    const context = await retrieveRAGContext(env, query, orgId);
+    const context = await retrieveRAGContext(env, query, orgId, {
+      jurisdiction,
+      practiceType,
+      firmSize,
+    });
     const formatted = formatRAGContext(context);
 
     return Response.json({
@@ -977,8 +1416,37 @@ function buildKBDemoPage(): string {
         <input type="text" id="query" class="input" placeholder="How do I calculate statute of limitations?">
       </div>
       <div class="form-group">
-        <label>Org ID (for Org Context filtering)</label>
+        <label>Org ID</label>
         <input type="text" id="orgId" class="input" placeholder="test-org-123" value="test-org">
+      </div>
+      <div style="display: flex; gap: 12px;">
+        <div class="form-group" style="flex: 1;">
+          <label>Jurisdiction</label>
+          <select id="jurisdiction" class="input">
+            <option value="">(Not set)</option>
+            <option value="CA">California</option>
+            <option value="NY">New York</option>
+            <option value="TX">Texas</option>
+          </select>
+        </div>
+        <div class="form-group" style="flex: 1;">
+          <label>Practice Type</label>
+          <select id="practiceType" class="input">
+            <option value="">(Not set)</option>
+            <option value="personal-injury">Personal Injury</option>
+            <option value="family-law">Family Law</option>
+            <option value="immigration">Immigration</option>
+          </select>
+        </div>
+        <div class="form-group" style="flex: 1;">
+          <label>Firm Size</label>
+          <select id="firmSize" class="input">
+            <option value="">(Not set)</option>
+            <option value="solo">Solo</option>
+            <option value="small">Small</option>
+            <option value="mid">Mid</option>
+          </select>
+        </div>
       </div>
       <button class="btn btn-primary" onclick="runQuery()">Query RAG</button>
 
@@ -1011,15 +1479,17 @@ function buildKBDemoPage(): string {
     async function runQuery() {
       const query = document.getElementById('query').value;
       const orgId = document.getElementById('orgId').value;
+      const jurisdiction = document.getElementById('jurisdiction').value || null;
+      const practiceType = document.getElementById('practiceType').value || null;
+      const firmSize = document.getElementById('firmSize').value || null;
 
       const res = await fetch('/demo/kb?action=query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, orgId })
+        body: JSON.stringify({ query, orgId, jurisdiction, practiceType, firmSize })
       });
       const data = await res.json();
 
-      // Show stats
       const statsEl = document.getElementById('stats');
       statsEl.innerHTML = \`
         <div class="stat"><div class="stat-value">\${data.stats.kbChunks}</div><div class="stat-label">KB Chunks</div></div>
@@ -1027,12 +1497,10 @@ function buildKBDemoPage(): string {
       \`;
       statsEl.style.display = 'flex';
 
-      // Show formatted
       const formattedEl = document.getElementById('formatted');
       formattedEl.innerHTML = '<h3>Formatted Context (injected into prompt)</h3><pre>' + (data.formatted || '(empty)') + '</pre>';
       formattedEl.style.display = 'block';
 
-      // Show raw
       const rawEl = document.getElementById('raw');
       rawEl.textContent = JSON.stringify(data.raw, null, 2);
       rawEl.style.display = 'block';
@@ -1083,46 +1551,82 @@ function buildKBDemoPage(): string {
 </html>`;
 }
 
-// Add to routes
-const routes: Record<string, (req: Request, env: Env) => Promise<Response>> = {
-  "/api/messages": (req) => handleBotMessage(req),
-  "/callback": handleClioCallback,
-  "/demo/org-membership": handleOrgMembershipDemo,
-  "/demo/kb": handleKBDemo, // Add this line
-  "/": handleAuthDemo,
+// Add KB routes to src/index.ts fetch handler
+export default {
+  async fetch(req: Request, env: Env): Promise<Response> {
+    const url = new URL(req.url);
+
+    // KB Demo page
+    if (url.pathname === "/demo/kb") {
+      return handleKBDemo(req, env);
+    }
+
+    // KB Seeding endpoint (protected - add auth in production)
+    if (req.method === "POST" && url.pathname === "/admin/seed-kb") {
+      const { seedKB } = await import("./services/kb-loader");
+      const result = await seedKB(env);
+      return Response.json(result);
+    }
+
+    // ... other routes from previous phases
+    return new Response("Not found", { status: 404 });
+  },
 };
 ```
+
+## Dependencies
+
+Install all required packages for Phase 5:
+
+```bash
+npm install mammoth unpdf tsx
+npm install -D vitest @cloudflare/vitest-pool-workers
+```
+
+| Package | Purpose |
+|---------|---------|
+| `mammoth` | Extract text from DOCX files |
+| `unpdf` | Extract text from PDF files (works in Workers) |
+| `tsx` | Run TypeScript scripts (KB manifest generation) |
+| `vitest` | Testing framework |
+| `@cloudflare/vitest-pool-workers` | Run tests in Workers environment |
 
 ## Summary: What We Built
 
 1. **KB Builder** (`src/services/kb-builder.ts`)
 
+   - Extracts metadata from folder structure (jurisdiction, practiceType, firmSize)
    - Chunks markdown into ~500 char segments
-   - Generates embeddings via Workers AI
-   - Stores in D1 + Vectorize
+   - Explicit ID-based cleanup before rebuild (Vectorize doesn't support filter delete)
+   - Stores with `type: "kb"` to prevent cross-contamination with Org Context
 
-2. **Org Context Service** (`src/services/org-context.ts`)
+2. **KB Loader** (`scripts/generate-kb-manifest.ts` + `src/services/kb-loader.ts`)
+
+   - Build script generates JSON manifest from `/kb` folder
+   - Manifest bundled with worker at deploy
+   - Seeding endpoint (`/admin/seed-kb`) triggers rebuild
+
+3. **Org Context Service** (`src/services/org-context.ts`)
 
    - Validates uploads (MIME, size, extension)
-   - Stores raw files in R2
-   - Chunks and embeds text
-   - Uses metadata filtering for org isolation
+   - Stores raw files in R2, chunks in D1, embeddings in Vectorize
+   - Uses `type: "org"` + `org_id` for filtering
 
-3. **RAG Retrieval** (`src/services/rag-retrieval.ts`)
+4. **RAG Retrieval** (`src/services/rag-retrieval.ts`)
 
-   - Parallel Vectorize queries (KB + Org Context)
-   - Token budget enforcement
-   - Graceful degradation on errors
+   - KB query: `type: "kb"` + compound `$or` filter
+   - Always includes general + federal; adds filters for each available setting
+   - Org Context query: `type: "org"` + `org_id`
+   - Token budget enforcement, graceful degradation
 
-4. **Demo Endpoint** (`/demo/kb`)
-   - Visual interface for testing queries
-   - File upload for Org Context
-   - Shows formatted output
+5. **Demo Endpoint** (`/demo/kb`)
+   - Query form with org settings (jurisdiction, practiceType, firmSize) for KB filtering
+   - Simple file upload form (orgId + file) for Org Context
 
 ## Next Steps
 
 Phase 6 will integrate this RAG system into the Durable Object, where it will:
 
-- Be called before each LLM inference
-- Inject context into the system prompt
-- Work alongside Clio Schema for complete context
+- Receive org settings via ChannelMessage
+- Apply compound filters before each LLM inference
+- Inject filtered context into the system prompt

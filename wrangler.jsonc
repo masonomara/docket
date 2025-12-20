@@ -5,6 +5,7 @@
   "compatibility_date": "2025-09-06",
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
+  "rules": [{ "type": "Text", "globs": ["**/*.md"], "fallthrough": true }],
   "d1_databases": [
     {
       "binding": "DB",
@@ -21,7 +22,7 @@
       "preview_bucket_name": "docket-storage-preview"
     }
   ],
-  "vectorize": [{ "binding": "VECTORIZE", "index_name": "docket-vectors" }],
+  "vectorize": [{ "binding": "VECTORIZE", "index_name": "docket-kb" }],
   "ai": { "binding": "AI" },
   "durable_objects": {
     "bindings": [{ "name": "TENANT", "class_name": "TenantDO" }]
