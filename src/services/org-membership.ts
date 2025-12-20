@@ -9,101 +9,64 @@ export interface OrgMembership {
   createdAt: number;
 }
 
-export interface RemoveFromOrgResult {
-  success: boolean;
-  error?: "user_not_member" | "is_owner" | "db_error";
-  message?: string;
+interface MemberRow {
+  id: string;
+  user_id: string;
+  org_id: string;
+  role: OrgRole;
+  is_owner: number;
+  created_at: number;
 }
 
-export interface TransferOwnershipResult {
-  success: boolean;
-  error?: "not_owner" | "target_not_member" | "target_not_admin" | "db_error";
-  message?: string;
-}
-
-/**
- * Gets a user's membership in an organization.
- */
-export async function getOrgMembership(
-  db: D1Database,
-  userId: string,
-  orgId: string
-): Promise<OrgMembership | null> {
-  const result = await db
-    .prepare(
-      `SELECT id, user_id, org_id, role, is_owner, created_at
-       FROM org_members
-       WHERE user_id = ? AND org_id = ?`
-    )
-    .bind(userId, orgId)
-    .first<{
-      id: string;
-      user_id: string;
-      org_id: string;
-      role: OrgRole;
-      is_owner: number;
-      created_at: number;
-    }>();
-
-  if (!result) {
-    return null;
-  }
-
+function rowToMembership(row: MemberRow): OrgMembership {
   return {
-    id: result.id,
-    userId: result.user_id,
-    orgId: result.org_id,
-    role: result.role,
-    isOwner: result.is_owner === 1,
-    createdAt: result.created_at,
-  };
-}
-
-/**
- * Lists all members of an organization.
- */
-export async function getOrgMembers(
-  db: D1Database,
-  orgId: string
-): Promise<OrgMembership[]> {
-  const result = await db
-    .prepare(
-      `SELECT id, user_id, org_id, role, is_owner, created_at
-       FROM org_members
-       WHERE org_id = ?
-       ORDER BY created_at ASC`
-    )
-    .bind(orgId)
-    .all<{
-      id: string;
-      user_id: string;
-      org_id: string;
-      role: OrgRole;
-      is_owner: number;
-      created_at: number;
-    }>();
-
-  return result.results.map((row) => ({
     id: row.id,
     userId: row.user_id,
     orgId: row.org_id,
     role: row.role,
     isOwner: row.is_owner === 1,
     createdAt: row.created_at,
-  }));
+  };
 }
 
-/**
- * Removes a user from an organization.
- * Owner cannot leave - must transfer ownership first.
- *
- * TODO Phase 6: Call DO to expire pending_confirmations and delete Clio token
- */
+export async function getOrgMembership(
+  db: D1Database,
+  userId: string,
+  orgId: string
+): Promise<OrgMembership | null> {
+  const query = `SELECT * FROM org_members WHERE user_id = ? AND org_id = ?`;
+  const row = await db.prepare(query).bind(userId, orgId).first<MemberRow>();
+
+  if (!row) {
+    return null;
+  }
+
+  return rowToMembership(row);
+}
+
+export async function getOrgMembers(
+  db: D1Database,
+  orgId: string
+): Promise<OrgMembership[]> {
+  const query = `SELECT * FROM org_members WHERE org_id = ? ORDER BY created_at`;
+  const result = await db.prepare(query).bind(orgId).all<MemberRow>();
+
+  return result.results.map(rowToMembership);
+}
+
+type RemoveUserResult =
+  | { success: true }
+  | {
+      success: false;
+      error: "user_not_member" | "is_owner" | "db_error";
+      message: string;
+    };
+
 export async function removeUserFromOrg(
   db: D1Database,
   userId: string,
   orgId: string
-): Promise<RemoveFromOrgResult> {
+): Promise<RemoveUserResult> {
   const membership = await getOrgMembership(db, userId, orgId);
 
   if (!membership) {
@@ -123,11 +86,8 @@ export async function removeUserFromOrg(
   }
 
   try {
-    await db
-      .prepare(`DELETE FROM org_members WHERE user_id = ? AND org_id = ?`)
-      .bind(userId, orgId)
-      .run();
-
+    const deleteQuery = `DELETE FROM org_members WHERE user_id = ? AND org_id = ?`;
+    await db.prepare(deleteQuery).bind(userId, orgId).run();
     return { success: true };
   } catch (error) {
     return {
@@ -138,19 +98,27 @@ export async function removeUserFromOrg(
   }
 }
 
-/**
- * Transfers ownership from current owner to another admin.
- * Target must be an existing admin in the organization.
- */
+type TransferResult =
+  | { success: true }
+  | {
+      success: false;
+      error:
+        | "not_owner"
+        | "target_not_member"
+        | "target_not_admin"
+        | "db_error";
+      message: string;
+    };
+
 export async function transferOwnership(
   db: D1Database,
   orgId: string,
   fromUserId: string,
   toUserId: string
-): Promise<TransferOwnershipResult> {
+): Promise<TransferResult> {
   const currentOwner = await getOrgMembership(db, fromUserId, orgId);
 
-  if (!currentOwner || !currentOwner.isOwner) {
+  if (!currentOwner?.isOwner) {
     return {
       success: false,
       error: "not_owner",
@@ -177,17 +145,12 @@ export async function transferOwnership(
   }
 
   try {
+    const removeOwnerQuery = `UPDATE org_members SET is_owner = 0 WHERE user_id = ? AND org_id = ?`;
+    const setOwnerQuery = `UPDATE org_members SET is_owner = 1 WHERE user_id = ? AND org_id = ?`;
+
     await db.batch([
-      db
-        .prepare(
-          `UPDATE org_members SET is_owner = 0 WHERE user_id = ? AND org_id = ?`
-        )
-        .bind(fromUserId, orgId),
-      db
-        .prepare(
-          `UPDATE org_members SET is_owner = 1 WHERE user_id = ? AND org_id = ?`
-        )
-        .bind(toUserId, orgId),
+      db.prepare(removeOwnerQuery).bind(fromUserId, orgId),
+      db.prepare(setOwnerQuery).bind(toUserId, orgId),
     ]);
 
     return { success: true };
