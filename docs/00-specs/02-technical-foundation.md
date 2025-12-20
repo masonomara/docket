@@ -44,7 +44,7 @@ Each organization has its own Cloudflare Durable Object (DO). The Knowledge Base
 - DOs: Per-org isolated state: conversations (keyed by `conversationId`), messages, settings, cached schema (`docketTenant`)
 - D1 Database: Auth, org registry, subscriptions, role permissions, invitations, workspace bindings, API keys, KB chunks, Org Context chunks (`DB`)
 - Vectorize: KB embeddings (shared) + Org Context embeddings (filtered by org_id) (`VECTORIZE`)
-- R2 Bucket: Org Context docs, legal docs, archived conversations, audit logs (path-isolated) (`R2`). Enable object versioning on storage buckets.
+- R2 Bucket: Org Context docs, legal docs, archived conversations, audit logs (path-isolated) (`R2`). Configure lifecycle rules for retention and storage.
 - DO Storage: Per-user Clio OAuth tokens (encrypted)
 - Workers AI: LLM interface (`AI`)
 - All bindings attached to worker

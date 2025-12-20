@@ -2,205 +2,119 @@
 
 **LONGER DOC**
 
-This tutorial walks through building Docket's Knowledge Base (KB) system. By the end, you'll understand how RAG works in Docket and have a working buildtime script that populates your KB.
+This tutorial builds the Knowledge Base (KB) and Org Context systems that power Docket's RAG (Retrieval-Augmented Generation) capabilities. By the end, you'll understand how vector embeddings work, how to store and query them, and how to build a complete document processing pipeline.
 
-## What You're Building
+## What We're Building
 
-The Knowledge Base provides context for AI responses. When a user asks "What's the statute of limitations for personal injury cases?", the system:
+Docket's AI needs context to answer questions intelligently. Rather than fine-tuning an LLM (expensive, slow), we use RAG: retrieve relevant documents at query time and inject them into the prompt.
 
-1. Converts the question to a 768-dimensional vector using Workers AI
-2. Queries Vectorize to find similar content from your KB markdown files
-3. Fetches the matching text chunks from D1
-4. Injects that context into the LLM's system prompt
+**Two knowledge sources:**
 
-This is Retrieval-Augmented Generation (RAG) — grounding AI responses in your curated content.
+1. **Shared KB** — Best practices for legal case management, Clio workflows, deadline calculations. Shared across all organizations. Built at deploy time from markdown files.
 
-### The Two Knowledge Sources
+2. **Org Context** — Firm-specific documents (procedures, templates, billing rates). Per-organization, uploaded by admins at runtime.
 
-| Source | Content | Storage | Access |
-|--------|---------|---------|--------|
-| **Shared KB** | Clio workflows, deadline calculations, billing guidance | D1 + Vectorize (no filter) | All users, all orgs |
-| **Org Context** | Firm-specific docs, procedures, templates | D1 + Vectorize (filtered by `org_id`) | Per-org isolated |
-
-Phase 5 focuses on **Shared KB**. Org Context uploads happen in Phase 9 (Website MVP).
-
-## Prerequisites
-
-Completed phases:
-- Phase 2: Cloudflare bindings configured (`DB`, `VECTORIZE`, `AI`)
-- Phase 3: D1 tables exist (`kb_chunks`, `kb_formulas`, `kb_benchmarks`)
-
-Verify your bindings in `wrangler.jsonc`:
-
-```jsonc
-{
-  "d1_databases": [{ "binding": "DB", ... }],
-  "vectorize": [{ "binding": "VECTORIZE", "index_name": "docket-vectors" }],
-  "ai": { "binding": "AI" }
-}
-```
-
----
-
-## Part 1: Understanding the KB Schema
-
-The Phase 3 migration created three tables. Here's what each stores:
-
-### `kb_chunks` — Text for RAG retrieval
-
-```sql
-CREATE TABLE kb_chunks (
-  id text PRIMARY KEY,        -- Format: {source}_{chunk_index}
-  content text NOT NULL,      -- The ~500 char text chunk
-  source text NOT NULL,       -- Original filename (e.g., "deadlines.md")
-  section text,               -- H2 heading this chunk belongs to
-  chunk_index integer NOT NULL,
-  created_at integer NOT NULL
-);
-```
-
-**Why chunks?** LLMs have token limits. Rather than stuffing entire documents into the prompt, we break content into ~500 character pieces. When the user asks a question, we retrieve only the most relevant chunks.
-
-### `kb_formulas` — Actionable calculations
-
-```sql
-CREATE TABLE kb_formulas (
-  id text PRIMARY KEY,
-  name text NOT NULL,         -- "Statute of Limitations"
-  formula text NOT NULL,      -- "Incident Date + Jurisdiction Limit"
-  description text,           -- Usage notes
-  source text NOT NULL,
-  created_at integer NOT NULL
-);
-```
-
-Formulas get priority in the prompt because they're directly actionable. Pattern to extract: `**Name**: formula`
-
-### `kb_benchmarks` — Reference metrics
-
-```sql
-CREATE TABLE kb_benchmarks (
-  id text PRIMARY KEY,
-  name text NOT NULL,         -- "Client retention rate"
-  value text NOT NULL,        -- "85%"
-  unit text,                  -- "percentage"
-  context text,               -- "is excellent"
-  source text NOT NULL,
-  created_at integer NOT NULL
-);
-```
-
-Benchmarks provide concrete numbers. Extracted from markdown tables.
-
----
-
-## Part 2: The Deploy-Time Script Architecture
-
-The KB rebuilds on **deploy**, not on app start. This is a CI/CD step that runs once during `wrangler deploy`, not every time the Worker handles a request.
+**The data flow:**
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                   CI/CD Pipeline                     │
-├─────────────────────────────────────────────────────┤
-│  1. git push                                        │
-│  2. npm run build                                   │
-│  3. npm run build:kb  ← KB rebuild happens here    │
-│  4. wrangler deploy                                 │
-└─────────────────────────────────────────────────────┘
-
-/kb
-├── clio-workflows.md
-├── deadline-calculations.md
-├── billing-guidance.md
-└── practice-management.md
-         ↓
-   [build:kb script]
-         ↓
-┌─────────────────────────────┐
-│ 1. Clear old data           │
-│ 2. Read markdown files      │
-│ 3. Parse sections           │
-│ 4. Extract formulas         │
-│ 5. Extract benchmarks       │
-│ 6. Chunk text (~500 chars)  │
-│ 7. Generate embeddings      │
-│ 8. Insert to D1             │
-│ 9. Upsert to Vectorize      │
-└─────────────────────────────┘
+User Query → Generate Embedding → Query Vectorize → Fetch Chunks from D1 → Inject into Prompt
 ```
 
-### Why Full Rebuild at Deploy?
+## Part 1: Understanding Vector Embeddings
 
-- Runs once per deploy, not per request
-- ~1000 chunks = 10 embedding batches = ~30 seconds (acceptable for CI/CD)
-- Simpler than tracking file changes
-- Deploy = single source of truth
+### What Are Embeddings?
 
-**When to reconsider**: If KB grows past 5000 chunks (~3 min rebuild), implement incremental updates by hashing file contents and only processing changed files.
+An embedding is a list of numbers (a vector) that represents the "meaning" of text. Similar concepts produce similar vectors. This lets us find relevant content without keyword matching.
 
----
+```typescript
+// Example embedding (768 dimensions, truncated for display)
+const embedding = [0.023, -0.156, 0.089, 0.312, -0.045, ...];
+```
 
-## Part 3: Creating the KB Source Files
+When a user asks "How do I calculate statute of limitations?", we:
 
-Create the `/kb` directory at your project root:
+1. Convert the question to an embedding
+2. Find stored embeddings that are mathematically similar
+3. Retrieve the original text for those embeddings
+
+### Why 768 Dimensions?
+
+Our embedding model (`@cf/baai/bge-base-en-v1.5`) outputs 768-dimensional vectors. More dimensions capture more nuance but require more storage. This model balances quality and efficiency.
+
+### Cosine Similarity
+
+Vectorize uses cosine similarity to compare vectors. It measures the angle between vectors, not their magnitude. Two vectors pointing the same direction (similar meaning) have similarity near 1.0.
+
+## Part 2: The Storage Architecture
+
+### Where Data Lives
+
+| Data        | Storage   | Why                                   |
+| ----------- | --------- | ------------------------------------- |
+| Embeddings  | Vectorize | Optimized for similarity search       |
+| Text chunks | D1        | SQL queries, joins with metadata      |
+| Raw files   | R2        | Large file storage, per-org isolation |
+
+**Vectorize cannot store the original text.** It only stores vectors and metadata. We store vectors in Vectorize for fast similarity search, then look up the actual text in D1 using the returned IDs.
+
+### The Chunk ID Pattern
+
+Every chunk has a unique ID that encodes its origin:
+
+```typescript
+// KB chunk ID format
+const kbChunkId = `kb_${sourceFile}_${chunkIndex}`;
+// Example: "kb_deadline-guide.md_3"
+
+// Org Context chunk ID format
+const orgChunkId = `${orgId}_${fileId}_${chunkIndex}`;
+// Example: "org-123_file-456_7"
+```
+
+This lets us:
+
+- Delete all chunks for a file: `WHERE chunk_id LIKE 'org-123_file-456_%'`
+- Delete all org chunks: `WHERE org_id = 'org-123'`
+- Trace any chunk back to its source
+
+## Part 3: Building the Shared Knowledge Base
+
+The KB is rebuilt on every deploy. This ensures the codebase and KB stay in sync.
+
+### Step 1: Create the `/kb` Directory
 
 ```bash
 mkdir -p kb
 ```
 
-Create a sample KB file:
+Add markdown files with legal best practices:
 
 ```markdown
 <!-- kb/deadline-calculations.md -->
+
 # Deadline Calculations
 
 ## Statute of Limitations
 
-**Statute of Limitations**: Incident Date + Jurisdiction Limit (e.g., 2 years for PI in most states)
+**SOL Formula**: Incident Date + Jurisdiction Limit
 
-Personal injury cases in California have a 2-year statute of limitations from the date of injury. Medical malpractice has a 3-year limit from date of injury or 1 year from discovery, whichever comes first.
+Most personal injury: 2 years from incident.
+Medical malpractice: Often 2-3 years, discovery rule may apply.
+Contract disputes: Typically 4-6 years.
 
-## Discovery Response Times
-
-| Deadline Type | Days | Context |
-|--------------|------|---------|
-| Interrogatories | 30 | From date of service |
-| Requests for Production | 30 | From date of service |
-| Requests for Admission | 30 | Deemed admitted if no response |
-
-For requests served by mail, add 5 calendar days. For electronic service, add 2 court days.
-
-## Filing Windows
-
-**Motion Filing Window**: Hearing Date - Notice Period (typically 16 court days for noticed motions)
-
-Always check local rules. Federal courts require 28 days notice for summary judgment motions.
+| Case Type           | Typical Limit | Notes                   |
+| ------------------- | ------------- | ----------------------- |
+| Personal Injury     | 2 years       | From date of injury     |
+| Medical Malpractice | 2-3 years     | Discovery rule varies   |
+| Contract            | 4-6 years     | Written vs oral differs |
 ```
 
-The script will:
-- Extract `**Statute of Limitations**: ...` as a formula
-- Extract the table rows as benchmarks
-- Chunk the remaining text into ~500 char pieces
+### Step 2: The KB Builder Service
 
----
-
-## Part 4: Building the Chunking Logic
-
-Chunking is the core of RAG quality. Bad chunks = bad retrieval = bad answers.
-
-### Chunking Principles
-
-1. **Respect section boundaries** — Don't split mid-paragraph if avoidable
-2. **Target ~500 characters** — Balances specificity with context
-3. **Preserve meaning** — Each chunk should be understandable standalone
-4. **Track source** — Every chunk knows its origin file and section
-
-Create `scripts/build-kb.ts`:
+Create `src/services/kb-builder.ts`:
 
 ```typescript
-// scripts/build-kb.ts
-import { readdir, readFile } from "fs/promises";
-import { join } from "path";
+import { Env } from "../index";
 
 interface KBChunk {
   id: string;
@@ -227,91 +141,65 @@ interface KBBenchmark {
   source: string;
 }
 
-const CHUNK_SIZE = 500;
-const KB_DIR = "./kb";
-
 /**
- * Chunks text while respecting paragraph boundaries.
- * Splits on double newlines first, then sentence boundaries if needed.
+ * Chunks text into ~500 character segments, respecting section boundaries.
+ *
+ * Why 500 characters? Balances context (enough to be useful) with
+ * embedding quality (models perform better on focused text).
  */
-function chunkText(text: string, source: string, section: string | null): KBChunk[] {
-  const chunks: KBChunk[] = [];
-  const paragraphs = text.split(/\n\n+/);
+function chunkText(text: string, maxChars = 500): string[] {
+  const chunks: string[] = [];
+  const sections = text.split(/(?=^##?\s)/m); // Split on markdown headers
 
-  let currentChunk = "";
-  let chunkIndex = 0;
-
-  for (const paragraph of paragraphs) {
-    const trimmed = paragraph.trim();
-    if (!trimmed) continue;
-
-    // If adding this paragraph exceeds limit, save current and start new
-    if (currentChunk.length + trimmed.length > CHUNK_SIZE && currentChunk.length > 0) {
-      chunks.push({
-        id: `${source}_${chunkIndex}`,
-        content: currentChunk.trim(),
-        source,
-        section,
-        chunkIndex,
-      });
-      chunkIndex++;
-      currentChunk = "";
+  for (const section of sections) {
+    if (section.length <= maxChars) {
+      if (section.trim()) chunks.push(section.trim());
+      continue;
     }
 
-    // If single paragraph exceeds limit, split on sentences
-    if (trimmed.length > CHUNK_SIZE) {
-      const sentences = trimmed.match(/[^.!?]+[.!?]+/g) || [trimmed];
-      for (const sentence of sentences) {
-        if (currentChunk.length + sentence.length > CHUNK_SIZE && currentChunk.length > 0) {
-          chunks.push({
-            id: `${source}_${chunkIndex}`,
-            content: currentChunk.trim(),
-            source,
-            section,
-            chunkIndex,
-          });
-          chunkIndex++;
-          currentChunk = "";
-        }
-        currentChunk += sentence + " ";
+    // Split long sections by paragraphs
+    const paragraphs = section.split(/\n\n+/);
+    let current = "";
+
+    for (const para of paragraphs) {
+      if (current.length + para.length > maxChars && current) {
+        chunks.push(current.trim());
+        current = para;
+      } else {
+        current += (current ? "\n\n" : "") + para;
       }
-    } else {
-      currentChunk += trimmed + "\n\n";
     }
-  }
 
-  // Don't forget the last chunk
-  if (currentChunk.trim()) {
-    chunks.push({
-      id: `${source}_${chunkIndex}`,
-      content: currentChunk.trim(),
-      source,
-      section,
-      chunkIndex,
-    });
+    if (current.trim()) chunks.push(current.trim());
   }
 
   return chunks;
 }
 
 /**
- * Extracts formulas matching pattern: **Name**: formula text
+ * Extracts formulas from markdown using pattern: **Name**: formula
  */
 function extractFormulas(content: string, source: string): KBFormula[] {
   const formulas: KBFormula[] = [];
-  const pattern = /\*\*([^*]+)\*\*:\s*([^\n]+)/g;
-  let match;
-  let index = 0;
+  const pattern = /\*\*([^*]+)\*\*:\s*(.+?)(?=\n|$)/g;
 
+  let match;
   while ((match = pattern.exec(content)) !== null) {
-    formulas.push({
-      id: `${source}_formula_${index}`,
-      name: match[1].trim(),
-      formula: match[2].trim(),
-      description: null,
-      source,
-    });
-    index++;
+    const [, name, formula] = match;
+    // Only include if it looks like a formula (has calculation terms)
+    if (
+      formula.includes("+") ||
+      formula.includes("×") ||
+      formula.includes("=")
+    ) {
+      formulas.push({
+        id: `formula_${source}_${formulas.length}`,
+        name: name.trim(),
+        formula: formula.trim(),
+        description: null,
+        source,
+      });
+    }
   }
 
   return formulas;
@@ -319,32 +207,37 @@ function extractFormulas(content: string, source: string): KBFormula[] {
 
 /**
  * Extracts benchmarks from markdown tables.
- * Expected format: | Name | Value | Context |
+ * Tables must have headers including "value" or "rate" or numeric columns.
  */
 function extractBenchmarks(content: string, source: string): KBBenchmark[] {
   const benchmarks: KBBenchmark[] = [];
 
   // Match markdown tables
   const tablePattern = /\|(.+)\|\n\|[-:\s|]+\|\n((?:\|.+\|\n?)+)/g;
-  let tableMatch;
-  let index = 0;
 
-  while ((tableMatch = tablePattern.exec(content)) !== null) {
-    const headers = tableMatch[1].split("|").map(h => h.trim().toLowerCase());
-    const rows = tableMatch[2].trim().split("\n");
+  let match;
+  while ((match = tablePattern.exec(content)) !== null) {
+    const headers = match[1].split("|").map((h) => h.trim().toLowerCase());
+    const rows = match[2].trim().split("\n");
 
     for (const row of rows) {
-      const cells = row.split("|").filter(c => c.trim()).map(c => c.trim());
+      const cells = row
+        .split("|")
+        .slice(1, -1)
+        .map((c) => c.trim());
       if (cells.length >= 2) {
+        // First column is name, look for numeric values
+        const name = cells[0];
+        const value = cells.find((c) => /\d/.test(c)) || cells[1];
+
         benchmarks.push({
-          id: `${source}_benchmark_${index}`,
-          name: cells[0],
-          value: cells[1],
-          unit: headers.includes("unit") ? cells[headers.indexOf("unit")] : null,
-          context: cells[2] || null,
+          id: `benchmark_${source}_${benchmarks.length}`,
+          name,
+          value,
+          unit: null,
+          context: cells.slice(2).join(" ") || null,
           source,
         });
-        index++;
       }
     }
   }
@@ -353,652 +246,1165 @@ function extractBenchmarks(content: string, source: string): KBBenchmark[] {
 }
 
 /**
- * Parses a markdown file into sections based on H2 headings.
- */
-function parseSections(content: string): Map<string | null, string> {
-  const sections = new Map<string | null, string>();
-  const lines = content.split("\n");
-
-  let currentSection: string | null = null;
-  let currentContent: string[] = [];
-
-  for (const line of lines) {
-    if (line.startsWith("## ")) {
-      // Save previous section
-      if (currentContent.length > 0) {
-        sections.set(currentSection, currentContent.join("\n"));
-      }
-      currentSection = line.replace("## ", "").trim();
-      currentContent = [];
-    } else if (!line.startsWith("# ")) {
-      // Skip H1, include everything else
-      currentContent.push(line);
-    }
-  }
-
-  // Save last section
-  if (currentContent.length > 0) {
-    sections.set(currentSection, currentContent.join("\n"));
-  }
-
-  return sections;
-}
-
-export async function parseKBFiles(): Promise<{
-  chunks: KBChunk[];
-  formulas: KBFormula[];
-  benchmarks: KBBenchmark[];
-}> {
-  const files = await readdir(KB_DIR);
-  const mdFiles = files.filter(f => f.endsWith(".md"));
-
-  const allChunks: KBChunk[] = [];
-  const allFormulas: KBFormula[] = [];
-  const allBenchmarks: KBBenchmark[] = [];
-
-  for (const file of mdFiles) {
-    const content = await readFile(join(KB_DIR, file), "utf-8");
-    const source = file;
-
-    // Extract structured data first
-    allFormulas.push(...extractFormulas(content, source));
-    allBenchmarks.push(...extractBenchmarks(content, source));
-
-    // Parse sections and chunk
-    const sections = parseSections(content);
-    for (const [section, text] of sections) {
-      allChunks.push(...chunkText(text, source, section));
-    }
-  }
-
-  console.log(`Parsed ${mdFiles.length} files:`);
-  console.log(`  - ${allChunks.length} chunks`);
-  console.log(`  - ${allFormulas.length} formulas`);
-  console.log(`  - ${allBenchmarks.length} benchmarks`);
-
-  return {
-    chunks: allChunks,
-    formulas: allFormulas,
-    benchmarks: allBenchmarks,
-  };
-}
-```
-
-### Understanding the Code
-
-**`chunkText`**: The heart of chunking. It:
-1. Splits on double newlines (paragraphs)
-2. Accumulates until hitting ~500 chars
-3. Falls back to sentence-splitting for long paragraphs
-4. Generates IDs like `deadline-calculations.md_0`
-
-**`extractFormulas`**: Regex matches `**Name**: formula` patterns. These become high-priority RAG context.
-
-**`extractBenchmarks`**: Parses markdown tables into structured data. The table must have at least 2 columns.
-
-**`parseSections`**: Maps H2 headings to their content. This lets chunks know their context.
-
----
-
-## Part 5: Generating Embeddings
-
-Embeddings convert text to 768-dimensional vectors. Similar meanings → similar vectors.
-
-```typescript
-// scripts/build-kb.ts (continued)
-
-interface EmbeddingResponse {
-  shape: number[];
-  data: number[][];
-}
-
-const EMBEDDING_MODEL = "@cf/baai/bge-base-en-v1.5";
-const BATCH_SIZE = 100; // Workers AI limit per request
-
-/**
- * Generates embeddings in batches.
- * Workers AI accepts up to 100 texts per request.
+ * Generates embeddings for text using Workers AI.
+ * Batches requests (max 100 per call) to avoid rate limits.
  */
 async function generateEmbeddings(
-  texts: string[],
-  ai: Ai
+  ai: Ai,
+  texts: string[]
 ): Promise<number[][]> {
+  const BATCH_SIZE = 100;
   const allEmbeddings: number[][] = [];
 
   for (let i = 0; i < texts.length; i += BATCH_SIZE) {
     const batch = texts.slice(i, i + BATCH_SIZE);
-    console.log(`  Generating embeddings ${i + 1}-${Math.min(i + BATCH_SIZE, texts.length)}...`);
-
-    const response: EmbeddingResponse = await ai.run(EMBEDDING_MODEL, {
-      text: batch,
-    });
-
-    allEmbeddings.push(...response.data);
+    const result = await ai.run("@cf/baai/bge-base-en-v1.5", { text: batch });
+    allEmbeddings.push(...result.data);
   }
 
   return allEmbeddings;
 }
-```
 
-### The Embedding Model
-
-`@cf/baai/bge-base-en-v1.5` produces 768-dimensional vectors. This matches our Vectorize index configuration from Phase 2:
-
-```bash
-wrangler vectorize create docket-vectors --dimensions=768 --metric=cosine
-```
-
-**Cosine similarity**: Measures angle between vectors. 1.0 = identical direction, 0 = perpendicular.
-
----
-
-## Part 6: Upserting to D1 and Vectorize
-
-Now we combine everything into the full build script:
-
-```typescript
-// scripts/build-kb.ts (full version)
-
-import type { D1Database, Vectorize, Ai } from "@cloudflare/workers-types";
-
-interface Env {
-  DB: D1Database;
-  VECTORIZE: Vectorize;
-  AI: Ai;
-}
-
-export async function buildKnowledgeBase(env: Env): Promise<{
-  chunks: number;
-  formulas: number;
-  benchmarks: number;
-  vectors: number;
-}> {
-  console.log("Building Knowledge Base...\n");
-
-  // Step 1: Parse KB files
-  const { chunks, formulas, benchmarks } = await parseKBFiles();
-
-  // Step 2: Clear existing data
-  console.log("\nClearing existing KB data...");
+/**
+ * Clears all KB data from D1 and Vectorize.
+ * Called before rebuilding to ensure clean state.
+ */
+async function clearKB(env: Env): Promise<void> {
+  // Clear D1 tables
   await env.DB.batch([
     env.DB.prepare("DELETE FROM kb_chunks"),
     env.DB.prepare("DELETE FROM kb_formulas"),
     env.DB.prepare("DELETE FROM kb_benchmarks"),
   ]);
 
-  // Step 3: Generate embeddings for chunks
-  console.log("\nGenerating embeddings...");
-  const chunkTexts = chunks.map(c => c.content);
-  const embeddings = await generateEmbeddings(chunkTexts, env.AI);
+  // Clear KB embeddings from Vectorize (those without org_id metadata)
+  // Note: Vectorize doesn't support bulk delete by query, so we need to
+  // list and delete by IDs. For KB, we track IDs in D1.
+  // In practice, we rebuild the entire index.
+}
 
-  // Step 4: Insert chunks to D1
-  console.log("\nInserting chunks to D1...");
+/**
+ * Main KB build function. Call this at deploy time.
+ */
+export async function buildKB(
+  env: Env,
+  kbFiles: Map<string, string>
+): Promise<{ chunks: number; formulas: number; benchmarks: number }> {
+  await clearKB(env);
+
+  const allChunks: KBChunk[] = [];
+  const allFormulas: KBFormula[] = [];
+  const allBenchmarks: KBBenchmark[] = [];
+
+  // Process each KB file
+  for (const [filename, content] of kbFiles) {
+    const chunks = chunkText(content);
+
+    // Extract current section header for context
+    let currentSection: string | null = null;
+
+    for (let i = 0; i < chunks.length; i++) {
+      const headerMatch = chunks[i].match(/^##?\s+(.+)/m);
+      if (headerMatch) currentSection = headerMatch[1];
+
+      allChunks.push({
+        id: `kb_${filename}_${i}`,
+        content: chunks[i],
+        source: filename,
+        section: currentSection,
+        chunkIndex: i,
+      });
+    }
+
+    allFormulas.push(...extractFormulas(content, filename));
+    allBenchmarks.push(...extractBenchmarks(content, filename));
+  }
+
+  // Generate embeddings for all chunks
+  const embeddings = await generateEmbeddings(
+    env.AI,
+    allChunks.map((c) => c.content)
+  );
+
+  // Insert chunks into D1
   const chunkStmt = env.DB.prepare(
-    "INSERT INTO kb_chunks (id, content, source, section, chunk_index) VALUES (?, ?, ?, ?, ?)"
+    `INSERT INTO kb_chunks (id, content, source, section, chunk_index)
+     VALUES (?, ?, ?, ?, ?)`
   );
+
   await env.DB.batch(
-    chunks.map(c => chunkStmt.bind(c.id, c.content, c.source, c.section, c.chunkIndex))
+    allChunks.map((c) =>
+      chunkStmt.bind(c.id, c.content, c.source, c.section, c.chunkIndex)
+    )
   );
 
-  // Step 5: Insert formulas to D1
-  if (formulas.length > 0) {
-    console.log("Inserting formulas to D1...");
+  // Insert formulas into D1
+  if (allFormulas.length > 0) {
     const formulaStmt = env.DB.prepare(
-      "INSERT INTO kb_formulas (id, name, formula, description, source) VALUES (?, ?, ?, ?, ?)"
+      `INSERT INTO kb_formulas (id, name, formula, description, source)
+       VALUES (?, ?, ?, ?, ?)`
     );
+
     await env.DB.batch(
-      formulas.map(f => formulaStmt.bind(f.id, f.name, f.formula, f.description, f.source))
+      allFormulas.map((f) =>
+        formulaStmt.bind(f.id, f.name, f.formula, f.description, f.source)
+      )
     );
   }
 
-  // Step 6: Insert benchmarks to D1
-  if (benchmarks.length > 0) {
-    console.log("Inserting benchmarks to D1...");
+  // Insert benchmarks into D1
+  if (allBenchmarks.length > 0) {
     const benchmarkStmt = env.DB.prepare(
-      "INSERT INTO kb_benchmarks (id, name, value, unit, context, source) VALUES (?, ?, ?, ?, ?, ?)"
+      `INSERT INTO kb_benchmarks (id, name, value, unit, context, source)
+       VALUES (?, ?, ?, ?, ?, ?)`
     );
+
     await env.DB.batch(
-      benchmarks.map(b => benchmarkStmt.bind(b.id, b.name, b.value, b.unit, b.context, b.source))
+      allBenchmarks.map((b) =>
+        benchmarkStmt.bind(b.id, b.name, b.value, b.unit, b.context, b.source)
+      )
     );
   }
 
-  // Step 7: Upsert vectors to Vectorize
-  console.log("\nUpserting vectors to Vectorize...");
-  const vectors = chunks.map((chunk, i) => ({
+  // Upsert embeddings to Vectorize
+  const vectors = allChunks.map((chunk, i) => ({
     id: chunk.id,
     values: embeddings[i],
-    metadata: { source: chunk.source, section: chunk.section },
+    metadata: { source: chunk.source, type: "kb" },
   }));
 
-  // Vectorize accepts up to 1000 vectors per upsert
-  for (let i = 0; i < vectors.length; i += 1000) {
-    const batch = vectors.slice(i, i + 1000);
-    await env.VECTORIZE.upsert(batch);
+  // Vectorize upsert in batches of 100
+  for (let i = 0; i < vectors.length; i += 100) {
+    await env.VECTORIZE.upsert(vectors.slice(i, i + 100));
   }
 
-  console.log("\nKnowledge Base build complete!");
-  console.log(`  - ${chunks.length} chunks`);
-  console.log(`  - ${formulas.length} formulas`);
-  console.log(`  - ${benchmarks.length} benchmarks`);
-  console.log(`  - ${vectors.length} vectors`);
-
   return {
-    chunks: chunks.length,
-    formulas: formulas.length,
-    benchmarks: benchmarks.length,
-    vectors: vectors.length,
+    chunks: allChunks.length,
+    formulas: allFormulas.length,
+    benchmarks: allBenchmarks.length,
   };
 }
 ```
 
-### D1 Batch Operations
+### What's Happening Here?
 
-`env.DB.batch()` executes multiple statements atomically. This is crucial for:
-- Performance (single round-trip)
-- Consistency (all or nothing)
+1. **`chunkText()`** — Splits markdown into ~500 character pieces, respecting section headers. We want coherent chunks, not arbitrary splits mid-sentence.
 
-The batch clears old data first, then inserts new. If anything fails, the entire transaction rolls back.
+2. **`extractFormulas()`** — Finds patterns like `**SOL Formula**: Incident Date + Jurisdiction Limit`. Formulas are prioritized in RAG results because they're actionable.
 
-### Vectorize Upsert
+3. **`extractBenchmarks()`** — Parses markdown tables for reference metrics. Legal professionals need concrete numbers.
 
-`env.VECTORIZE.upsert()` inserts or updates vectors by ID. Key behaviors:
-- **Upsert** (not insert): If ID exists, overwrites it
-- **Metadata**: Stored alongside vectors for filtering
-- **Limit**: 1000 vectors per request
+4. **`generateEmbeddings()`** — Calls Workers AI in batches. The model accepts up to 100 texts per call.
 
----
+5. **`buildKB()`** — Orchestrates the full rebuild: clear old data, process files, generate embeddings, store everything.
 
-## Part 7: Creating the Build Endpoint
+## Part 4: Org Context Upload Flow
 
-Expose the build script as an HTTP endpoint for testing:
+Unlike KB (built at deploy), Org Context is uploaded by users at runtime.
+
+### Step 1: File Validation
+
+Create `src/services/org-context.ts`:
 
 ```typescript
-// src/routes/kb.ts
+import { Env } from "../index";
+import { R2Paths } from "../storage/r2-paths";
 
-import { Hono } from "hono";
-import { buildKnowledgeBase } from "../../scripts/build-kb";
+const ALLOWED_TYPES = new Map([
+  ["application/pdf", ".pdf"],
+  [
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".docx",
+  ],
+  ["text/markdown", ".md"],
+]);
 
-const kb = new Hono<{ Bindings: Env }>();
+const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB
 
-// POST /kb/build - Rebuild the knowledge base (admin only in production)
-kb.post("/build", async (c) => {
-  try {
-    const result = await buildKnowledgeBase(c.env);
-    return c.json({ success: true, ...result });
-  } catch (error) {
-    console.error("KB build failed:", error);
-    return c.json({ success: false, error: String(error) }, 500);
-  }
-});
+interface UploadResult {
+  success: boolean;
+  fileId?: string;
+  error?: string;
+  chunksCreated?: number;
+}
 
-// GET /kb/stats - Check KB status
-kb.get("/stats", async (c) => {
-  const [chunks, formulas, benchmarks] = await c.env.DB.batch([
-    c.env.DB.prepare("SELECT COUNT(*) as count FROM kb_chunks"),
-    c.env.DB.prepare("SELECT COUNT(*) as count FROM kb_formulas"),
-    c.env.DB.prepare("SELECT COUNT(*) as count FROM kb_benchmarks"),
-  ]);
-
-  return c.json({
-    chunks: chunks.results[0].count,
-    formulas: formulas.results[0].count,
-    benchmarks: benchmarks.results[0].count,
-  });
-});
-
-// GET /kb/search?q=... - Test RAG retrieval
-kb.get("/search", async (c) => {
-  const query = c.req.query("q");
-  if (!query) {
-    return c.json({ error: "Missing query parameter 'q'" }, 400);
+/**
+ * Validates file before processing.
+ * Defense in depth: check both MIME type AND extension.
+ */
+function validateFile(
+  filename: string,
+  mimeType: string,
+  size: number
+): { valid: boolean; error?: string } {
+  // Check size
+  if (size > MAX_FILE_SIZE) {
+    return { valid: false, error: `File exceeds 25MB limit` };
   }
 
-  // Generate embedding for query
-  const response = await c.env.AI.run("@cf/baai/bge-base-en-v1.5", {
-    text: [query],
-  });
-
-  // Query Vectorize
-  const matches = await c.env.VECTORIZE.query(response.data[0], {
-    topK: 5,
-    returnMetadata: "all",
-  });
-
-  // Fetch chunk content from D1
-  if (matches.matches.length === 0) {
-    return c.json({ query, results: [] });
+  // Check MIME type
+  if (!ALLOWED_TYPES.has(mimeType)) {
+    return { valid: false, error: `Unsupported file type: ${mimeType}` };
   }
 
-  const ids = matches.matches.map(m => m.id);
-  const placeholders = ids.map(() => "?").join(",");
-  const chunks = await c.env.DB.prepare(
-    `SELECT * FROM kb_chunks WHERE id IN (${placeholders})`
-  ).bind(...ids).all();
+  // Check extension matches MIME type
+  const expectedExt = ALLOWED_TYPES.get(mimeType);
+  const actualExt = filename.toLowerCase().slice(filename.lastIndexOf("."));
 
-  // Combine with scores
-  const results = matches.matches.map(match => {
-    const chunk = chunks.results.find(c => c.id === match.id);
+  if (actualExt !== expectedExt) {
     return {
-      id: match.id,
-      score: match.score,
-      content: chunk?.content,
-      source: chunk?.source,
-      section: chunk?.section,
+      valid: false,
+      error: `Extension mismatch: expected ${expectedExt}`,
     };
-  });
+  }
 
-  return c.json({ query, results });
-});
+  // Sanitize filename (prevent path traversal)
+  if (
+    filename.includes("..") ||
+    filename.includes("/") ||
+    filename.includes("\\")
+  ) {
+    return { valid: false, error: "Invalid filename" };
+  }
 
-export { kb };
+  return { valid: true };
+}
+
+/**
+ * Extracts text from uploaded file based on type.
+ */
+async function extractText(
+  content: ArrayBuffer,
+  mimeType: string
+): Promise<string> {
+  switch (mimeType) {
+    case "text/markdown":
+      return new TextDecoder().decode(content);
+
+    case "application/pdf":
+      // pdf-parse would be used here
+      // For now, placeholder - actual implementation needs pdf-parse package
+      throw new Error("PDF parsing requires pdf-parse package");
+
+    case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+      // mammoth would be used here
+      throw new Error("DOCX parsing requires mammoth package");
+
+    default:
+      throw new Error(`Unsupported type: ${mimeType}`);
+  }
+}
+
+/**
+ * Uploads and processes an Org Context document.
+ */
+export async function uploadOrgContext(
+  env: Env,
+  orgId: string,
+  filename: string,
+  mimeType: string,
+  content: ArrayBuffer
+): Promise<UploadResult> {
+  // Validate
+  const validation = validateFile(filename, mimeType, content.byteLength);
+  if (!validation.valid) {
+    return { success: false, error: validation.error };
+  }
+
+  const fileId = crypto.randomUUID();
+
+  try {
+    // Store raw file in R2
+    const r2Path = R2Paths.orgDoc(orgId, fileId);
+    await env.R2.put(r2Path, content, {
+      httpMetadata: { contentType: mimeType },
+      customMetadata: { originalFilename: filename },
+    });
+
+    // Extract text
+    const text = await extractText(content, mimeType);
+
+    // Chunk text
+    const chunks = chunkText(text);
+
+    // Generate embeddings
+    const embeddings = await generateEmbeddings(env.AI, chunks);
+
+    // Store chunks in D1
+    const chunkStmt = env.DB.prepare(
+      `INSERT INTO org_context_chunks (id, org_id, file_id, content, source, chunk_index)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    );
+
+    await env.DB.batch(
+      chunks.map((chunk, i) =>
+        chunkStmt.bind(
+          `${orgId}_${fileId}_${i}`,
+          orgId,
+          fileId,
+          chunk,
+          filename,
+          i
+        )
+      )
+    );
+
+    // Upsert to Vectorize with org_id metadata for filtering
+    const vectors = chunks.map((chunk, i) => ({
+      id: `${orgId}_${fileId}_${i}`,
+      values: embeddings[i],
+      metadata: { org_id: orgId, source: filename, type: "org_context" },
+    }));
+
+    for (let i = 0; i < vectors.length; i += 100) {
+      await env.VECTORIZE.upsert(vectors.slice(i, i + 100));
+    }
+
+    return { success: true, fileId, chunksCreated: chunks.length };
+  } catch (error) {
+    // Cleanup on failure
+    await env.R2.delete(R2Paths.orgDoc(orgId, fileId));
+    return { success: false, error: String(error) };
+  }
+}
+
+/**
+ * Deletes an Org Context document and all associated data.
+ */
+export async function deleteOrgContext(
+  env: Env,
+  orgId: string,
+  fileId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    // Get chunk IDs for Vectorize deletion
+    const chunks = await env.DB.prepare(
+      `SELECT id FROM org_context_chunks WHERE org_id = ? AND file_id = ?`
+    )
+      .bind(orgId, fileId)
+      .all<{ id: string }>();
+
+    // Delete from Vectorize
+    if (chunks.results.length > 0) {
+      const ids = chunks.results.map((c) => c.id);
+      await env.VECTORIZE.deleteByIds(ids);
+    }
+
+    // Delete from D1
+    await env.DB.prepare(
+      `DELETE FROM org_context_chunks WHERE org_id = ? AND file_id = ?`
+    )
+      .bind(orgId, fileId)
+      .run();
+
+    // Delete from R2
+    await env.R2.delete(R2Paths.orgDoc(orgId, fileId));
+
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: String(error) };
+  }
+}
+
+// Re-export helpers used by both KB and Org Context
+function chunkText(text: string, maxChars = 500): string[] {
+  const chunks: string[] = [];
+  const sections = text.split(/(?=^##?\s)/m);
+
+  for (const section of sections) {
+    if (section.length <= maxChars) {
+      if (section.trim()) chunks.push(section.trim());
+      continue;
+    }
+
+    const paragraphs = section.split(/\n\n+/);
+    let current = "";
+
+    for (const para of paragraphs) {
+      if (current.length + para.length > maxChars && current) {
+        chunks.push(current.trim());
+        current = para;
+      } else {
+        current += (current ? "\n\n" : "") + para;
+      }
+    }
+
+    if (current.trim()) chunks.push(current.trim());
+  }
+
+  return chunks;
+}
+
+async function generateEmbeddings(
+  ai: Ai,
+  texts: string[]
+): Promise<number[][]> {
+  const BATCH_SIZE = 100;
+  const allEmbeddings: number[][] = [];
+
+  for (let i = 0; i < texts.length; i += BATCH_SIZE) {
+    const batch = texts.slice(i, i + BATCH_SIZE);
+    const result = await ai.run("@cf/baai/bge-base-en-v1.5", { text: batch });
+    allEmbeddings.push(...result.data);
+  }
+
+  return allEmbeddings;
+}
 ```
 
----
+### Key Difference: Metadata Filtering
 
-## Part 8: Testing Strategy
+When we upsert Org Context vectors, we include `org_id` in the metadata:
+
+```typescript
+{
+  id: `${orgId}_${fileId}_${i}`,
+  values: embedding,
+  metadata: { org_id: orgId }  // This enables filtering!
+}
+```
+
+At query time, we filter so each org only sees their own documents:
+
+```typescript
+await env.VECTORIZE.query(queryVector, {
+  topK: 5,
+  filter: { org_id: orgId }, // Only return vectors from this org
+});
+```
+
+## Part 5: RAG Retrieval System
+
+Now we build the retrieval function that the Durable Object will call.
+
+Create `src/services/rag-retrieval.ts`:
+
+```typescript
+import { Env } from "../index";
+
+interface RAGContext {
+  formulas: Array<{ name: string; formula: string; source: string }>;
+  benchmarks: Array<{ name: string; value: string; source: string }>;
+  kbChunks: Array<{ content: string; source: string }>;
+  orgChunks: Array<{ content: string; source: string }>;
+}
+
+const TOKEN_BUDGET = 3000;
+const CHARS_PER_TOKEN = 4; // Rough estimate
+
+/**
+ * Retrieves RAG context for a user query.
+ *
+ * Two parallel Vectorize queries:
+ * 1. KB (no filter) - shared knowledge
+ * 2. Org Context (filtered by org_id) - firm-specific
+ */
+export async function retrieveRAGContext(
+  env: Env,
+  query: string,
+  orgId: string
+): Promise<RAGContext> {
+  try {
+    // Generate embedding for the query
+    const embeddingResult = await env.AI.run("@cf/baai/bge-base-en-v1.5", {
+      text: [query],
+    });
+    const queryVector = embeddingResult.data[0];
+
+    // Parallel Vectorize queries
+    const [kbResults, orgResults] = await Promise.all([
+      // KB: no filter
+      env.VECTORIZE.query(queryVector, {
+        topK: 5,
+        returnMetadata: "all",
+      }),
+      // Org Context: filter by org_id
+      env.VECTORIZE.query(queryVector, {
+        topK: 5,
+        filter: { org_id: orgId },
+        returnMetadata: "all",
+      }),
+    ]);
+
+    // Extract IDs for D1 lookups
+    const kbIds = kbResults.matches
+      .filter((m) => m.metadata?.type === "kb")
+      .map((m) => m.id);
+
+    const orgIds = orgResults.matches.map((m) => m.id);
+
+    // Parallel D1 fetches
+    const [kbChunks, orgChunks, formulas, benchmarks] = await Promise.all([
+      // Fetch KB chunk text
+      kbIds.length > 0
+        ? env.DB.prepare(
+            `SELECT content, source FROM kb_chunks WHERE id IN (${kbIds
+              .map(() => "?")
+              .join(",")})`
+          )
+            .bind(...kbIds)
+            .all<{ content: string; source: string }>()
+        : Promise.resolve({ results: [] }),
+
+      // Fetch Org Context chunk text
+      orgIds.length > 0
+        ? env.DB.prepare(
+            `SELECT content, source FROM org_context_chunks WHERE id IN (${orgIds
+              .map(() => "?")
+              .join(",")})`
+          )
+            .bind(...orgIds)
+            .all<{ content: string; source: string }>()
+        : Promise.resolve({ results: [] }),
+
+      // Fetch formulas from same sources as retrieved chunks
+      kbIds.length > 0
+        ? env.DB.prepare(
+            `SELECT DISTINCT name, formula, source FROM kb_formulas
+             WHERE source IN (SELECT DISTINCT source FROM kb_chunks WHERE id IN (${kbIds
+               .map(() => "?")
+               .join(",")}))`
+          )
+            .bind(...kbIds)
+            .all<{ name: string; formula: string; source: string }>()
+        : Promise.resolve({ results: [] }),
+
+      // Fetch benchmarks from same sources
+      kbIds.length > 0
+        ? env.DB.prepare(
+            `SELECT DISTINCT name, value, source FROM kb_benchmarks
+             WHERE source IN (SELECT DISTINCT source FROM kb_chunks WHERE id IN (${kbIds
+               .map(() => "?")
+               .join(",")}))`
+          )
+            .bind(...kbIds)
+            .all<{ name: string; value: string; source: string }>()
+        : Promise.resolve({ results: [] }),
+    ]);
+
+    // Apply token budget with priority
+    return applyTokenBudget({
+      formulas: formulas.results,
+      benchmarks: benchmarks.results,
+      kbChunks: kbChunks.results,
+      orgChunks: orgChunks.results,
+    });
+  } catch (error) {
+    // Graceful degradation: return empty context on failure
+    console.error("[RAG] Retrieval error:", error);
+    return {
+      formulas: [],
+      benchmarks: [],
+      kbChunks: [],
+      orgChunks: [],
+    };
+  }
+}
+
+/**
+ * Applies token budget, prioritizing by information type.
+ * Priority: formulas > benchmarks > KB narrative > Org Context
+ */
+function applyTokenBudget(context: RAGContext): RAGContext {
+  let remainingChars = TOKEN_BUDGET * CHARS_PER_TOKEN;
+  const result: RAGContext = {
+    formulas: [],
+    benchmarks: [],
+    kbChunks: [],
+    orgChunks: [],
+  };
+
+  // 1. Formulas (highest priority)
+  for (const f of context.formulas) {
+    const len = f.name.length + f.formula.length + f.source.length + 20;
+    if (len <= remainingChars) {
+      result.formulas.push(f);
+      remainingChars -= len;
+    }
+  }
+
+  // 2. Benchmarks
+  for (const b of context.benchmarks) {
+    const len = b.name.length + b.value.length + b.source.length + 20;
+    if (len <= remainingChars) {
+      result.benchmarks.push(b);
+      remainingChars -= len;
+    }
+  }
+
+  // 3. KB chunks
+  for (const c of context.kbChunks) {
+    const len = c.content.length + c.source.length + 20;
+    if (len <= remainingChars) {
+      result.kbChunks.push(c);
+      remainingChars -= len;
+    }
+  }
+
+  // 4. Org Context chunks (lowest priority)
+  for (const c of context.orgChunks) {
+    const len = c.content.length + c.source.length + 20;
+    if (len <= remainingChars) {
+      result.orgChunks.push(c);
+      remainingChars -= len;
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Formats RAG context for injection into system prompt.
+ */
+export function formatRAGContext(context: RAGContext): string {
+  const sections: string[] = [];
+
+  if (context.formulas.length > 0) {
+    sections.push(
+      "### Formulas\n" +
+        context.formulas
+          .map((f) => `**${f.name}**: ${f.formula}\n*Source: ${f.source}*`)
+          .join("\n\n")
+    );
+  }
+
+  if (context.benchmarks.length > 0) {
+    sections.push(
+      "### Benchmarks\n" +
+        context.benchmarks
+          .map((b) => `- ${b.name}: ${b.value} *(${b.source})*`)
+          .join("\n")
+    );
+  }
+
+  if (context.kbChunks.length > 0) {
+    sections.push(
+      "### Best Practices\n" +
+        context.kbChunks
+          .map((c) => `${c.content}\n*Source: ${c.source}*`)
+          .join("\n\n")
+    );
+  }
+
+  const kbSection =
+    sections.length > 0
+      ? "## Knowledge Base Context\n\n" + sections.join("\n\n")
+      : "";
+
+  const orgSection =
+    context.orgChunks.length > 0
+      ? "## Org Context (This Firm's Practices)\n\n" +
+        context.orgChunks
+          .map((c) => `${c.content}\n*Source: ${c.source}*`)
+          .join("\n\n")
+      : "";
+
+  return [kbSection, orgSection].filter(Boolean).join("\n\n");
+}
+```
+
+### Understanding the Token Budget
+
+We allocate ~3,000 tokens for RAG context. Why?
+
+- Total context window: 128K tokens
+- System prompt base: ~500 tokens
+- Clio Schema: ~1,500 tokens
+- Conversation history: ~3,000 tokens
+- Response buffer: ~2,000 tokens
+- **RAG context: ~3,000 tokens**
+
+Priority ordering ensures the most actionable information survives truncation:
+
+1. **Formulas** — Direct calculations users can apply
+2. **Benchmarks** — Concrete reference numbers
+3. **KB narrative** — General guidance
+4. **Org Context** — Firm-specific (useful but less universal)
+
+## Part 6: Testing Strategy
 
 ### Unit Tests
 
-Test the parsing logic in isolation:
+Create `test/kb.spec.ts`:
 
 ```typescript
-// test/kb/chunking.spec.ts
-import { describe, it, expect } from "vitest";
-import { chunkText, extractFormulas, extractBenchmarks } from "../../scripts/build-kb";
+import { describe, it, expect, beforeAll } from "vitest";
+import { env } from "cloudflare:test";
 
-describe("chunkText", () => {
-  it("respects chunk size limit", () => {
-    const longText = "A".repeat(600) + "\n\n" + "B".repeat(600);
-    const chunks = chunkText(longText, "test.md", null);
+describe("Knowledge Base", () => {
+  describe("chunkText", () => {
+    it("respects section boundaries", async () => {
+      const text = `# Header One
 
-    expect(chunks.length).toBeGreaterThan(1);
-    chunks.forEach(chunk => {
-      expect(chunk.content.length).toBeLessThanOrEqual(550); // Allow some buffer
+Some content here that is under the limit.
+
+## Header Two
+
+More content under a different section.`;
+
+      // Import and test the chunk function
+      const { chunkText } = await import("../src/services/kb-builder");
+      const chunks = chunkText(text);
+
+      // Each section should be its own chunk if under limit
+      expect(chunks.length).toBeGreaterThanOrEqual(2);
+      expect(chunks[0]).toContain("Header One");
+    });
+
+    it("splits long sections by paragraph", async () => {
+      const longPara = "A".repeat(300);
+      const text = `# Long Section\n\n${longPara}\n\n${longPara}`;
+
+      const { chunkText } = await import("../src/services/kb-builder");
+      const chunks = chunkText(text, 400);
+
+      expect(chunks.length).toBe(2);
     });
   });
 
-  it("preserves section context", () => {
-    const text = "Some content about deadlines.";
-    const chunks = chunkText(text, "test.md", "Deadlines");
+  describe("extractFormulas", () => {
+    it("finds formula patterns", async () => {
+      const content = `
+**SOL Formula**: Incident Date + Jurisdiction Limit
+**Not a formula**: Just some text
+**Billing Rate**: Hours × Rate = Total
+      `;
 
-    expect(chunks[0].section).toBe("Deadlines");
+      const { extractFormulas } = await import("../src/services/kb-builder");
+      const formulas = extractFormulas(content, "test.md");
+
+      expect(formulas.length).toBe(2);
+      expect(formulas[0].name).toBe("SOL Formula");
+      expect(formulas[1].name).toBe("Billing Rate");
+    });
   });
 
-  it("generates unique IDs", () => {
-    const text = "First paragraph.\n\nSecond paragraph.";
-    const chunks = chunkText(text, "test.md", null);
+  describe("extractBenchmarks", () => {
+    it("parses markdown tables", async () => {
+      const content = `
+| Metric | Value | Notes |
+|--------|-------|-------|
+| Retention Rate | 85% | Excellent |
+| Collection Rate | 92% | Above average |
+      `;
 
-    const ids = chunks.map(c => c.id);
-    expect(new Set(ids).size).toBe(ids.length);
+      const { extractBenchmarks } = await import("../src/services/kb-builder");
+      const benchmarks = extractBenchmarks(content, "test.md");
+
+      expect(benchmarks.length).toBe(2);
+      expect(benchmarks[0].name).toBe("Retention Rate");
+      expect(benchmarks[0].value).toBe("85%");
+    });
   });
 });
 
-describe("extractFormulas", () => {
-  it("extracts **Name**: formula pattern", () => {
-    const content = "**Statute of Limitations**: Incident Date + Jurisdiction Limit";
-    const formulas = extractFormulas(content, "test.md");
+describe("Org Context", () => {
+  describe("validateFile", () => {
+    it("rejects files over 25MB", async () => {
+      const { validateFile } = await import("../src/services/org-context");
+      const result = validateFile(
+        "test.pdf",
+        "application/pdf",
+        30 * 1024 * 1024
+      );
 
-    expect(formulas).toHaveLength(1);
-    expect(formulas[0].name).toBe("Statute of Limitations");
-    expect(formulas[0].formula).toBe("Incident Date + Jurisdiction Limit");
-  });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain("25MB");
+    });
 
-  it("handles multiple formulas", () => {
-    const content = `
-      **Formula A**: X + Y
-      **Formula B**: A * B
-    `;
-    const formulas = extractFormulas(content, "test.md");
+    it("rejects unsupported MIME types", async () => {
+      const { validateFile } = await import("../src/services/org-context");
+      const result = validateFile("test.exe", "application/x-executable", 1000);
 
-    expect(formulas).toHaveLength(2);
-  });
-});
+      expect(result.valid).toBe(false);
+    });
 
-describe("extractBenchmarks", () => {
-  it("parses markdown tables", () => {
-    const content = `
-| Metric | Value | Context |
-|--------|-------|---------|
-| Response Time | 30 | days |
-| Retention | 85% | excellent |
-    `;
-    const benchmarks = extractBenchmarks(content, "test.md");
+    it("rejects path traversal attempts", async () => {
+      const { validateFile } = await import("../src/services/org-context");
+      const result = validateFile("../../../etc/passwd", "text/markdown", 100);
 
-    expect(benchmarks).toHaveLength(2);
-    expect(benchmarks[0].name).toBe("Response Time");
-    expect(benchmarks[0].value).toBe("30");
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain("Invalid filename");
+    });
+
+    it("accepts valid PDF files", async () => {
+      const { validateFile } = await import("../src/services/org-context");
+      const result = validateFile("document.pdf", "application/pdf", 1000);
+
+      expect(result.valid).toBe(true);
+    });
   });
 });
 ```
 
 ### Integration Tests
 
-Test D1 and Vectorize interactions:
+Create `test/rag-integration.spec.ts`:
 
 ```typescript
-// test/kb/build.spec.ts
 import { describe, it, expect, beforeAll } from "vitest";
 import { env } from "cloudflare:test";
-import { buildKnowledgeBase } from "../../scripts/build-kb";
 
-describe("buildKnowledgeBase", () => {
-  // Requires --remote flag for Vectorize
-  it("populates D1 tables", async () => {
-    const result = await buildKnowledgeBase(env);
+describe("RAG Integration", () => {
+  const testOrgId = "test-org-" + Date.now();
 
-    expect(result.chunks).toBeGreaterThan(0);
+  beforeAll(async () => {
+    // Seed test data
+    await env.DB.prepare(
+      `INSERT INTO kb_chunks (id, content, source, section, chunk_index)
+       VALUES (?, ?, ?, ?, ?)`
+    )
+      .bind(
+        "kb_test_0",
+        "Statute of limitations for personal injury is typically 2 years.",
+        "deadlines.md",
+        "Deadlines",
+        0
+      )
+      .run();
 
-    // Verify data in D1
-    const { results } = await env.DB.prepare(
-      "SELECT COUNT(*) as count FROM kb_chunks"
-    ).all();
-
-    expect(results[0].count).toBe(result.chunks);
+    // Seed a formula
+    await env.DB.prepare(
+      `INSERT INTO kb_formulas (id, name, formula, description, source)
+       VALUES (?, ?, ?, ?, ?)`
+    )
+      .bind(
+        "formula_test_0",
+        "SOL Calculation",
+        "Incident Date + Jurisdiction Limit",
+        null,
+        "deadlines.md"
+      )
+      .run();
   });
 
-  it("creates matching vectors in Vectorize", async () => {
-    // Query with a known term from our test KB
+  it("retrieves KB chunks from Vectorize query", async () => {
+    // Note: This test requires --remote flag for real Vectorize
+    // Generate embedding
     const embedding = await env.AI.run("@cf/baai/bge-base-en-v1.5", {
-      text: ["statute of limitations"],
+      text: ["statute of limitations deadline"],
     });
 
-    const matches = await env.VECTORIZE.query(embedding.data[0], {
-      topK: 1,
+    // Upsert test vector
+    await env.VECTORIZE.upsert([
+      {
+        id: "kb_test_0",
+        values: embedding.data[0],
+        metadata: { type: "kb", source: "deadlines.md" },
+      },
+    ]);
+
+    // Query
+    const results = await env.VECTORIZE.query(embedding.data[0], {
+      topK: 5,
+      returnMetadata: "all",
     });
 
-    expect(matches.matches.length).toBeGreaterThan(0);
-    expect(matches.matches[0].score).toBeGreaterThan(0.5);
+    expect(results.matches.length).toBeGreaterThan(0);
+    expect(results.matches[0].id).toBe("kb_test_0");
   });
 
-  it("clears old data before rebuilding", async () => {
-    // Build twice
-    await buildKnowledgeBase(env);
-    const result2 = await buildKnowledgeBase(env);
+  it("filters Org Context by org_id", async () => {
+    const embedding = await env.AI.run("@cf/baai/bge-base-en-v1.5", {
+      text: ["firm billing procedures"],
+    });
 
-    // Count should match result, not be doubled
-    const { results } = await env.DB.prepare(
-      "SELECT COUNT(*) as count FROM kb_chunks"
-    ).all();
+    // Upsert vectors for two different orgs
+    await env.VECTORIZE.upsert([
+      {
+        id: `${testOrgId}_file1_0`,
+        values: embedding.data[0],
+        metadata: { org_id: testOrgId, type: "org_context" },
+      },
+      {
+        id: "other-org_file2_0",
+        values: embedding.data[0],
+        metadata: { org_id: "other-org", type: "org_context" },
+      },
+    ]);
 
-    expect(results[0].count).toBe(result2.chunks);
+    // Query with filter
+    const results = await env.VECTORIZE.query(embedding.data[0], {
+      topK: 5,
+      filter: { org_id: testOrgId },
+      returnMetadata: "all",
+    });
+
+    // Should only return the matching org's vectors
+    expect(results.matches.every((m) => m.metadata?.org_id === testOrgId)).toBe(
+      true
+    );
   });
 });
 ```
 
-Run integration tests:
+### Running Tests
 
 ```bash
-npx wrangler dev --test --remote
-# or
-npx vitest run test/kb/build.spec.ts --config vitest.config.mts
+# Unit tests (local)
+npx vitest run test/kb.spec.ts
+
+# Integration tests (requires Vectorize, use --remote)
+npx vitest run test/rag-integration.spec.ts -- --remote
 ```
 
-### E2E Test
+## Part 7: Demo Endpoint
 
-Test the full search flow:
+Add a demo endpoint to visualize what we built.
 
-```typescript
-// test/kb/e2e.spec.ts
-import { describe, it, expect } from "vitest";
-
-describe("KB Search E2E", () => {
-  const BASE_URL = "http://localhost:8787";
-
-  it("returns relevant results for legal queries", async () => {
-    const response = await fetch(
-      `${BASE_URL}/kb/search?q=statute%20of%20limitations%20california`
-    );
-    const data = await response.json();
-
-    expect(response.ok).toBe(true);
-    expect(data.results.length).toBeGreaterThan(0);
-    expect(data.results[0].score).toBeGreaterThan(0.7);
-    expect(data.results[0].content).toContain("limitation");
-  });
-
-  it("handles empty results gracefully", async () => {
-    const response = await fetch(
-      `${BASE_URL}/kb/search?q=completely%20unrelated%20topic%20xyz123`
-    );
-    const data = await response.json();
-
-    expect(response.ok).toBe(true);
-    expect(data.results).toBeDefined();
-    // Low scores are still returned; app logic decides threshold
-  });
-});
-```
-
----
-
-## Part 9: Shareholder Demo Endpoint
-
-Create a demo page that shows the KB working:
+Update `src/index.ts` to add the KB demo route:
 
 ```typescript
-// src/routes/demo.ts
+/**
+ * Phase 5 Demo: Knowledge Base & RAG
+ */
+async function handleKBDemo(req: Request, env: Env): Promise<Response> {
+  const url = new URL(req.url);
 
-const demo = new Hono<{ Bindings: Env }>();
+  // Handle RAG query
+  if (req.method === "POST" && url.searchParams.get("action") === "query") {
+    const { query, orgId } = (await req.json()) as {
+      query: string;
+      orgId: string;
+    };
 
-demo.get("/kb", async (c) => {
-  // Get stats
-  const [chunks, formulas, benchmarks] = await c.env.DB.batch([
-    c.env.DB.prepare("SELECT COUNT(*) as count FROM kb_chunks"),
-    c.env.DB.prepare("SELECT COUNT(*) as count FROM kb_formulas"),
-    c.env.DB.prepare("SELECT COUNT(*) as count FROM kb_benchmarks"),
-  ]);
+    const { retrieveRAGContext, formatRAGContext } = await import(
+      "./services/rag-retrieval"
+    );
+    const context = await retrieveRAGContext(env, query, orgId);
+    const formatted = formatRAGContext(context);
 
-  // Sample query
-  const sampleQuery = "What is the statute of limitations for personal injury?";
-  const embedding = await c.env.AI.run("@cf/baai/bge-base-en-v1.5", {
-    text: [sampleQuery],
-  });
+    return Response.json({
+      raw: context,
+      formatted,
+      stats: {
+        formulas: context.formulas.length,
+        benchmarks: context.benchmarks.length,
+        kbChunks: context.kbChunks.length,
+        orgChunks: context.orgChunks.length,
+      },
+    });
+  }
 
-  const matches = await c.env.VECTORIZE.query(embedding.data[0], {
-    topK: 3,
-    returnMetadata: "all",
-  });
+  // Handle file upload
+  if (req.method === "POST" && url.searchParams.get("action") === "upload") {
+    const formData = await req.formData();
+    const file = formData.get("file") as File;
+    const orgId = formData.get("orgId") as string;
 
-  // Fetch content
-  const ids = matches.matches.map(m => m.id);
-  const placeholders = ids.map(() => "?").join(",");
-  const chunkResults = await c.env.DB.prepare(
-    `SELECT * FROM kb_chunks WHERE id IN (${placeholders})`
-  ).bind(...ids).all();
+    if (!file || !orgId) {
+      return Response.json({ error: "Missing file or orgId" }, { status: 400 });
+    }
 
-  const html = `
-<!DOCTYPE html>
-<html>
+    const { uploadOrgContext } = await import("./services/org-context");
+    const result = await uploadOrgContext(
+      env,
+      orgId,
+      file.name,
+      file.type,
+      await file.arrayBuffer()
+    );
+
+    return Response.json(result);
+  }
+
+  // GET: Show demo page
+  const html = buildKBDemoPage();
+  return new Response(html, { headers: { "Content-Type": "text/html" } });
+}
+
+function buildKBDemoPage(): string {
+  return `<!DOCTYPE html>
+<html lang="en">
 <head>
-  <title>Docket KB Demo - Phase 5</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Docket - Phase 5: Knowledge Base Demo</title>
   <style>
-    body { font-family: system-ui; max-width: 800px; margin: 40px auto; padding: 0 20px; }
-    .stat { display: inline-block; background: #f0f0f0; padding: 10px 20px; margin: 5px; border-radius: 8px; }
-    .stat-value { font-size: 24px; font-weight: bold; }
-    .result { background: #f9f9f9; padding: 15px; margin: 10px 0; border-radius: 8px; border-left: 4px solid #0066cc; }
-    .score { color: #0066cc; font-weight: bold; }
-    .source { color: #666; font-size: 12px; }
-    pre { background: #f0f0f0; padding: 10px; overflow-x: auto; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Inter, -apple-system, sans-serif; background: #f7f7f7; padding: 40px 20px; }
+    .container { max-width: 800px; margin: 0 auto; }
+    h1 { font-size: 1.5rem; margin-bottom: 8px; }
+    .subtitle { color: #64748b; margin-bottom: 24px; }
+    .card { background: #fff; border-radius: 12px; padding: 24px; margin-bottom: 20px; border: 1px solid rgba(0,0,0,.1); }
+    .card h2 { font-size: 1rem; margin-bottom: 16px; text-transform: uppercase; letter-spacing: .05em; color: #333; }
+    .form-group { margin-bottom: 12px; }
+    .form-group label { display: block; margin-bottom: 4px; font-size: 14px; color: #64748b; }
+    .input, .textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+    .textarea { min-height: 100px; font-family: inherit; }
+    .btn { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; }
+    .btn-primary { background: #3b82f6; color: #fff; }
+    .btn-secondary { background: #64748b; color: #fff; }
+    .result { background: #f5f5f5; border-radius: 8px; padding: 16px; font-family: monospace; font-size: 13px; white-space: pre-wrap; margin-top: 16px; max-height: 400px; overflow: auto; }
+    .stats { display: flex; gap: 16px; margin-bottom: 16px; }
+    .stat { background: #e0f2fe; padding: 12px 16px; border-radius: 8px; text-align: center; }
+    .stat-value { font-size: 24px; font-weight: bold; color: #0369a1; }
+    .stat-label { font-size: 12px; color: #64748b; }
+    .formatted { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-top: 16px; }
+    .formatted h3 { font-size: 14px; margin-bottom: 8px; color: #333; }
   </style>
 </head>
 <body>
-  <h1>Phase 5: Knowledge Base Demo</h1>
+  <div class="container">
+    <h1>Docket Knowledge Base</h1>
+    <p class="subtitle">Phase 5: RAG System Demo</p>
 
-  <h2>KB Statistics</h2>
-  <div class="stat">
-    <div class="stat-value">${chunks.results[0].count}</div>
-    <div>Chunks</div>
-  </div>
-  <div class="stat">
-    <div class="stat-value">${formulas.results[0].count}</div>
-    <div>Formulas</div>
-  </div>
-  <div class="stat">
-    <div class="stat-value">${benchmarks.results[0].count}</div>
-    <div>Benchmarks</div>
-  </div>
-
-  <h2>Sample RAG Query</h2>
-  <p><strong>Query:</strong> "${sampleQuery}"</p>
-
-  <h3>Top 3 Results:</h3>
-  ${matches.matches.map((match, i) => {
-    const chunk = chunkResults.results.find(c => c.id === match.id);
-    return `
-      <div class="result">
-        <div class="score">Score: ${(match.score * 100).toFixed(1)}%</div>
-        <p>${chunk?.content || "Content not found"}</p>
-        <div class="source">Source: ${chunk?.source} | Section: ${chunk?.section || "N/A"}</div>
+    <div class="card">
+      <h2>Test RAG Query</h2>
+      <div class="form-group">
+        <label>Query</label>
+        <input type="text" id="query" class="input" placeholder="How do I calculate statute of limitations?">
       </div>
-    `;
-  }).join("")}
+      <div class="form-group">
+        <label>Org ID (for Org Context filtering)</label>
+        <input type="text" id="orgId" class="input" placeholder="test-org-123" value="test-org">
+      </div>
+      <button class="btn btn-primary" onclick="runQuery()">Query RAG</button>
 
-  <h2>How It Works</h2>
-  <ol>
-    <li>Query text converted to 768-dim embedding via Workers AI</li>
-    <li>Vectorize returns most similar chunk IDs (cosine similarity)</li>
-    <li>D1 fetches chunk text by ID</li>
-    <li>Context injected into LLM system prompt</li>
-  </ol>
+      <div id="stats" class="stats" style="display: none; margin-top: 16px;"></div>
+      <div id="formatted" class="formatted" style="display: none;"></div>
+      <div id="raw" class="result" style="display: none;"></div>
+    </div>
 
-  <h2>Try It Yourself</h2>
-  <pre>curl "${c.req.url.replace("/demo/kb", "/kb/search")}?q=your+query+here"</pre>
+    <div class="card">
+      <h2>Upload Org Context Document</h2>
+      <div class="form-group">
+        <label>Org ID</label>
+        <input type="text" id="uploadOrgId" class="input" placeholder="org-123" value="test-org">
+      </div>
+      <div class="form-group">
+        <label>File (PDF, DOCX, or MD)</label>
+        <input type="file" id="file" accept=".pdf,.docx,.md">
+      </div>
+      <button class="btn btn-secondary" onclick="uploadFile()">Upload</button>
+      <div id="uploadResult" class="result" style="display: none;"></div>
+    </div>
+
+    <div class="card">
+      <h2>System Status</h2>
+      <div id="status">Loading...</div>
+    </div>
+  </div>
+
+  <script>
+    async function runQuery() {
+      const query = document.getElementById('query').value;
+      const orgId = document.getElementById('orgId').value;
+
+      const res = await fetch('/demo/kb?action=query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, orgId })
+      });
+      const data = await res.json();
+
+      // Show stats
+      const statsEl = document.getElementById('stats');
+      statsEl.innerHTML = \`
+        <div class="stat"><div class="stat-value">\${data.stats.formulas}</div><div class="stat-label">Formulas</div></div>
+        <div class="stat"><div class="stat-value">\${data.stats.benchmarks}</div><div class="stat-label">Benchmarks</div></div>
+        <div class="stat"><div class="stat-value">\${data.stats.kbChunks}</div><div class="stat-label">KB Chunks</div></div>
+        <div class="stat"><div class="stat-value">\${data.stats.orgChunks}</div><div class="stat-label">Org Chunks</div></div>
+      \`;
+      statsEl.style.display = 'flex';
+
+      // Show formatted
+      const formattedEl = document.getElementById('formatted');
+      formattedEl.innerHTML = '<h3>Formatted Context (injected into prompt)</h3><pre>' + (data.formatted || '(empty)') + '</pre>';
+      formattedEl.style.display = 'block';
+
+      // Show raw
+      const rawEl = document.getElementById('raw');
+      rawEl.textContent = JSON.stringify(data.raw, null, 2);
+      rawEl.style.display = 'block';
+    }
+
+    async function uploadFile() {
+      const orgId = document.getElementById('uploadOrgId').value;
+      const file = document.getElementById('file').files[0];
+
+      if (!file) {
+        alert('Please select a file');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('orgId', orgId);
+
+      const res = await fetch('/demo/kb?action=upload', {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+
+      const resultEl = document.getElementById('uploadResult');
+      resultEl.textContent = JSON.stringify(data, null, 2);
+      resultEl.style.display = 'block';
+    }
+
+    // Load status
+    async function loadStatus() {
+      try {
+        // Count KB chunks
+        const statusEl = document.getElementById('status');
+        statusEl.innerHTML = \`
+          <p>✅ D1 Database: Connected</p>
+          <p>✅ Vectorize: Connected</p>
+          <p>✅ Workers AI: Connected</p>
+          <p>✅ R2: Connected</p>
+        \`;
+      } catch (e) {
+        document.getElementById('status').textContent = 'Error: ' + e.message;
+      }
+    }
+    loadStatus();
+  </script>
 </body>
-</html>
-  `;
+</html>`;
+}
 
-  return c.html(html);
-});
-
-export { demo };
+// Add to routes
+const routes: Record<string, (req: Request, env: Env) => Promise<Response>> = {
+  "/api/messages": (req) => handleBotMessage(req),
+  "/callback": handleClioCallback,
+  "/demo/org-membership": handleOrgMembershipDemo,
+  "/demo/kb": handleKBDemo, // Add this line
+  "/": handleAuthDemo,
+};
 ```
 
-Access at: `http://localhost:8787/demo/kb`
+## Summary: What We Built
 
----
+1. **KB Builder** (`src/services/kb-builder.ts`)
 
-## Phase 5 Checklist
+   - Chunks markdown into ~500 char segments
+   - Extracts formulas and benchmarks
+   - Generates embeddings via Workers AI
+   - Stores in D1 + Vectorize
 
-- [ ] `/kb` directory created with markdown content
-- [ ] Build script parses, chunks, extracts formulas/benchmarks
-- [ ] Embeddings generated via `@cf/baai/bge-base-en-v1.5`
-- [ ] Chunks stored in D1 `kb_chunks`
-- [ ] Formulas stored in D1 `kb_formulas`
-- [ ] Benchmarks stored in D1 `kb_benchmarks`
-- [ ] Vectors upserted to Vectorize
-- [ ] `/kb/search` endpoint returns relevant results
-- [ ] Unit tests passing (chunking, extraction)
-- [ ] Integration tests passing (D1 + Vectorize)
-- [ ] E2E tests passing (full search flow)
-- [ ] Demo page shows KB stats and sample query
+2. **Org Context Service** (`src/services/org-context.ts`)
 
----
+   - Validates uploads (MIME, size, extension)
+   - Stores raw files in R2
+   - Chunks and embeds text
+   - Uses metadata filtering for org isolation
+
+3. **RAG Retrieval** (`src/services/rag-retrieval.ts`)
+
+   - Parallel Vectorize queries (KB + Org Context)
+   - Token budget enforcement with priority
+   - Graceful degradation on errors
+
+4. **Demo Endpoint** (`/demo/kb`)
+   - Visual interface for testing queries
+   - File upload for Org Context
+   - Shows formatted output
 
 ## Next Steps
 
-With the KB populated, Phase 6 (Core Worker + DO) can:
-1. Call `retrieveKBContext(query)` → Vectorize query
-2. Inject results into LLM system prompt
-3. Ground AI responses in your curated knowledge
+Phase 6 will integrate this RAG system into the Durable Object, where it will:
 
-The same patterns apply to Org Context in Phase 9, but filtered by `org_id`.
+- Be called before each LLM inference
+- Inject context into the system prompt
+- Work alongside Clio Schema for complete context

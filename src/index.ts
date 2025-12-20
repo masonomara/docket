@@ -1,5 +1,12 @@
 import { DurableObject } from "cloudflare:workers";
 import { getAuth } from "./lib/auth";
+import {
+  getOrgMembership,
+  getOrgMembers,
+  removeUserFromOrg,
+  transferOwnership,
+} from "./services/org-membership";
+import { deleteOrg, getOrgDeletionPreview } from "./services/org-deletion";
 
 // ============================================================================
 // Environment & Type Definitions
@@ -564,6 +571,332 @@ function buildAuthDemoPage(
 </html>`;
 }
 
+/**
+ * Handles org membership demo page - tests user leave/transfer flows
+ */
+async function handleOrgMembershipDemo(
+  req: Request,
+  env: Env
+): Promise<Response> {
+  const url = new URL(req.url);
+
+  // Handle API actions
+  if (req.method === "POST") {
+    const body = (await req.json()) as {
+      action: string;
+      userId?: string;
+      orgId?: string;
+      toUserId?: string;
+    };
+
+    if (body.action === "get-membership" && body.userId && body.orgId) {
+      const result = await getOrgMembership(env.DB, body.userId, body.orgId);
+      return Response.json({ membership: result });
+    }
+
+    if (body.action === "get-members" && body.orgId) {
+      const result = await getOrgMembers(env.DB, body.orgId);
+      return Response.json({ members: result });
+    }
+
+    if (body.action === "remove" && body.userId && body.orgId) {
+      const result = await removeUserFromOrg(env.DB, body.userId, body.orgId);
+      return Response.json(result);
+    }
+
+    if (
+      body.action === "transfer" &&
+      body.orgId &&
+      body.userId &&
+      body.toUserId
+    ) {
+      const result = await transferOwnership(
+        env.DB,
+        body.orgId,
+        body.userId,
+        body.toUserId
+      );
+      return Response.json(result);
+    }
+
+    return Response.json({ error: "Invalid action" }, { status: 400 });
+  }
+
+  // GET: Render demo page
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Org Membership Demo</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Inter, -apple-system, sans-serif; background: #f7f7f7; padding: 40px 20px; }
+    .container { max-width: 600px; margin: 0 auto; }
+    h1 { font-size: 1.5rem; margin-bottom: 8px; }
+    .subtitle { color: #64748b; margin-bottom: 24px; }
+    .card { background: #fff; border-radius: 12px; padding: 24px; margin-bottom: 20px; border: 1px solid rgba(0,0,0,.1); }
+    .card h2 { font-size: 1rem; margin-bottom: 16px; text-transform: uppercase; letter-spacing: .05em; }
+    .form-group { margin-bottom: 12px; }
+    .form-group label { display: block; margin-bottom: 4px; font-size: 14px; color: #64748b; }
+    .input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+    .btn { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; margin: 4px; }
+    .btn-primary { background: #3b82f6; color: #fff; }
+    .btn-secondary { background: #64748b; color: #fff; }
+    .btn-danger { background: #ef4444; color: #fff; }
+    .result { background: #f5f5f5; border-radius: 8px; padding: 16px; font-family: monospace; font-size: 13px; white-space: pre-wrap; margin-top: 16px; display: none; }
+    .status { padding: 8px 12px; border-radius: 6px; font-size: 14px; margin-bottom: 16px; }
+    .status-info { background: #e0f2fe; color: #0369a1; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Org Membership Demo</h1>
+    <p class="subtitle">Phase 4: User Leaves Org Flow</p>
+
+    <div class="card">
+      <div class="status status-info">
+        This demo tests D1 cleanup when users leave organizations.
+        Phase 6 will add DO cleanup (pending confirmations, Clio tokens).
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Get Org Members</h2>
+      <div class="form-group">
+        <label>Org ID</label>
+        <input type="text" id="members-org" class="input" placeholder="org-id">
+      </div>
+      <button class="btn btn-secondary" onclick="getMembers()">Get Members</button>
+      <div id="members-result" class="result"></div>
+    </div>
+
+    <div class="card">
+      <h2>Get User Membership</h2>
+      <div class="form-group">
+        <label>User ID</label>
+        <input type="text" id="membership-user" class="input" placeholder="user-id">
+      </div>
+      <div class="form-group">
+        <label>Org ID</label>
+        <input type="text" id="membership-org" class="input" placeholder="org-id">
+      </div>
+      <button class="btn btn-secondary" onclick="getMembership()">Get Membership</button>
+      <div id="membership-result" class="result"></div>
+    </div>
+
+    <div class="card">
+      <h2>Remove User from Org</h2>
+      <div class="form-group">
+        <label>User ID</label>
+        <input type="text" id="remove-user" class="input" placeholder="user-id">
+      </div>
+      <div class="form-group">
+        <label>Org ID</label>
+        <input type="text" id="remove-org" class="input" placeholder="org-id">
+      </div>
+      <button class="btn btn-danger" onclick="removeUser()">Remove from Org</button>
+      <div id="remove-result" class="result"></div>
+    </div>
+
+    <div class="card">
+      <h2>Transfer Ownership</h2>
+      <div class="form-group">
+        <label>Current Owner User ID</label>
+        <input type="text" id="transfer-from" class="input" placeholder="owner-user-id">
+      </div>
+      <div class="form-group">
+        <label>New Owner User ID</label>
+        <input type="text" id="transfer-to" class="input" placeholder="admin-user-id">
+      </div>
+      <div class="form-group">
+        <label>Org ID</label>
+        <input type="text" id="transfer-org" class="input" placeholder="org-id">
+      </div>
+      <button class="btn btn-primary" onclick="transferOwner()">Transfer Ownership</button>
+      <div id="transfer-result" class="result"></div>
+    </div>
+  </div>
+
+  <script>
+    async function post(action, data) {
+      const res = await fetch('/demo/org-membership', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, ...data })
+      });
+      return res.json();
+    }
+
+    function showResult(id, data) {
+      const el = document.getElementById(id);
+      el.textContent = JSON.stringify(data, null, 2);
+      el.style.display = 'block';
+    }
+
+    async function getMembers() {
+      const orgId = document.getElementById('members-org').value;
+      const result = await post('get-members', { orgId });
+      showResult('members-result', result);
+    }
+
+    async function getMembership() {
+      const userId = document.getElementById('membership-user').value;
+      const orgId = document.getElementById('membership-org').value;
+      const result = await post('get-membership', { userId, orgId });
+      showResult('membership-result', result);
+    }
+
+    async function removeUser() {
+      const userId = document.getElementById('remove-user').value;
+      const orgId = document.getElementById('remove-org').value;
+      const result = await post('remove', { userId, orgId });
+      showResult('remove-result', result);
+    }
+
+    async function transferOwner() {
+      const userId = document.getElementById('transfer-from').value;
+      const toUserId = document.getElementById('transfer-to').value;
+      const orgId = document.getElementById('transfer-org').value;
+      const result = await post('transfer', { userId, toUserId, orgId });
+      showResult('transfer-result', result);
+    }
+  </script>
+</body>
+</html>`;
+
+  return new Response(html, { headers: { "Content-Type": "text/html" } });
+}
+
+/**
+ * Handles org deletion demo page - tests org deletion flow
+ */
+async function handleOrgDeletionDemo(
+  req: Request,
+  env: Env
+): Promise<Response> {
+  // Handle API actions
+  if (req.method === "POST") {
+    const body = (await req.json()) as {
+      action: string;
+      orgId?: string;
+      userId?: string;
+    };
+
+    if (body.action === "preview" && body.orgId) {
+      const result = await getOrgDeletionPreview(env.DB, body.orgId);
+      return Response.json(result);
+    }
+
+    if (body.action === "delete" && body.orgId && body.userId) {
+      const result = await deleteOrg(env.DB, env.R2, body.orgId, body.userId);
+      return Response.json(result);
+    }
+
+    return Response.json({ error: "Invalid action" }, { status: 400 });
+  }
+
+  // GET: Render demo page
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Org Deletion Demo</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Inter, -apple-system, sans-serif; background: #f7f7f7; padding: 40px 20px; }
+    .container { max-width: 600px; margin: 0 auto; }
+    h1 { font-size: 1.5rem; margin-bottom: 8px; }
+    .subtitle { color: #64748b; margin-bottom: 24px; }
+    .card { background: #fff; border-radius: 12px; padding: 24px; margin-bottom: 20px; border: 1px solid rgba(0,0,0,.1); }
+    .card h2 { font-size: 1rem; margin-bottom: 16px; text-transform: uppercase; letter-spacing: .05em; }
+    .form-group { margin-bottom: 12px; }
+    .form-group label { display: block; margin-bottom: 4px; font-size: 14px; color: #64748b; }
+    .input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+    .btn { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; margin: 4px; }
+    .btn-secondary { background: #64748b; color: #fff; }
+    .btn-danger { background: #ef4444; color: #fff; }
+    .result { background: #f5f5f5; border-radius: 8px; padding: 16px; font-family: monospace; font-size: 13px; white-space: pre-wrap; margin-top: 16px; display: none; }
+    .status { padding: 8px 12px; border-radius: 6px; font-size: 14px; margin-bottom: 16px; }
+    .status-warning { background: #fef3c7; color: #92400e; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Org Deletion Demo</h1>
+    <p class="subtitle">Phase 4: Org Deletion Flow (D1 + R2)</p>
+
+    <div class="card">
+      <div class="status status-warning">
+        This permanently deletes an organization and all its data.
+        Phase 6 will add DO cleanup (conversations, Clio tokens).
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Preview Deletion</h2>
+      <div class="form-group">
+        <label>Org ID</label>
+        <input type="text" id="preview-org" class="input" placeholder="org-id">
+      </div>
+      <button class="btn btn-secondary" onclick="previewDeletion()">Preview</button>
+      <div id="preview-result" class="result"></div>
+    </div>
+
+    <div class="card">
+      <h2>Delete Organization</h2>
+      <div class="form-group">
+        <label>Org ID</label>
+        <input type="text" id="delete-org" class="input" placeholder="org-id">
+      </div>
+      <div class="form-group">
+        <label>Owner User ID (for authorization)</label>
+        <input type="text" id="delete-user" class="input" placeholder="owner-user-id">
+      </div>
+      <button class="btn btn-danger" onclick="deleteOrg()">Delete Organization</button>
+      <div id="delete-result" class="result"></div>
+    </div>
+  </div>
+
+  <script>
+    async function post(action, data) {
+      const res = await fetch('/demo/org-deletion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, ...data })
+      });
+      return res.json();
+    }
+
+    function showResult(id, data) {
+      const el = document.getElementById(id);
+      el.textContent = JSON.stringify(data, null, 2);
+      el.style.display = 'block';
+    }
+
+    async function previewDeletion() {
+      const orgId = document.getElementById('preview-org').value;
+      const result = await post('preview', { orgId });
+      showResult('preview-result', result);
+    }
+
+    async function deleteOrg() {
+      if (!confirm('Are you sure you want to delete this organization? This cannot be undone.')) {
+        return;
+      }
+      const orgId = document.getElementById('delete-org').value;
+      const userId = document.getElementById('delete-user').value;
+      const result = await post('delete', { orgId, userId });
+      showResult('delete-result', result);
+    }
+  </script>
+</body>
+</html>`;
+
+  return new Response(html, { headers: { "Content-Type": "text/html" } });
+}
+
 // ============================================================================
 // Route Configuration
 // ============================================================================
@@ -571,6 +904,8 @@ function buildAuthDemoPage(
 const routes: Record<string, (req: Request, env: Env) => Promise<Response>> = {
   "/api/messages": (req) => handleBotMessage(req),
   "/callback": handleClioCallback,
+  "/demo/org-membership": handleOrgMembershipDemo,
+  "/demo/org-deletion": handleOrgDeletionDemo,
   "/": handleAuthDemo,
 };
 

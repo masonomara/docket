@@ -4,7 +4,13 @@ Each phase needs to have simple unit, integration (if applicable), and end-to-en
 
 ## Phase 1: Validate Plan
 
-Find 3-4 people to interview.
+**Checklist:**
+
+- [x] Interview questions prepared
+- [ ] 3-4 legal professionals interviewed
+- [ ] Pain points documented
+- [ ] Feature priorities validated
+- [ ] Interview notes archived in `/docs/01-user-interviews`
 
 ## Phase 2: Accounts & Project Init
 
@@ -12,15 +18,18 @@ Find 3-4 people to interview.
 
 - [x] Cloudflare account created
 - [x] Wrangler CLI installed and authenticated
-- [x] D1 database created and bound
-- [x] R2 bucket created and bound
-- [x] Vectorize index created (768 dimensions, cosine metric)
-- [x] Workers AI binding configured
-- [x] Durable Object class declared
-- [x] All verification tests pass locally
+- [x] D1 database created and bound (`DB`)
+- [x] R2 bucket created and bound (`R2`)
+- [x] R2 lifecycle rules configured
+- [x] Vectorize index created (768 dimensions, cosine metric, `VECTORIZE`)
+- [x] Workers AI binding configured (`AI`)
+- [x] Durable Object class declared (`docketTenant`)
+- [x] `nodejs_compat` compatibility flag set
+- [x] `ENCRYPTION_KEY` secret stored (`wrangler secret put`)
 - [x] Clio developer application created
-- [x] Clio credentials stored in Wrangler secrets
+- [x] Clio credentials stored in Wrangler secrets (`CLIO_CLIENT_ID`, `CLIO_CLIENT_SECRET`)
 - [x] M365 Agents Playground installed
+- [x] All verification tests pass locally
 - [x] Demo artifact deployed and shareable
 
 **Files Created/Modified:**
@@ -39,17 +48,21 @@ Find 3-4 people to interview.
 
 **Checklist:**
 
-- [x] All 4 migration files created
+- [x] All migration files created
 - [x] Migrations applied locally (`--local`)
-- [x] All 14+ tables exist in D1
+- [x] Auth tables exist (`user`, `session`, `account`, `verification`)
+- [x] Cross-tenant tables exist (`org`, `workspace_bindings`, `channel_user_links`, `api_keys`, `invitations`)
+- [x] Subscription tables exist (`subscriptions`, `tier_limits`, `role_permissions`, `org_members`)
+- [x] KB tables exist (`kb_chunks`, `kb_formulas`, `kb_benchmarks`)
+- [x] Org Context table exists (`org_context_chunks`)
 - [x] Tier limits seeded (4 tiers)
 - [x] Role permissions seeded (24 rows: 3 roles × 8 permissions)
 - [x] Vectorize metadata index created for `org_id`
-- [x] R2 path helpers implemented
+- [x] R2 path helpers implemented (`/orgs/{org_id}/docs/`, `/orgs/{org_id}/audit/`, `/orgs/{org_id}/conversations/`)
 - [x] Unit tests passing
 - [x] Integration tests passing (requires `--remote` for Vectorize)
-- [x] Demo endpoint returns all checks passing
 - [x] Migrations applied to production (`--remote`)
+- [x] Demo endpoint returns all checks passing
 
 **Files Created/Modified:**
 
@@ -68,132 +81,249 @@ Find 3-4 people to interview.
 
 **Checklist:**
 
-- [x] Better Auth factory function working
-- [x] Email/password auth tested
+- [x] Drizzle adapter configured for D1
+- [x] Better Auth factory function working (runtime init pattern)
+- [x] Email/password auth tested (PBKDF2 hashing, constant-time verify)
 - [x] Google SSO credentials stored
 - [x] Apple SSO credentials stored (with JWT rotation plan)
-- [x] Channel linking service implemented
-- [x] Invitation processing on signup
-- [x] Key rotation mechanism documented
-- [x] GDPR deletion flow implemented
+- [x] Channel linking service implemented (`channel_user_links` table + CRUD)
+- [x] Invitation processing on signup (check `invitations` table, link to org)
+- [x] Per-user key derivation (PBKDF2-SHA256 with `user_id` as salt)
+- [x] Key rotation via fallback (try current key, then `ENCRYPTION_KEY_OLD`)
+- [x] User leaves org flow (D1 cleanup; full flow needs Phase 6 for DO/confirmations)
+- [x] Org deletion flow (D1 + R2 cleanup; full flow needs Phase 6 for DO)
+- [x] GDPR deletion flow (D1 cleanup, audit log anonymization with `REDACTED-{hash}`)
 - [x] Unit tests passing
 - [x] Integration tests passing
 - [x] Demo page deployed
 
+**Note:** Channel-specific linking (Teams SSO, Slack magic link) deferred to their respective adapter phases. Clio OAuth deferred to Phase 8.
+
+**Files Created/Modified:**
+
+- `src/lib/auth.ts`
+- `src/lib/encryption.ts`
+- `src/services/channel-linking.ts`
+- `src/services/invitations.ts`
+- `src/services/gdpr.ts`
+- `src/services/org-membership.ts`
+- `src/services/org-deletion.ts`
+- `src/index.ts`
+- `test/auth.spec.ts`
+- `test/channel-linking.spec.ts`
+- `test/encryption.spec.ts`
+- `test/invitations.spec.ts`
+- `test/gdpr.spec.ts`
+- `test/org-membership.spec.ts`
+- `test/org-deletion.spec.ts`
+
 ## Phase 5: Knowledge Base
 
-Create knowledge base:
+**Checklist:**
 
-- **BLOCKER:** Needs legal expert for actual knowledge base
-- If can't get a legal expert, create fake knowledge base
-- KB content: Clio workflows, deadline calculations, billing guidance, practice management.
-- Buildtime script to:
-  - Clear old kb_chunks, kb_formulas, kb_benchmarks
-  - Read markdown from `/kb` directory
-  - Chunk at ~500 chars
-  - Generate embeddings via Workers AI
-  - Insert to D1 + Vectorize
+- [ ] Shared KB markdown files created in `/kb` directory
+- [ ] Build-time KB function implemented (full rebuild on deploy)
+- [ ] KB clearing: delete all `kb_chunks`, `kb_formulas`, `kb_benchmarks` rows
+- [ ] KB clearing: delete all non-org embeddings from Vectorize
+- [ ] Markdown parsing respects section boundaries
+- [ ] Formula extraction (pattern: `**Name**: formula`)
+- [ ] Benchmark extraction from markdown tables
+- [ ] Chunk size ~500 characters
+- [ ] Embeddings via Workers AI (`@cf/baai/bge-base-en-v1.5`)
+- [ ] Insert to D1 (`kb_chunks`, `kb_formulas`, `kb_benchmarks`) and Vectorize
+- [ ] Org Context upload validation (MIME + extension: PDF/DOCX/MD, 25MB limit, filename sanitization)
+- [ ] Raw file storage in R2 (`/orgs/{org_id}/docs/{file_id}`)
+- [ ] Text parsing (pdf-parse for PDF, mammoth for DOCX, direct for MD)
+- [ ] Org Context chunks stored in D1 (`org_context_chunks`)
+- [ ] Org Context embeddings upserted to Vectorize with `{ org_id }` metadata
+- [ ] Delete/update flow (delete from D1, Vectorize, R2; updates = delete + re-upload)
+- [ ] RAG retrieval: two parallel Vectorize queries (KB unfiltered, Org Context filtered by org_id, topK: 5)
+- [ ] Token budget enforcement (3000 tokens, priority: formulas > benchmarks > KB narrative > Org Context)
+- [ ] Graceful degradation on RAG failure (return empty context, log error)
+- [ ] Unit tests passing
+- [ ] Integration tests passing
+- [ ] Demo endpoint deployed
+
+**Note:** Shared KB content (Clio workflows, deadline calculations, billing guidance) requires legal expert review. Use placeholder content if unavailable.
 
 ## Phase 6: Core Worker + Durable Object
 
-Set up Cloudflare Worker and Durable Object:
+**Checklist:**
 
-- Set up bindings in `wrangler.jsonc`
-- DO SQLite tables
-- Channel Adapter routing (unified `ChannelMessage` format)
-- ChannelMessage validation
-- Workspace binding validation
-- Permission enforcement in DO (not adapter)
+- [ ] DO bindings configured in `wrangler.jsonc`
+- [ ] One DO per organization (DO ID = org identity)
+- [ ] DO derives `orgId` from DO ID, rejects mismatched `ChannelMessage.orgId`
+- [ ] Constructor uses `blockConcurrencyWhile()` for migrations + schema loading
+- [ ] `PRAGMA user_version` for DO SQLite migration tracking
+- [ ] DO SQLite tables (conversations, messages, pending_confirmations, org_settings, clio_schema_cache)
+- [ ] `ChannelMessage` interface (channel, orgId, userId, userRole, conversationId, conversationScope, message, metadata)
+- [ ] `POST /process-message` endpoint
+- [ ] Channel Adapter routing (unified format)
+- [ ] ChannelMessage validation
+- [ ] Workspace binding validation (D1 lookup)
+- [ ] Conversation isolation per `conversationId`
+- [ ] Permission enforcement in DO (role check before LLM, log unauthorized attempts)
+- [ ] Error responses ("I'm having trouble connecting", Clio-specific errors)
+- [ ] Audit logging to R2 (CUD operations, Org Context changes, role changes, Clio OAuth events)
+- [ ] User leaves org: expire `pending_confirmations`, delete Clio token from DO Storage
+- [ ] Org deletion: delete DO instance (SQLite + Storage)
+- [ ] GDPR: DO purges user's conversations/messages
+- [ ] Unit tests passing
+- [ ] Integration tests passing
+- [ ] Demo endpoint deployed
 
 ## Phase 7: Workers AI + RAG
 
-Set up Cloudflare Workers AI:
+**Checklist:**
 
-- Workers AI binding
-- LLM inference
-- Embedding model: `@cf/baai/bge-base-en-v1.5` (768 dimensions)
-- RAG retrieval (parallel Vectorize queries for KB + Org Context)
-- CUD confirmation expiry (5 min)
+- [ ] Workers AI binding configured
+- [ ] LLM inference (`@cf/meta/llama-3.1-8b-instruct`)
+- [ ] Embedding generation (`@cf/baai/bge-base-en-v1.5`, 768 dimensions)
+- [ ] RAG retrieval (parallel Vectorize queries for KB + Org Context)
+- [ ] System prompt construction (KB context, Org Context, Clio Schema, last 15 messages)
+- [ ] Context window management (~10K tokens of 128K)
+- [ ] Single `clioQuery` tool (structured params, DO builds validated Clio calls)
+- [ ] CUD confirmation flow (pending_confirmations, 5-min expiry)
+- [ ] Confirmation classification (approve/reject/modify/unrelated)
+- [ ] Error code handling (3040, 3043 → retry once; 3036 → fail; 5007 → log)
+- [ ] Graceful degradation (RAG failure → empty context, continue)
+- [ ] Unit tests passing
+- [ ] Integration tests passing
+- [ ] Demo endpoint deployed
 
 ## Phase 8: Clio Integration
 
-Set up Clio integration:
+**Checklist:**
 
-- Clio OAuth flow (PKCE, state signing)
-- Token storage in DO Storage (AES-GCM encrypted)
-- Schema caching in DO SQLite
-- Schema refresh triggers
-- `clioQuery` tool with structured params
+- [ ] Clio OAuth flow (PKCE S256, state signed with HMAC-SHA256, 10-min expiry)
+- [ ] Token storage in DO Storage (AES-GCM encrypted, per-user key derivation)
+- [ ] Token structure (`access_token`, `refresh_token`, `expires_at`)
+- [ ] Access tokens expire after 7 days; refresh tokens don't expire
+- [ ] Proactive token refresh (5-min expiry window)
+- [ ] Reactive token refresh (401 → refresh → retry or mark `clio_connected=false`)
+- [ ] Initial schema provisioning (`POST /provision-schema` on first Clio connect)
+- [ ] Schema caching in DO SQLite (core + read-only objects)
+- [ ] Schema endpoints: `GET /api/v4/{object}.json?fields=schema`
+- [ ] Admin schema refresh button (logs to audit)
+- [ ] Developer migration refresh flag
+- [ ] `clioQuery` tool with structured params
+- [ ] Read operations execute automatically (Member + Admin)
+- [ ] CUD operations require Admin role + user confirmation
+- [ ] Clio error handling (400, 401, 403, 404, 410, 422, 429, 500+)
+- [ ] Rate limit awareness (50 req/min per access token)
+- [ ] Unit tests passing
+- [ ] Integration tests passing
+- [ ] Demo endpoint deployed
 
 ## Phase 9: Website MVP
 
-Create website MCP. Required before Teams (OAuth redirects, signup, Org Context upload):
+**Checklist:**
 
-- Auth UI (Better Auth)
-- Org creation, member invitations
-- Clio connect flow
-- Org Context upload (R2 + chunking + Vectorize)
-- Upload validation (MIME, 25MB, sanitize)
-- Org Context delete/update flow
+- [ ] Auth UI (Better Auth signup/login, Google/Apple SSO)
+- [ ] Invitation signup flow (check `invitations` table, link to org)
+- [ ] Org creation flow (type, practice areas, location, name, logo)
+- [ ] Creator becomes Owner (`is_owner: true`)
+- [ ] Org settings dashboard
+- [ ] Member invitation UI (email + role)
+- [ ] Ownership transfer (select Admin, password re-entry)
+- [ ] Clio connect flow (OAuth redirect)
+- [ ] Clio schema refresh button (Admin only)
+- [ ] Org Context upload UI (MIME validation, 25MB limit, filename sanitization)
+- [ ] Org Context management (list, delete)
+- [ ] Unit tests passing
+- [ ] Integration tests passing
+- [ ] Demo deployed
+
+**Note:** Required before Teams adapter (OAuth redirects, signup, Org Context upload).
 
 ## Phase 10: Teams Adapter
 
-Create Teams adapter and acquire real tenant for E2E testing:
+**Checklist:**
 
 - [ ] M365 Business Basic tenant ($6/mo)
 - [ ] Custom app upload enabled in Teams admin
-- [ ] Azure Bot resource created
+- [ ] Azure Bot resource created (F0 free tier)
 - [ ] Teams credentials stored in Wrangler secrets
+- [ ] Scaffold: `teams new typescript docket-teams --atk embed`
+- [ ] Bot Framework integration (`@microsoft/teams-ai` v2)
+- [ ] Extract `user.aadObjectId` from activity
+- [ ] D1 lookup: `aadObjectId` → `user_id` → `org_id` + `role`
+- [ ] Teams linking flow (OAuthCard → Azure AD SSO → email match → `channel_user_links`)
+- [ ] "No account found" response for unmatched emails
+- [ ] Validate workspace linked to user's org for groupChat/teams
+- [ ] Conversation isolation per `conversation.id`
+- [ ] @mention handling (personal receives all; groupChat/teams require @mention)
+- [ ] Manifest with scopes (personal, groupChat, team)
+- [ ] E2E testing in real Teams
+- [ ] Unit tests passing
+- [ ] Integration tests passing
+- [ ] Demo deployed
 
-- Azure Bot registration (F0 free tier)
-- Enable sideloading in Teams admin center
-- Scaffold: `teams new typescript docket-teams --atk embed`
-- Bot Framework integration
-- Manifest with scopes (personal, groupChat, team)
-- E2E testing in real Teams
-- **Start finding business partners**
+**Note:** Start finding business partners during this phase.
 
 ## Phase 11: Production Hardening
 
-Prepare for first 10,000 users:
+**Checklist:**
 
-- Rate limiting (50 req/min per user IP via Cloudflare dashboard)
-- Audit log retrieval endpoint (list R2 by date prefix)
-- Encryption verification (Clio tokens, at-rest)
-- DO Alarms: archive >30d conversations, clean expired confirmations
+- [ ] Rate limiting (50 req/min per user IP via Cloudflare dashboard)
+- [ ] Audit log retrieval endpoint (list R2 by date prefix)
+- [ ] Multi-year audit log retention
+- [ ] Encryption verification (Clio tokens, at-rest)
+- [ ] DO Alarms: archive >30d conversations to R2
+- [ ] DO Alarms: clean expired confirmations
+- [ ] DO Alarms: clean old Slack events (>30 days)
+- [ ] Data residency: US-EAST only
+- [ ] Error monitoring and alerting
+- [ ] Load testing for 10,000 users
+- [ ] Demo deployed
 
 ## Phase 12: Compliance Review
 
-Legal compliance before production:
+**Checklist:**
 
-- Legal counsel review (professional responsibility)
-- Security audit (SOC 2)
-- DPA with Cloudflare
-- Disaster recovery procedures
-- Data retention policy
-- Breach notification procedure
+- [ ] Legal counsel review (professional responsibility)
+- [ ] Security audit (SOC 2)
+- [ ] DPA with Cloudflare
+- [ ] Disaster recovery procedures documented
+- [ ] Data retention policy documented
+- [ ] Breach notification procedure documented
+- [ ] Data portability mechanism (GDPR Article 20)
+- [ ] Consent tracking mechanism
 
 ## Phase 13: Teams App Store
 
-List App in Teams App Store:
+**Checklist:**
 
-- AppSource listing with pricing
-- Manifest `subscriptionOffer` in publisherId.offerId format
-- Microsoft Teams Partner Center account
+- [ ] Microsoft Teams Partner Center account
+- [ ] Live SaaS offer on AppSource with pricing
+- [ ] Manifest `subscriptionOffer` in publisherId.offerId format
+- [ ] Valid app package (zip with manifest + icons)
+- [ ] App submission approved
 
 ## Phase 14: MCP Channel
 
-MCP server with stdio transport:
+**Checklist:**
 
-- API key auth via D1
+- [ ] MCP server with stdio transport (JSON-RPC)
+- [ ] API key validation → `user_id` + `org_id` + `role` lookup in D1
+- [ ] Route to org's DO with validated context
+- [ ] Unit tests passing
+- [ ] Integration tests passing
+- [ ] Demo deployed
 
 ---
 
 ## Version 2 Candidates
 
-Features with technical breadth considered in Version 1:
+Features considered but deferred:
 
 - Industry Knowledge Bases — Criminal Defense, Immigration, etc. filtered by metafilter
 - Location Knowledge Bases — Federal, State, etc. filtered by metafilter
-- Slack Messaging
-- ChatGPT Messaging
+- Slack Adapter:
+  - Magic link auth (expiry, single-use, rate limiting, brute-force protection)
+  - Slack Events API integration
+  - Signature verification via Web Crypto API
+  - Event deduplication (track `event_id` in DO SQLite)
+  - Async acknowledgment (return 200 immediately, process via `waitUntil()`)
+  - Challenge verification for initial app configuration
+- ChatGPT Adapter (OAuth auth, user_id/org_id lookup)
