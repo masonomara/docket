@@ -1,3 +1,4 @@
+import { DurableObject } from "cloudflare:workers";
 import { getAuth } from "./lib/auth";
 import {
   getOrgMembership,
@@ -19,12 +20,7 @@ import {
   buildOrgMembershipPage,
   buildOrgDeletionPage,
   buildKBPage,
-  buildTenantDOPage,
-  buildLLMPage,
 } from "./demo";
-import { type ChannelMessage } from "./types/channel";
-
-export { TenantDO } from "./services/tenant-do";
 
 export interface Env {
   DB: D1Database;
@@ -43,6 +39,88 @@ export interface Env {
   GOOGLE_CLIENT_SECRET: string;
 }
 
+export interface AuditEntry {
+  id: string;
+  user_id: string;
+  action: string;
+  object_type: string;
+  params: Record<string, unknown>;
+  result: "success" | "error";
+  error_message?: string;
+  created_at: string;
+}
+
+type AuditEntryInput = Omit<AuditEntry, "id" | "created_at">;
+
+export class TenantDO extends DurableObject<Env> {
+  private sql: SqlStorage;
+
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+    this.sql = ctx.storage.sql;
+    ctx.blockConcurrencyWhile(() => this.migrate());
+  }
+
+  private async migrate(): Promise<void> {
+    const currentVersion = this.sql.exec("PRAGMA user_version").one()
+      .user_version as number;
+    if (currentVersion >= 1) return;
+
+    this.sql.exec(`
+      CREATE TABLE IF NOT EXISTS conversations (
+        id TEXT PRIMARY KEY, channel_type TEXT NOT NULL, scope TEXT NOT NULL,
+        created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, archived_at INTEGER
+      );
+      CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations(updated_at);
+
+      CREATE TABLE IF NOT EXISTS messages (
+        id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES conversations(id),
+        role TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'system')),
+        content TEXT NOT NULL, user_id TEXT, created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, created_at);
+
+      CREATE TABLE IF NOT EXISTS pending_confirmations (
+        id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES conversations(id),
+        user_id TEXT NOT NULL, action TEXT NOT NULL, object_type TEXT NOT NULL,
+        params TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_pending_expires ON pending_confirmations(expires_at);
+
+      CREATE TABLE IF NOT EXISTS org_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS clio_schema_cache (object_type TEXT PRIMARY KEY, schema TEXT NOT NULL, custom_fields TEXT, fetched_at INTEGER NOT NULL);
+
+      PRAGMA user_version = 1;
+    `);
+  }
+
+  async appendAuditLog(entry: AuditEntryInput): Promise<{ id: string }> {
+    const now = new Date();
+    const id = crypto.randomUUID();
+    const path = `orgs/${this.ctx.id}/audit/${now.getFullYear()}/${String(
+      now.getMonth() + 1
+    ).padStart(2, "0")}/${String(now.getDate()).padStart(
+      2,
+      "0"
+    )}/${now.getTime()}-${id}.json`;
+    await this.env.R2.put(
+      path,
+      JSON.stringify({ id, created_at: now.toISOString(), ...entry }),
+      { httpMetadata: { contentType: "application/json" } }
+    );
+    return { id };
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    if (request.method === "POST" && url.pathname === "/audit") {
+      return Response.json(
+        await this.appendAuditLog((await request.json()) as AuditEntryInput)
+      );
+    }
+    return Response.json({ error: "Not found" }, { status: 404 });
+  }
+}
 
 async function handleClioCallback(
   request: Request,
@@ -292,7 +370,7 @@ async function handleKBDemo(request: Request, env: Env): Promise<Response> {
 }
 
 async function handleOrgContextTest(
-  _request: Request,
+  request: Request,
   env: Env
 ): Promise<Response> {
   const testOrgId = `test-org-${Date.now()}`;
@@ -417,7 +495,7 @@ async function handleRAGTest(request: Request, env: Env): Promise<Response> {
   }
 }
 
-async function handleRAGDebug(_request: Request, env: Env): Promise<Response> {
+async function handleRAGDebug(request: Request, env: Env): Promise<Response> {
   try {
     const d1Count = await env.DB.prepare(
       "SELECT COUNT(*) as count FROM kb_chunks"
@@ -467,190 +545,6 @@ async function handleRAGDebug(_request: Request, env: Env): Promise<Response> {
   }
 }
 
-async function handleProcessMessage(
-  request: Request,
-  env: Env,
-  orgId: string
-): Promise<Response> {
-  if (request.method !== "POST") {
-    return Response.json({ error: "Method not allowed" }, { status: 405 });
-  }
-
-  // Validate org exists in D1
-  const org = await env.DB.prepare(
-    "SELECT id, jurisdiction, practice_type, firm_size FROM org WHERE id = ?"
-  ).bind(orgId).first<{
-    id: string;
-    jurisdiction: string | null;
-    practice_type: string | null;
-    firm_size: string | null;
-  }>();
-
-  if (!org) {
-    return Response.json({ error: "Organization not found" }, { status: 404 });
-  }
-
-  // Get DO stub by org ID
-  const doId = env.TENANT.idFromName(orgId);
-  const stub = env.TENANT.get(doId);
-
-  // Forward request to DO
-  const doRequest = new Request("http://do/process-message", {
-    method: "POST",
-    headers: request.headers,
-    body: request.body,
-  });
-
-  return stub.fetch(doRequest);
-}
-
-async function handleUserLeaveOrg(
-  request: Request,
-  env: Env,
-  orgId: string
-): Promise<Response> {
-  if (request.method !== "POST") {
-    return Response.json({ error: "Method not allowed" }, { status: 405 });
-  }
-
-  const doId = env.TENANT.idFromName(orgId);
-  const stub = env.TENANT.get(doId);
-
-  const doRequest = new Request("http://do/user-leave", {
-    method: "POST",
-    headers: request.headers,
-    body: request.body,
-  });
-
-  return stub.fetch(doRequest);
-}
-
-async function handleGDPRPurge(
-  request: Request,
-  env: Env,
-  orgId: string
-): Promise<Response> {
-  if (request.method !== "POST") {
-    return Response.json({ error: "Method not allowed" }, { status: 405 });
-  }
-
-  const doId = env.TENANT.idFromName(orgId);
-  const stub = env.TENANT.get(doId);
-
-  const doRequest = new Request("http://do/gdpr-purge", {
-    method: "POST",
-    headers: request.headers,
-    body: request.body,
-  });
-
-  return stub.fetch(doRequest);
-}
-
-async function handleDOStatus(env: Env, orgId: string): Promise<Response> {
-  const doId = env.TENANT.idFromName(orgId);
-  const stub = env.TENANT.get(doId);
-  return stub.fetch(new Request("http://do/status"));
-}
-
-interface TenantDemoRequest {
-  action: string;
-  orgId?: string;
-  message?: ChannelMessage;
-  userId?: string;
-}
-
-async function handleTenantDODemo(
-  request: Request,
-  env: Env
-): Promise<Response> {
-  if (request.method === "POST") {
-    const body = (await request.json()) as TenantDemoRequest;
-
-    if (body.action === "process-message" && body.orgId && body.message) {
-      // Ensure org exists for demo
-      await env.DB.prepare("INSERT OR IGNORE INTO org (id, name) VALUES (?, ?)")
-        .bind(body.orgId, `Demo Org ${body.orgId}`)
-        .run();
-
-      const doId = env.TENANT.idFromName(body.orgId);
-      const stub = env.TENANT.get(doId);
-      const doRequest = new Request("http://do/process-message", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body.message),
-      });
-      return stub.fetch(doRequest);
-    }
-
-    if (body.action === "status" && body.orgId) {
-      return handleDOStatus(env, body.orgId);
-    }
-
-    if (body.action === "user-leave" && body.orgId && body.userId) {
-      const doId = env.TENANT.idFromName(body.orgId);
-      const stub = env.TENANT.get(doId);
-      const doRequest = new Request("http://do/user-leave", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: body.userId }),
-      });
-      return stub.fetch(doRequest);
-    }
-
-    if (body.action === "gdpr-purge" && body.orgId && body.userId) {
-      const doId = env.TENANT.idFromName(body.orgId);
-      const stub = env.TENANT.get(doId);
-      const doRequest = new Request("http://do/gdpr-purge", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: body.userId }),
-      });
-      return stub.fetch(doRequest);
-    }
-
-    return Response.json({ error: "Invalid action" }, { status: 400 });
-  }
-
-  return new Response(buildTenantDOPage(), {
-    headers: { "Content-Type": "text/html" },
-  });
-}
-
-async function handleLLMDemo(
-  request: Request,
-  env: Env
-): Promise<Response> {
-  if (request.method === "POST") {
-    const body = (await request.json()) as TenantDemoRequest;
-
-    if (body.action === "process-message" && body.orgId && body.message) {
-      // Ensure org exists for demo
-      await env.DB.prepare("INSERT OR IGNORE INTO org (id, name) VALUES (?, ?)")
-        .bind(body.orgId, `Demo Org ${body.orgId}`)
-        .run();
-
-      const doId = env.TENANT.idFromName(body.orgId);
-      const stub = env.TENANT.get(doId);
-      const doRequest = new Request("http://do/process-message", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body.message),
-      });
-      return stub.fetch(doRequest);
-    }
-
-    if (body.action === "status" && body.orgId) {
-      return handleDOStatus(env, body.orgId);
-    }
-
-    return Response.json({ error: "Invalid action" }, { status: 400 });
-  }
-
-  return new Response(buildLLMPage(), {
-    headers: { "Content-Type": "text/html" },
-  });
-}
-
 type RouteHandler = (request: Request, env: Env) => Promise<Response>;
 
 const routes: Record<string, RouteHandler> = {
@@ -659,8 +553,6 @@ const routes: Record<string, RouteHandler> = {
   "/demo/org-membership": handleOrgMembershipDemo,
   "/demo/org-deletion": handleOrgDeletionDemo,
   "/demo/kb": handleKBDemo,
-  "/demo/tenant-do": handleTenantDODemo,
-  "/demo/llm": handleLLMDemo,
   "/test/org-context": handleOrgContextTest,
   "/test/rag": handleRAGTest,
   "/test/rag-debug": handleRAGDebug,
@@ -670,8 +562,6 @@ const routes: Record<string, RouteHandler> = {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
-
-    // Better Auth routes
     if (url.pathname.startsWith("/api/auth")) {
       try {
         return await getAuth(env).handler(request);
@@ -679,26 +569,6 @@ export default {
         return Response.json({ error: String(error) }, { status: 500 });
       }
     }
-
-    // Dynamic DO routes: /do/:orgId/:action
-    const doMatch = url.pathname.match(/^\/do\/([^/]+)\/(.+)$/);
-    if (doMatch) {
-      const [, orgId, action] = doMatch;
-      switch (action) {
-        case "process-message":
-          return handleProcessMessage(request, env, orgId);
-        case "user-leave":
-          return handleUserLeaveOrg(request, env, orgId);
-        case "gdpr-purge":
-          return handleGDPRPurge(request, env, orgId);
-        case "status":
-          return handleDOStatus(env, orgId);
-        default:
-          return Response.json({ error: "Unknown action" }, { status: 404 });
-      }
-    }
-
-    // Static routes
     const handler = routes[url.pathname];
     if (handler) return handler(request, env);
     return Response.json({ routes: Object.keys(routes) });

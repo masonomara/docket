@@ -151,37 +151,26 @@ Each phase needs to have simple unit, integration (if applicable), and end-to-en
 **Checklist:**
 
 - [x] DO bindings configured in `wrangler.jsonc`
-- [x] One DO per organization (DO ID = org identity)
-- [x] DO derives `orgId` from DO ID, rejects mismatched `ChannelMessage.orgId`
-- [x] Constructor uses `blockConcurrencyWhile()` for migrations + schema loading
-- [x] `PRAGMA user_version` for DO SQLite migration tracking
-- [x] DO SQLite tables (conversations, messages, pending_confirmations, org_settings, clio_schema_cache)
-- [x] `ChannelMessage` interface (channel, orgId, userId, userRole, conversationId, conversationScope, message, jurisdiction, practiceType, firmSize, metadata)
-- [x] `POST /process-message` endpoint
-- [x] Channel Adapter routing (unified format)
-- [x] ChannelMessage validation
-- [x] Workspace binding validation (D1 lookup)
-- [x] Conversation isolation per `conversationId`
-- [x] Permission enforcement in DO (role check before LLM, log unauthorized attempts)
-- [x] Error responses ("I'm having trouble connecting", Clio-specific errors)
-- [x] Audit logging to R2 (CUD operations, Org Context changes, role changes, Clio OAuth events)
-- [x] User leaves org: expire `pending_confirmations`, delete Clio token from DO Storage
+- [ ] One DO per organization (DO ID = org identity)
+- [ ] DO derives `orgId` from DO ID, rejects mismatched `ChannelMessage.orgId`
+- [ ] Constructor uses `blockConcurrencyWhile()` for migrations + schema loading
+- [ ] `PRAGMA user_version` for DO SQLite migration tracking
+- [ ] DO SQLite tables (conversations, messages, pending_confirmations, org_settings, clio_schema_cache)
+- [ ] `ChannelMessage` interface (channel, orgId, userId, userRole, conversationId, conversationScope, message, jurisdiction, practiceType, firmSize, metadata)
+- [ ] `POST /process-message` endpoint
+- [ ] Channel Adapter routing (unified format)
+- [ ] ChannelMessage validation
+- [ ] Workspace binding validation (D1 lookup)
+- [ ] Conversation isolation per `conversationId`
+- [ ] Permission enforcement in DO (role check before LLM, log unauthorized attempts)
+- [ ] Error responses ("I'm having trouble connecting", Clio-specific errors)
+- [ ] Audit logging to R2 (CUD operations, Org Context changes, role changes, Clio OAuth events)
+- [ ] User leaves org: expire `pending_confirmations`, delete Clio token from DO Storage
 - [ ] Org deletion: delete DO instance (SQLite + Storage)
-- [x] GDPR: DO purges user's conversations/messages
-- [x] Unit tests passing
-- [x] Integration tests passing
-- [x] Demo endpoint deployed
-
-**Files Created/Modified:**
-
-- `src/types/channel.ts`
-- `src/services/tenant-do.ts`
-- `src/demo/tenant-do.ts`
-- `src/demo/index.ts`
-- `src/index.ts`
-- `test/tenant-do.spec.ts`
-
-**Note:** Org deletion (delete DO instance) deferred - requires `deleteAll()` on DO which should be triggered from worker during org deletion flow. LLM invocation deferred to Phase 7. Clio operations deferred to Phase 8.
+- [ ] GDPR: DO purges user's conversations/messages
+- [ ] Unit tests passing
+- [ ] Integration tests passing
+- [ ] Demo endpoint deployed
 
 ## Phase 7: Workers AI + RAG
 
