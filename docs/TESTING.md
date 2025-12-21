@@ -2,26 +2,33 @@
 
 Quick reference for E2E testing before Phase 9 onboarding UI exists.
 
-## Create Test Organization
-
-First, get a user ID by signing up at the auth demo (`/`), then run:
+## Create Test User
 
 ```bash
-# Local
+wrangler d1 execute DB --local --command="
+INSERT INTO user (id, name, email, email_verified)
+VALUES ('test-user-1', 'Test User', 'test@example.com', 0);
+"
+```
+
+## Create Test Organization
+
+Requires a user to exist first:
+
+```bash
 wrangler d1 execute DB --local --command="
 INSERT INTO org (id, name, jurisdiction, practice_type, firm_size)
 VALUES ('test-org-1', 'Test Firm', 'CA', 'personal-injury', 'small');
 
 INSERT INTO org_members (id, user_id, org_id, role, is_owner)
-VALUES ('$(uuidgen)', '<USER_ID>', 'test-org-1', 'admin', 1);
+VALUES ('mem-001', 'test-user-1', 'test-org-1', 'admin', 1);
 
 INSERT INTO subscriptions (id, org_id, tier, status)
-VALUES ('$(uuidgen)', 'test-org-1', 'free', 'active');
+VALUES ('sub-001', 'test-org-1', 'free', 'active');
 "
-
-# Remote
-wrangler d1 execute DB --remote --command="..."
 ```
+
+For remote, add `--remote` flag instead of `--local`.
 
 ## Verify Organization
 
