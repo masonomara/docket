@@ -68,24 +68,24 @@ function uniqueEmail(prefix: string): string {
 
 describe("GDPR Deletion", () => {
   describe("hashUserId", () => {
-    it("produces consistent hash", () => {
-      const hash1 = hashUserId("user-123");
-      const hash2 = hashUserId("user-123");
+    it("produces consistent hash", async () => {
+      const hash1 = await hashUserId("user-123");
+      const hash2 = await hashUserId("user-123");
 
       expect(hash1).toBe(hash2);
     });
 
-    it("produces different hashes for different users", () => {
-      const hash1 = hashUserId("user-123");
-      const hash2 = hashUserId("user-456");
+    it("produces different hashes for different users", async () => {
+      const hash1 = await hashUserId("user-123");
+      const hash2 = await hashUserId("user-456");
 
       expect(hash1).not.toBe(hash2);
     });
 
-    it("produces 8-character hex string", () => {
-      const hash = hashUserId("any-user-id");
+    it("produces 16-character hex string", async () => {
+      const hash = await hashUserId("any-user-id");
 
-      expect(hash).toMatch(/^[0-9a-f]{8}$/);
+      expect(hash).toMatch(/^[0-9a-f]{16}$/);
     });
   });
 

@@ -18,19 +18,18 @@ export interface SoleOwnershipError {
 }
 
 /**
- * Creates a deterministic hash of a user ID for anonymization.
- * Used to replace user_id in audit logs while maintaining traceability.
+ * Creates a cryptographic hash of a user ID for anonymization.
+ * Uses SHA-256 for GDPR-compliant irreversible anonymization.
  */
-export function hashUserId(userId: string): string {
-  let hash = 0;
-
-  for (let i = 0; i < userId.length; i++) {
-    // Simple hash: shift left 5, subtract original, add char code
-    hash = ((hash << 5) - hash + userId.charCodeAt(i)) & 0xffffffff;
-  }
-
-  // Convert to positive hex, padded to 8 chars
-  return Math.abs(hash).toString(16).padStart(8, "0");
+export async function hashUserId(userId: string): Promise<string> {
+  const hashBuffer = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(userId)
+  );
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
+    .substring(0, 16);
 }
 
 /**
@@ -78,7 +77,7 @@ export async function anonymizeAuditLogs(
   r2: R2Bucket,
   userId: string
 ): Promise<number> {
-  const hashedId = `REDACTED-${hashUserId(userId)}`;
+  const hashedId = `REDACTED-${await hashUserId(userId)}`;
   let count = 0;
   let cursor: string | undefined;
 
