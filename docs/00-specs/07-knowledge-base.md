@@ -144,26 +144,31 @@ Full rebuild on each deploy ensures KB stays in sync with source markdown. No in
 | `practice-types/{type}/` | `practice_type: "{type}"` | When org.practiceType matches |
 | `firm-sizes/{size}/` | `firm_size: "{size}"` | When org.firmSize matches |
 
-**Vectorize Query Filter:**
+**Vectorize Query Strategy:**
+
+Vectorize doesn't support `$or` filters (multiple keys imply AND). To achieve OR semantics, run parallel queries and merge results by score:
 
 ```typescript
-// Build filter dynamically based on available settings
-const orClauses = [
-  { category: "general" },
-  { jurisdiction: "federal" }, // Always include federal
+// Build separate filters for each criteria
+const filters: VectorizeVectorMetadataFilter[] = [
+  { type: "kb", category: "general" },
+  { type: "kb", jurisdiction: "federal" },
 ];
 
 if (org.jurisdiction) {
-  orClauses.push({ jurisdiction: org.jurisdiction });
+  filters.push({ type: "kb", jurisdiction: org.jurisdiction });
 }
 if (org.practiceType) {
-  orClauses.push({ practice_type: org.practiceType });
+  filters.push({ type: "kb", practice_type: org.practiceType });
 }
 if (org.firmSize) {
-  orClauses.push({ firm_size: org.firmSize });
+  filters.push({ type: "kb", firm_size: org.firmSize });
 }
 
-filter: { type: "kb", $or: orClauses }
+// Query in parallel, merge by score, dedupe by ID
+const results = await Promise.all(
+  filters.map(filter => env.VECTORIZE.query(embedding, { topK: 5, filter }))
+);
 ```
 
 Each setting is optional. An org with only `practiceType` set gets: general + federal + matching practice type.
