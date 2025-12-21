@@ -93,21 +93,95 @@ describe("validateFile", () => {
       const result = validateFile("../../../etc/passwd", "text/plain", 100);
 
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("Invalid filename");
+      expect(result.error).toContain("path traversal");
     });
 
     it("rejects path traversal with forward slash", () => {
       const result = validateFile("foo/bar.txt", "text/plain", 100);
 
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("Invalid filename");
+      expect(result.error).toContain("path traversal");
     });
 
     it("rejects path traversal with backslash", () => {
       const result = validateFile("foo\\bar.txt", "text/plain", 100);
 
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("Invalid filename");
+      expect(result.error).toContain("path traversal");
+    });
+  });
+
+  // ==========================================================================
+  // Windows Reserved Names
+  // ==========================================================================
+
+  describe("Windows reserved name prevention", () => {
+    it("rejects CON", () => {
+      const result = validateFile("CON.txt", "text/plain", 100);
+
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain("reserved name");
+    });
+
+    it("rejects NUL", () => {
+      const result = validateFile("NUL.pdf", "application/pdf", 100);
+
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain("reserved name");
+    });
+
+    it("rejects COM1", () => {
+      const result = validateFile("com1.txt", "text/plain", 100);
+
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain("reserved name");
+    });
+
+    it("rejects LPT1", () => {
+      const result = validateFile("LPT1.md", "text/markdown", 100);
+
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain("reserved name");
+    });
+  });
+
+  // ==========================================================================
+  // Hidden Files
+  // ==========================================================================
+
+  describe("hidden file prevention", () => {
+    it("rejects files starting with dot", () => {
+      const result = validateFile(".htaccess", "text/plain", 100);
+
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain("hidden files");
+    });
+
+    it("rejects .env files", () => {
+      const result = validateFile(".env", "text/plain", 100);
+
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain("hidden files");
+    });
+  });
+
+  // ==========================================================================
+  // Control Character Prevention
+  // ==========================================================================
+
+  describe("control character prevention", () => {
+    it("strips null bytes from filename", () => {
+      const result = validateFile("doc\x00ument.pdf", "application/pdf", 100);
+
+      // After stripping null byte, should be valid
+      expect(result.valid).toBe(true);
+    });
+
+    it("strips control characters from filename", () => {
+      const result = validateFile("doc\x1fument.pdf", "application/pdf", 100);
+
+      // After stripping control chars, should be valid
+      expect(result.valid).toBe(true);
     });
   });
 });

@@ -60,10 +60,50 @@ interface ValidationResult {
 }
 
 /**
+ * Sanitizes a filename for safe storage.
+ *
+ * Handles:
+ * - Unicode normalization attacks
+ * - Control characters and null bytes
+ * - Windows reserved names
+ * - Path traversal attempts
+ */
+function sanitizeFilename(filename: string): { safe: string; error?: string } {
+  // Normalize Unicode to prevent bypass via alternative encodings
+  const normalized = filename.normalize("NFC");
+
+  // Remove control characters and null bytes
+  const cleaned = normalized.replace(/[\x00-\x1f\x7f]/g, "");
+
+  // Check for path traversal (after normalization)
+  if (
+    cleaned.includes("..") ||
+    cleaned.includes("/") ||
+    cleaned.includes("\\")
+  ) {
+    return { safe: "", error: "Invalid filename: path traversal detected" };
+  }
+
+  // Block Windows reserved names
+  const baseName = cleaned.split(".")[0].toUpperCase();
+  const reserved = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/;
+  if (reserved.test(baseName)) {
+    return { safe: "", error: "Invalid filename: reserved name" };
+  }
+
+  // Block hidden files (starting with .)
+  if (cleaned.startsWith(".")) {
+    return { safe: "", error: "Invalid filename: hidden files not allowed" };
+  }
+
+  return { safe: cleaned };
+}
+
+/**
  * Validates an uploaded file before processing.
  *
  * Checks:
- * - No path traversal in filename
+ * - Filename is safe (no path traversal, reserved names, etc.)
  * - File size within limits
  * - Supported MIME type
  * - Extension matches MIME type
@@ -73,13 +113,10 @@ export function validateFile(
   mimeType: string,
   size: number
 ): ValidationResult {
-  // Security: prevent path traversal attacks
-  if (
-    filename.includes("..") ||
-    filename.includes("/") ||
-    filename.includes("\\")
-  ) {
-    return { valid: false, error: "Invalid filename" };
+  // Security: sanitize filename
+  const { safe: safeFilename, error: sanitizeError } = sanitizeFilename(filename);
+  if (sanitizeError) {
+    return { valid: false, error: sanitizeError };
   }
 
   // Check file size (25MB limit)
@@ -94,9 +131,9 @@ export function validateFile(
   }
 
   // Verify extension matches MIME type
-  const actualExtension = filename
+  const actualExtension = safeFilename
     .toLowerCase()
-    .slice(filename.lastIndexOf("."));
+    .slice(safeFilename.lastIndexOf("."));
   if (actualExtension !== expectedExtension) {
     return {
       valid: false,
