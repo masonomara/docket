@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateFile } from "../src/services/org-context";
+import { validateFile } from "../../src/services/org-context";
 
 describe("validateFile", () => {
   // ==========================================================================

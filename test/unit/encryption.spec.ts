@@ -5,7 +5,7 @@ import {
   decryptAndRotate,
   arrayBufferToBase64,
   base64ToArrayBuffer,
-} from "../src/lib/encryption";
+} from "../../src/lib/encryption";
 
 // ============================================================================
 // Test Constants

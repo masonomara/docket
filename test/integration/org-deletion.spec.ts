@@ -1,6 +1,6 @@
 import { env } from "cloudflare:test";
 import { describe, it, expect, beforeAll } from "vitest";
-import { deleteOrg, getOrgDeletionPreview } from "../src/services/org-deletion";
+import { deleteOrg, getOrgDeletionPreview } from "../../src/services/org-deletion";
 
 // Test data constants
 const TEST_ORG_ID = "test-org-deletion";

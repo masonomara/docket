@@ -5,7 +5,7 @@ import {
   getOrgMembers,
   removeUserFromOrg,
   transferOwnership,
-} from "../src/services/org-membership";
+} from "../../src/services/org-membership";
 
 // Test data constants
 const TEST_ORG_ID = "test-org-membership";

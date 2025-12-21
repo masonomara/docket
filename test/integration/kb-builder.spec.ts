@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractMetadataFromPath, chunkText } from "../src/services/kb-builder";
+import { extractMetadataFromPath, chunkText } from "../../src/services/kb-builder";
 
 // ============================================================================
 // extractMetadataFromPath Tests

@@ -6,7 +6,7 @@ import {
   deleteUserData,
   getDataDeletionPreview,
   type SoleOwnershipError,
-} from "../src/services/gdpr";
+} from "../../src/services/gdpr";
 
 // ============================================================================
 // Test Helpers

@@ -6,7 +6,7 @@ import {
   unlinkChannelUser,
   findUserByEmail,
   getUserChannelLinks,
-} from "../src/services/channel-linking";
+} from "../../src/services/channel-linking";
 
 // ============================================================================
 // Test Helpers

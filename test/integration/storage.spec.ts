@@ -1,6 +1,6 @@
 import { env } from "cloudflare:test";
 import { describe, it, expect } from "vitest";
-import { R2Paths } from "../src/storage/r2-paths";
+import { R2Paths } from "../../src/storage/r2-paths";
 
 // ============================================================================
 // D1 Storage Schema Tests

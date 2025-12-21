@@ -15,7 +15,7 @@ import { env } from "cloudflare:test";
 import {
   retrieveRAGContext,
   formatRAGContext,
-} from "../src/services/rag-retrieval";
+} from "../../src/services/rag-retrieval";
 
 describe("RAG Integration", () => {
   // Test identifiers

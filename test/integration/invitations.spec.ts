@@ -7,7 +7,7 @@ import {
   getOrgInvitations,
   revokeInvitation,
   hasPendingInvitation,
-} from "../src/services/invitations";
+} from "../../src/services/invitations";
 
 // ============================================================================
 // Test Helpers

@@ -1,6 +1,6 @@
 import { env } from "cloudflare:test";
 import { describe, it, expect } from "vitest";
-import worker, { type Env } from "../src/index";
+import worker, { type Env } from "../../src/index";
 
 // ============================================================================
 // Test Helpers
