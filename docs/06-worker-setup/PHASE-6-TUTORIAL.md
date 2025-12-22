@@ -1792,13 +1792,20 @@ Use this to verify your implementation:
 - [ ] Workspace binding validation (D1 lookup)
 - [ ] Conversation isolation per `conversationId`
 - [ ] Permission enforcement in DO (role check before LLM)
-- [ ] Error responses (user-friendly messages)
+- [ ] Generic error responses ("I'm having trouble processing your request")
 - [ ] Audit logging to R2
-- [ ] User leaves org: cleanup (placeholder for full impl)
-- [ ] Org deletion: cleanup (placeholder for full impl)
-- [ ] GDPR: purge user data (placeholder for full impl)
-- [ ] Unit tests passing
+- [ ] User leaves org: `POST /remove-user` expires `pending_confirmations`
+- [ ] Org deletion: `POST /delete-org` clears DO SQLite + KV storage
+- [ ] GDPR: `POST /purge-user-data` purges user's conversations/messages
+- [ ] Unit tests passing (unskip TenantDO tests)
 - [ ] Integration tests passing
 - [ ] Demo endpoint deployed
+
+**Phase 8 Dependencies (deferred):**
+
+- [ ] Clio-specific error responses (401 expired, 429 rate limit, connection errors)
+- [ ] User leaves org: delete Clio token from DO KV Storage
+
+**Note:** Clio token storage doesn't exist until Phase 8. Generic error handling covers LLM/RAG failures; Clio-specific errors require Phase 8's OAuth and API integration.
 
 ---

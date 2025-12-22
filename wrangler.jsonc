@@ -3,7 +3,7 @@
   "account_id": "c3278867a149c1a3bbd5a876014fdfd1",
   "name": "docket",
   "main": "src/index.ts",
-  "compatibility_date": "2025-12-12",
+  "compatibility_date": "2025-09-06",
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
   "rules": [{ "type": "Text", "globs": ["**/*.md"], "fallthrough": true }],
