@@ -3,7 +3,7 @@ export interface EncryptionEnv {
   ENCRYPTION_KEY_OLD?: string;
 }
 
-const PBKDF2_ITERATIONS = 100000;
+const PBKDF2_ITERATIONS = 600000;
 const IV_LENGTH = 12;
 const KEY_LENGTH = 256;
 
@@ -157,4 +157,23 @@ export function base64ToArrayBuffer(base64: string): ArrayBuffer {
     bytes[i] = binary.charCodeAt(i);
   }
   return bytes.buffer;
+}
+
+/**
+ * Constant-time string comparison to prevent timing attacks.
+ * Returns true if strings are equal, false otherwise.
+ */
+export function constantTimeEqual(a: string, b: string): boolean {
+  const encoder = new TextEncoder();
+  const aBuf = encoder.encode(a);
+  const bBuf = encoder.encode(b);
+
+  if (aBuf.length !== bBuf.length) {
+    // Compare against self to maintain constant time even on length mismatch
+    const dummy = new Uint8Array(aBuf.length);
+    crypto.subtle.timingSafeEqual(aBuf, dummy);
+    return false;
+  }
+
+  return crypto.subtle.timingSafeEqual(aBuf, bBuf);
 }

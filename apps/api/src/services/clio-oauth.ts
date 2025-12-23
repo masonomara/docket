@@ -3,6 +3,7 @@ import {
   decrypt,
   arrayBufferToBase64,
   base64ToArrayBuffer,
+  constantTimeEqual,
   type EncryptionEnv,
 } from "../lib/encryption";
 
@@ -199,9 +200,9 @@ export async function verifyState(
 
   const [payloadEncoded, signature] = parts;
 
-  // Verify signature matches
+  // Verify signature matches (constant-time to prevent timing attacks)
   const expectedSignature = await signWithHmac(payloadEncoded, secret);
-  if (signature !== expectedSignature) {
+  if (!constantTimeEqual(signature, expectedSignature)) {
     return null;
   }
 
