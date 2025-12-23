@@ -23,7 +23,7 @@ async function post(
     body: JSON.stringify(body),
   });
 
-  return worker.fetch(request, env as Env);
+  return worker.fetch(request, env as unknown as Env);
 }
 
 /**
@@ -34,7 +34,7 @@ async function get(
   headers: Record<string, string> = {}
 ): Promise<Response> {
   const request = new Request(`http://localhost${path}`, { headers });
-  return worker.fetch(request, env as Env);
+  return worker.fetch(request, env as unknown as Env);
 }
 
 /**
@@ -207,39 +207,11 @@ describe("Email/Password Authentication", () => {
         method: "POST",
         headers: { Cookie: cookie },
       }),
-      env as Env
+      env as unknown as Env
     );
 
     // Sign out should return one of these status codes
     const validStatuses = [200, 302, 403];
     expect(validStatuses.includes(signOutResponse.status)).toBe(true);
-  });
-});
-
-// ============================================================================
-// SSO Provider Tests (Skipped - requires external OAuth setup)
-// ============================================================================
-
-describe.skip("SSO Providers", () => {
-  it("returns OAuth URL for Google", async () => {
-    const response = await get(
-      "/api/auth/sign-in/social?provider=google&callbackURL=https://docketadmin.com/callback"
-    );
-
-    if (response.status === 302) {
-      const location = response.headers.get("location");
-      expect(location).toContain("accounts.google.com");
-    }
-  });
-
-  it("returns OAuth URL for Apple", async () => {
-    const response = await get(
-      "/api/auth/sign-in/social?provider=apple&callbackURL=https://docketadmin.com/callback"
-    );
-
-    if (response.status === 302) {
-      const location = response.headers.get("location");
-      expect(location).toContain("appleid.apple.com");
-    }
   });
 });
