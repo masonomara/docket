@@ -1,0 +1,35 @@
+:root {
+  --background: #1F1F1F;
+  --foreground-1: #FFFFFF;
+  --foreground-2: #FBFBFB;
+  --foreground-3: #F3F3F4;
+
+  --brand: #2768DD;
+  --brand-background: #CFDDF6;
+  --brand-selected: #19489E;
+
+  --border-default: #E2E2E4;
+  --border-dark: #DFDFE1;
+
+  --text-primary: #323339;
+  --text-secondary: #62626B;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-family: "Geist", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  min-height: 100vh;
+  background: var(--background);
+  color: var(--text-primary);
+}
