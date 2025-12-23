@@ -1,0 +1,14 @@
+# Copy to .dev.vars
+
+CLIO_CLIENT_ID=your_clio_client_id
+CLIO_CLIENT_SECRET=your_clio_client_secret
+ENCRYPTION_KEY=generate_a_32_byte_base64_key
+BETTER_AUTH_SECRET=generate_a_secure_random_string
+BETTER_AUTH_URL=http://localhost:8787
+
+# Optional SSO
+APPLE_CLIENT_ID=
+APPLE_CLIENT_SECRET=
+APPLE_APP_BUNDLE_IDENTIFIER=
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=

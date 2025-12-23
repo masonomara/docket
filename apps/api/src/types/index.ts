@@ -147,7 +147,7 @@ export const ChannelMessageSchema = z.object({
     "channel",
     "api",
   ]),
-  message: z.string().min(1),
+  message: z.string().min(1).max(10000),
   jurisdictions: z.array(z.string()),
   practiceTypes: z.array(z.string()),
   firmSize: z.enum(["solo", "small", "mid", "large"]).nullable(),

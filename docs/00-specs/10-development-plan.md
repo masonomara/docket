@@ -250,6 +250,8 @@ Each phase needs to have simple unit, integration (if applicable), and end-to-en
 
 **Checklist:**
 
+- [ ] Web app wrangler config (determine origin: same-domain vs subdomain vs Pages URL)
+- [ ] CORS policy matching web app origin + Better Auth `trustedOrigins`
 - [ ] Auth UI (Better Auth signup/login, Google/Apple SSO)
 - [ ] Invitation signup flow (check `invitations` table, link to org)
 - [ ] Org creation flow (type, practice areas, location, name, logo)
@@ -261,6 +263,7 @@ Each phase needs to have simple unit, integration (if applicable), and end-to-en
 - [ ] Clio schema refresh button (Admin only)
 - [ ] Org Context upload UI (MIME validation, 25MB limit, filename sanitization)
 - [ ] Org Context management (list, delete)
+- [ ] Audit log PII redaction (sanitize `params` field before logging)
 - [ ] Unit tests passing
 - [ ] Integration tests passing
 - [ ] MVP deployed
@@ -306,6 +309,8 @@ Each phase needs to have simple unit, integration (if applicable), and end-to-en
 - [ ] Data residency: US-EAST only
 - [ ] Error monitoring and alerting
 - [ ] Load testing for 10,000 users
+- [ ] UPL mitigation: output filtering for legal advice patterns
+- [ ] UPL mitigation: prepend disclaimer to all responses
 - [ ] Demo deployed
 
 ## Phase 12: Compliance Review
@@ -320,6 +325,10 @@ Each phase needs to have simple unit, integration (if applicable), and end-to-en
 - [ ] Breach notification procedure documented
 - [ ] Data portability mechanism (GDPR Article 20)
 - [ ] Consent tracking mechanism
+- [ ] Attorney-client privilege: `is_privileged` flag on conversations
+- [ ] Attorney-client privilege: exclude privileged messages from RAG context
+- [ ] Attorney-client privilege: privilege log export for litigation
+- [ ] Conflict of interest: prevent multi-org membership OR matter tracking with party names
 
 ## Phase 13: Teams App Store
 

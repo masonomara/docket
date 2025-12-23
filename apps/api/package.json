@@ -11,6 +11,7 @@
     "test": "vitest",
     "test:e2e": "vitest --config vitest.e2e.config.mts",
     "test:all": "CLOUDFLARE_ACCOUNT_ID=$(grep CLOUDFLARE_ACCOUNT_ID .dev.vars | cut -d= -f2) vitest run && vitest run --config vitest.e2e.config.mts",
+    "typecheck": "tsc --noEmit",
     "cf-typegen": "wrangler types",
     "kb:manifest": "npx tsx scripts/generate-kb-manifest.ts"
   },

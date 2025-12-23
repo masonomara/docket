@@ -1,22 +1,8 @@
-/**
- * Schema Validation Unit Tests
- *
- * Tests the ChannelMessageSchema used to validate incoming messages
- * from Teams, Slack, and other channels before processing.
- */
-
 import { describe, it, expect } from "vitest";
 
-// =============================================================================
-// Schema Tests
-// =============================================================================
-
 describe("ChannelMessage Schema", () => {
-  /**
-   * A valid base message with all required fields.
-   * Individual tests can override specific fields to test validation.
-   */
-  const validBaseMessage = {
+  // Base valid message for testing
+  const validMessage = {
     channel: "teams",
     orgId: "org-123",
     userId: "user-456",
@@ -29,59 +15,85 @@ describe("ChannelMessage Schema", () => {
     firmSize: null,
   };
 
-  // ---------------------------------------------------------------------------
-  // Valid Message Tests
-  // ---------------------------------------------------------------------------
+  describe("valid messages", () => {
+    it("accepts a minimal valid message", async () => {
+      const { ChannelMessageSchema } = await import("../../src/types");
 
-  it("accepts a valid message with all required fields", async () => {
-    const { ChannelMessageSchema } = await import("../../src/types");
+      const result = ChannelMessageSchema.safeParse(validMessage);
 
-    const result = ChannelMessageSchema.safeParse({
-      ...validBaseMessage,
-      message: "Hello, Docket!",
-      jurisdictions: ["CA"],
-      firmSize: "small",
+      expect(result.success).toBe(true);
     });
 
-    expect(result.success).toBe(true);
+    it("accepts message with jurisdictions and firm size", async () => {
+      const { ChannelMessageSchema } = await import("../../src/types");
+
+      const message = {
+        ...validMessage,
+        jurisdictions: ["CA"],
+        firmSize: "small",
+      };
+
+      const result = ChannelMessageSchema.safeParse(message);
+
+      expect(result.success).toBe(true);
+    });
+
+    it("accepts admin role with api scope", async () => {
+      const { ChannelMessageSchema } = await import("../../src/types");
+
+      const message = {
+        ...validMessage,
+        userRole: "admin",
+        conversationScope: "api",
+      };
+
+      const result = ChannelMessageSchema.safeParse(message);
+
+      expect(result.success).toBe(true);
+    });
   });
 
-  it("allows empty jurisdiction and practice type arrays", async () => {
-    const { ChannelMessageSchema } = await import("../../src/types");
+  describe("invalid messages", () => {
+    it("rejects invalid channel", async () => {
+      const { ChannelMessageSchema } = await import("../../src/types");
 
-    const result = ChannelMessageSchema.safeParse({
-      ...validBaseMessage,
-      message: "Hello",
-      userRole: "admin",
-      conversationScope: "api",
+      const message = { ...validMessage, channel: "invalid" };
+
+      const result = ChannelMessageSchema.safeParse(message);
+
+      expect(result.success).toBe(false);
     });
 
-    expect(result.success).toBe(true);
+    it("rejects empty message", async () => {
+      const { ChannelMessageSchema } = await import("../../src/types");
+
+      const message = { ...validMessage, message: "" };
+
+      const result = ChannelMessageSchema.safeParse(message);
+
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects message exceeding 10,000 characters", async () => {
+      const { ChannelMessageSchema } = await import("../../src/types");
+
+      const message = { ...validMessage, message: "x".repeat(10001) };
+
+      const result = ChannelMessageSchema.safeParse(message);
+
+      expect(result.success).toBe(false);
+    });
   });
 
-  // ---------------------------------------------------------------------------
-  // Invalid Message Tests
-  // ---------------------------------------------------------------------------
+  describe("message length limits", () => {
+    it("accepts exactly 10,000 characters", async () => {
+      const { ChannelMessageSchema } = await import("../../src/types");
 
-  it("rejects invalid channel types", async () => {
-    const { ChannelMessageSchema } = await import("../../src/types");
+      const message = { ...validMessage, message: "x".repeat(10000) };
 
-    const result = ChannelMessageSchema.safeParse({
-      ...validBaseMessage,
-      channel: "invalid-channel", // Not a valid channel
+      const result = ChannelMessageSchema.safeParse(message);
+
+      expect(result.success).toBe(true);
     });
-
-    expect(result.success).toBe(false);
-  });
-
-  it("rejects empty message content", async () => {
-    const { ChannelMessageSchema } = await import("../../src/types");
-
-    const result = ChannelMessageSchema.safeParse({
-      ...validBaseMessage,
-      message: "", // Empty message not allowed
-    });
-
-    expect(result.success).toBe(false);
   });
 });
