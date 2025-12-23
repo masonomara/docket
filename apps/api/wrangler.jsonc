@@ -13,24 +13,23 @@
       "database_name": "docket-db",
       "database_id": "ed591ebb-f0b5-4cf4-b0e9-c95e049af3ab",
       "preview_database_id": "abeb3c6f-7e94-47f2-af75-8807eae64f6f",
-      "migrations_dir": "migrations"
-    }
+      "migrations_dir": "migrations",
+    },
   ],
   "r2_buckets": [
     {
       "bucket_name": "docket-storage",
       "binding": "R2",
-      "preview_bucket_name": "docket-storage-preview"
-    }
+      "preview_bucket_name": "docket-storage-preview",
+    },
   ],
   "vectorize": [{ "binding": "VECTORIZE", "index_name": "docket-kb" }],
   "ai": { "binding": "AI" },
   "durable_objects": {
-    "bindings": [{ "name": "TENANT", "class_name": "TenantDO" }]
+    "bindings": [{ "name": "TENANT", "class_name": "TenantDO" }],
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TenantDO"] }],
   "routes": [
-    { "pattern": "docketadmin.com/*", "zone_name": "docketadmin.com" },
-    { "pattern": "www.docketadmin.com/*", "zone_name": "docketadmin.com" }
-  ]
+    { "pattern": "api.docketadmin.com/*", "zone_name": "docketadmin.com" },
+  ],
 }

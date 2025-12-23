@@ -145,7 +145,10 @@ export function getAuth(env: AuthEnv) {
     trustedOrigins: [
       "https://appleid.apple.com",
       "http://localhost:8787",
+      "http://localhost:5173",
       "https://docketadmin.com",
+      "https://www.docketadmin.com",
+      "https://api.docketadmin.com",
     ],
   });
 }
