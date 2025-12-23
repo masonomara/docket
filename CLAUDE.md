@@ -40,9 +40,7 @@ Use the structured logger from `lib/logger.ts`. All logs are JSON and include a 
 
 1. **DO SQLite in vitest** — The vitest-pool-workers plugin can't test Durable Object SQLite (SQLITE_AUTH error). Use the `/demo/clio` endpoint for manual testing instead.
 
-2. **SSO provider tests** — Two tests are skipped because they need external OAuth configuration.
-
-3. **RAG integration tests** — Set `INTEGRATION_TESTS_ENABLED=true` in `.dev.vars` to run tests that hit live Vectorize and Workers AI.
+2. **RAG integration tests** — Set `INTEGRATION_TESTS_ENABLED=true` in `.dev.vars` to run tests that hit live Vectorize and Workers AI.
 
 ## Code Philosophy
 

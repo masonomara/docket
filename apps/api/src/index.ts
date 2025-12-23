@@ -7,10 +7,45 @@ import type { Env } from "./types/env";
 export { TenantDO };
 export type { Env };
 
+const ALLOWED_ORIGINS = [
+  "http://localhost:5173",
+  "https://docketadmin.com",
+  "https://www.docketadmin.com",
+];
+
+function getCorsHeaders(request: Request): HeadersInit {
+  const origin = request.headers.get("Origin") || "";
+  const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    "Access-Control-Allow-Origin": allowedOrigin,
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Credentials": "true",
+  };
+}
+
+function withCors(response: Response, request: Request): Response {
+  const corsHeaders = getCorsHeaders(request);
+  const newHeaders = new Headers(response.headers);
+  for (const [key, value] of Object.entries(corsHeaders)) {
+    newHeaders.set(key, value);
+  }
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: newHeaders,
+  });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
+
+    // Handle CORS preflight
+    if (request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: getCorsHeaders(request) });
+    }
 
     // Health check endpoints
     if (path === "/health") {
@@ -21,9 +56,10 @@ export default {
       return handleReadyCheck(env);
     }
 
-    // Auth routes
+    // Auth routes (need CORS)
     if (path.startsWith("/api/auth")) {
-      return handleAuth(request, env);
+      const response = await handleAuth(request, env);
+      return withCors(response, request);
     }
 
     // API routes
@@ -40,7 +76,7 @@ export default {
       return handleClioCallback(request, env);
     }
 
-    return Response.json({ error: "Not found" }, { status: 404 });
+    return withCors(Response.json({ error: "Not found" }, { status: 404 }), request);
   },
 };
 
