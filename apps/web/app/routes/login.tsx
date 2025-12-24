@@ -2,104 +2,12 @@ import { useState } from "react";
 import { useSearchParams, useNavigate, Link } from "react-router";
 import type { MetaFunction } from "react-router";
 import { signIn } from "~/lib/auth-client";
+import styles from "~/styles/login.module.css";
 
 export const meta: MetaFunction = () => [
   { title: "Log In | Docket" },
   { name: "description", content: "Log in to your Docket account" },
 ];
-
-const styles = {
-  page: {
-    fontFamily: "system-ui, sans-serif",
-    padding: "2rem",
-    maxWidth: "400px",
-    margin: "0 auto",
-  },
-  subtitle: {
-    color: "#666",
-    marginBottom: "2rem",
-  },
-  errorBox: {
-    padding: "0.75rem",
-    background: "#fee",
-    color: "#c00",
-    borderRadius: "4px",
-    marginBottom: "1rem",
-  },
-  fieldGroup: {
-    marginBottom: "1rem",
-  },
-  fieldGroupLast: {
-    marginBottom: "1.5rem",
-  },
-  label: {
-    display: "block" as const,
-    marginBottom: "0.5rem",
-    fontWeight: 500,
-  },
-  input: {
-    width: "100%",
-    padding: "0.5rem",
-    border: "1px solid #ccc",
-    borderRadius: "4px",
-  },
-  divider: {
-    margin: "1.5rem 0",
-    textAlign: "center" as const,
-    color: "#666",
-  },
-  socialButtonContainer: {
-    display: "flex",
-    flexDirection: "column" as const,
-    gap: "0.75rem",
-  },
-  footer: {
-    marginTop: "2rem",
-    textAlign: "center" as const,
-    color: "#666",
-  },
-  footerLink: {
-    color: "#000",
-  },
-};
-
-function getSubmitButtonStyle(isLoading: boolean) {
-  return {
-    width: "100%",
-    padding: "0.75rem",
-    background: isLoading ? "#999" : "#000",
-    color: "#fff",
-    border: "none",
-    borderRadius: "4px",
-    cursor: isLoading ? "not-allowed" : "pointer",
-    fontWeight: 500,
-  };
-}
-
-function getGoogleButtonStyle() {
-  return {
-    width: "100%",
-    padding: "0.75rem",
-    background: "#fff",
-    border: "1px solid #ccc",
-    borderRadius: "4px",
-    cursor: "pointer",
-    fontWeight: 500,
-  };
-}
-
-function getAppleButtonStyle() {
-  return {
-    width: "100%",
-    padding: "0.75rem",
-    background: "#000",
-    color: "#fff",
-    border: "none",
-    borderRadius: "4px",
-    cursor: "pointer",
-    fontWeight: 500,
-  };
-}
 
 export default function LoginPage() {
   const [searchParams] = useSearchParams();
@@ -117,19 +25,30 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
 
-    await signIn.email(
-      { email, password },
-      {
-        onSuccess: () => {
-          navigate(redirectUrl);
-        },
-        onError: (ctx) => {
-          const message = ctx.error.message || "Invalid email or password";
-          setError(message);
-          setLoading(false);
-        },
-      }
-    );
+    console.log("Starting login...");
+
+    try {
+      const result = await signIn.email(
+        { email, password },
+        {
+          onSuccess: () => {
+            console.log("Login success callback, redirecting to:", redirectUrl);
+            window.location.href = redirectUrl;
+          },
+          onError: (ctx) => {
+            console.log("Login error callback:", ctx.error);
+            const message = ctx.error.message || "Invalid email or password";
+            setError(message);
+            setLoading(false);
+          },
+        }
+      );
+      console.log("signIn.email returned:", result);
+    } catch (err) {
+      console.error("Login exception:", err);
+      setError(err instanceof Error ? err.message : "Login failed");
+      setLoading(false);
+    }
   }
 
   function handleGoogleSignIn() {
@@ -147,80 +66,123 @@ export default function LoginPage() {
   }
 
   return (
-    <main style={styles.page}>
-      <h1>Log in</h1>
-      <p style={styles.subtitle}>Welcome back to Docket.</p>
+    <main className={styles.page}>
+      <img
+        src="/gradient-background.png"
+        alt="Docket"
+        height="100%"
+        width="100%"
+        style={{
+          position: "absolute",
+          top: "0px",
+          left: "0px",
+          right: "0px",
+          bottom: "0px",
+          zIndex: "-1",
+        }}
+      />
 
-      {error && <div style={styles.errorBox}>{error}</div>}
+      <div className={styles.container}>
+        <h1 className={styles.title}>Welcome back</h1>
+        <p className={styles.subtitle}>We're excited to work with you again.</p>
 
-      <form onSubmit={handleSubmit}>
-        <div style={styles.fieldGroup}>
-          <label htmlFor="email" style={styles.label}>
-            Email
-          </label>
-          <input
-            id="email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
+        {error && <div className={styles.errorBox}>{error}</div>}
+
+        <form onSubmit={handleSubmit}>
+          <div className={styles.fieldGroup}>
+            <label htmlFor="email" className={styles.label}>
+              Email
+            </label>
+            <input
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              disabled={loading}
+              className={styles.input}
+            />
+          </div>
+
+          <div className={styles.fieldGroupLast}>
+            <label htmlFor="password" className={styles.label}>
+              Password
+            </label>
+            <input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              disabled={loading}
+              className={styles.input}
+            />
+          </div>
+
+          <button
+            type="submit"
             disabled={loading}
-            style={styles.input}
-          />
+            className={styles.submitButton}
+          >
+            {loading ? "Logging in..." : "Log in"}
+          </button>
+        </form>
+
+        <div className={styles.divider}>or</div>
+
+        <div className={styles.socialButtonContainer}>
+          <button
+            type="button"
+            onClick={handleGoogleSignIn}
+            disabled={loading}
+            className={styles.googleButton}
+          >
+            <img
+              src="/google-icon-button.png"
+              alt="Docket"
+              height="18px"
+              width="18px"
+            />
+            Continue with Google
+            <img
+              src="/google-icon-button.png"
+              alt="Docket"
+              height="18px"
+              width="18px"
+              style={{ opacity: "0" }}
+            />
+          </button>
+
+          <button
+            type="button"
+            onClick={handleAppleSignIn}
+            disabled={loading}
+            className={styles.appleButton}
+          >
+            <img
+              src="/apple-icon-button.png"
+              alt="Docket"
+              height="18px"
+              width="18px"
+            />
+            Continue with Apple
+            <img
+              src="/apple-icon-button.png"
+              alt="Docket"
+              height="18px"
+              width="18px"
+              style={{ opacity: "0" }}
+            />
+          </button>
         </div>
 
-        <div style={styles.fieldGroupLast}>
-          <label htmlFor="password" style={styles.label}>
-            Password
-          </label>
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            disabled={loading}
-            style={styles.input}
-          />
-        </div>
-
-        <button
-          type="submit"
-          disabled={loading}
-          style={getSubmitButtonStyle(loading)}
-        >
-          {loading ? "Logging in..." : "Log in"}
-        </button>
-      </form>
-
-      <div style={styles.divider}>or</div>
-
-      <div style={styles.socialButtonContainer}>
-        <button
-          type="button"
-          onClick={handleGoogleSignIn}
-          disabled={loading}
-          style={getGoogleButtonStyle()}
-        >
-          Continue with Google
-        </button>
-
-        <button
-          type="button"
-          onClick={handleAppleSignIn}
-          disabled={loading}
-          style={getAppleButtonStyle()}
-        >
-          Continue with Apple
-        </button>
+        <p className={styles.footer}>
+          Need an account?{" "}
+          <Link to="/signup" className={styles.footerLink}>
+            Register
+          </Link>
+        </p>
       </div>
-
-      <p style={styles.footer}>
-        Don't have an account?{" "}
-        <Link to="/signup" style={styles.footerLink}>
-          Sign up
-        </Link>
-      </p>
     </main>
   );
 }

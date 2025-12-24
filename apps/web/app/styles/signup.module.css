@@ -8,15 +8,31 @@
 }
 
 .container {
-  background: var(--foreground-2);
+  background: var(--foreground-1);
   border-radius: 16px;
-  margin: auto;
-  padding: 24px;
+  border: 1px solid var(--border-default);
+  padding: 32px;
+  max-width: 476px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
+.title {
+  color: var(--text-primary);
+  letter-spacing: 0px;
+  font-size: 24px;
+  line-height: 30px;
+  text-align: center;
+  margin-bottom: 8px;
+}
 .subtitle {
   color: var(--text-secondary);
-  margin-bottom: 2rem;
+  letter-spacing: 0px;
+  text-align: center;
+  font-size: 16px;
+  line-height: 21px;
+  margin-bottom: 19px;
 }
 
 .errorBox {
@@ -28,7 +44,7 @@
 }
 
 .fieldGroup {
-  margin-bottom: 1rem;
+  margin-bottom: 20px;
 }
 
 .fieldGroupLast {
@@ -37,17 +53,26 @@
 
 .label {
   display: block;
-  margin-bottom: 0.5rem;
+  color: var(--text-primary);
+
+  letter-spacing: 0px;
+
+  font-size: 16px;
+  line-height: 21px;
   font-weight: 500;
+  margin-bottom: 8px;
 }
 
 .input {
   width: 100%;
   padding: 0.5rem;
-  border: 1px solid var(--border-default);
-  border-radius: 4px;
-  background: var(--foreground-1);
+  border: 1px solid var(--border-dark);
+  border-radius: 8px;
+  background: var(--foreground-3);
   color: var(--text-primary);
+  height: 42px;
+  font-family: "Geist", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 .divider {
@@ -64,13 +89,22 @@
 
 .submitButton {
   width: 100%;
-  padding: 0.75rem;
+  padding: 0px 10px;
+  height: 40px;
   background: var(--brand);
   color: var(--foreground-1);
   border: none;
-  border-radius: 4px;
+  border-radius: 8px;
   cursor: pointer;
-  font-weight: 500;
+  font-weight: 600;
+  font-size: 15px;
+  line-height: 20px;
+  font-family: "Geist", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.submitButton:hover {
+  background: var(--brand-selected);
 }
 
 .submitButton:disabled {
@@ -80,32 +114,45 @@
 
 .googleButton {
   width: 100%;
-  padding: 0.75rem;
+  padding: 0px 10px;
+  height: 40px;
   background: var(--foreground-1);
-  border: 1px solid var(--border-default);
-  border-radius: 4px;
+  color: #000;
+  border: 1px solid #000;
+  border-radius: 8px;
   cursor: pointer;
-  font-weight: 500;
-  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 15px;
+  line-height: 20px;
+  font-family: "Geist", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 .appleButton {
   width: 100%;
-  padding: 0.75rem;
-  background: var(--text-primary);
+  padding: 0px 10px;
+  height: 40px;
+  background: #000;
   color: var(--foreground-1);
-  border: none;
-  border-radius: 4px;
+  border: 1px solid #000;
+  border-radius: 8px;
   cursor: pointer;
-  font-weight: 500;
+  font-weight: 600;
+  font-size: 15px;
+  line-height: 20px;
+  font-family: "Geist", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 .footer {
   margin-top: 2rem;
   text-align: center;
   color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 19px;
 }
 
 .footerLink {
   color: var(--brand);
+  text-decoration: none !important;
 }

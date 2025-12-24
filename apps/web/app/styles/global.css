@@ -1,18 +1,18 @@
 :root {
-  --background: #1F1F1F;
-  --foreground-1: #FFFFFF;
-  --foreground-2: #FBFBFB;
-  --foreground-3: #F3F3F4;
+  --background: #1f1f1f;
+  --foreground-1: #ffffff;
+  --foreground-2: #fbfbfb;
+  --foreground-3: #f3f3f4;
 
-  --brand: #2768DD;
-  --brand-background: #CFDDF6;
-  --brand-selected: #19489E;
+  --brand: #2768dd;
+  --brand-background: #cfddf6;
+  --brand-selected: #19489e;
 
-  --border-default: #E2E2E4;
-  --border-dark: #DFDFE1;
+  --border-default: #e2e2e4;
+  --border-dark: #dfdfe1;
 
   --text-primary: #323339;
-  --text-secondary: #62626B;
+  --text-secondary: #62626b;
 }
 
 *,
