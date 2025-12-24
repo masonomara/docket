@@ -14,7 +14,7 @@ CLOUDFLARE_API_TOKEN=
 # -----------------------------------------------------------------------------
 # Better Auth (required)
 # -----------------------------------------------------------------------------
-BETTER_AUTH_URL=http://localhost:8787
+BETTER_AUTH_URL=https://api.docketadmin.com
 BETTER_AUTH_SECRET=  # Generate with: openssl rand -base64 32
 
 # -----------------------------------------------------------------------------

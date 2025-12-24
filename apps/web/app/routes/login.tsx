@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useSearchParams, useNavigate, Link } from "react-router";
+import { useSearchParams, Link } from "react-router";
 import type { MetaFunction } from "react-router";
 import { signIn } from "~/lib/auth-client";
 import styles from "~/styles/login.module.css";
@@ -11,8 +11,6 @@ export const meta: MetaFunction = () => [
 
 export default function LoginPage() {
   const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
-
   const redirectUrl = searchParams.get("redirect") || "/dashboard";
 
   const [email, setEmail] = useState("");
@@ -25,27 +23,21 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
 
-    console.log("Starting login...");
-
     try {
-      const result = await signIn.email(
+      await signIn.email(
         { email, password },
         {
           onSuccess: () => {
-            console.log("Login success callback, redirecting to:", redirectUrl);
             window.location.href = redirectUrl;
           },
           onError: (ctx) => {
-            console.log("Login error callback:", ctx.error);
             const message = ctx.error.message || "Invalid email or password";
             setError(message);
             setLoading(false);
           },
         }
       );
-      console.log("signIn.email returned:", result);
     } catch (err) {
-      console.error("Login exception:", err);
       setError(err instanceof Error ? err.message : "Login failed");
       setLoading(false);
     }
@@ -54,14 +46,14 @@ export default function LoginPage() {
   function handleGoogleSignIn() {
     signIn.social({
       provider: "google",
-      callbackURL: redirectUrl,
+      callbackURL: `${window.location.origin}${redirectUrl}`,
     });
   }
 
   function handleAppleSignIn() {
     signIn.social({
       provider: "apple",
-      callbackURL: redirectUrl,
+      callbackURL: `${window.location.origin}${redirectUrl}`,
     });
   }
 

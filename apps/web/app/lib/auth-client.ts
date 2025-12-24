@@ -1,21 +1,12 @@
 import { createAuthClient } from "better-auth/react";
 
-function getApiBaseUrl(): string {
-  const isServer = typeof window === "undefined";
-  if (isServer) {
-    return "https://api.docketadmin.com";
-  }
-
-  const isLocalhost = window.location.hostname === "localhost";
-  if (isLocalhost) {
-    return "http://localhost:8787";
-  }
-
-  return "https://api.docketadmin.com";
-}
+export const API_URL = "https://api.docketadmin.com";
 
 export const authClient = createAuthClient({
-  baseURL: getApiBaseUrl(),
+  baseURL: API_URL,
+  fetchOptions: {
+    credentials: "include",
+  },
 });
 
 export const { useSession, signIn, signUp, signOut } = authClient;

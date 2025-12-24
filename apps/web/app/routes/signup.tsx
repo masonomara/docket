@@ -51,14 +51,14 @@ export default function SignupPage() {
   function handleGoogleSignIn() {
     signIn.social({
       provider: "google",
-      callbackURL: getRedirectUrl(),
+      callbackURL: `${window.location.origin}${getRedirectUrl()}`,
     });
   }
 
   function handleAppleSignIn() {
     signIn.social({
       provider: "apple",
-      callbackURL: getRedirectUrl(),
+      callbackURL: `${window.location.origin}${getRedirectUrl()}`,
     });
   }
 

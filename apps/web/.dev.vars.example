@@ -4,7 +4,7 @@
 # =============================================================================
 
 # Client-side API URL (used by Vite for browser requests)
-VITE_API_URL=http://localhost:8787
+VITE_API_URL=https://api.docketadmin.com
 
 # -----------------------------------------------------------------------------
 # Production values (for reference - set in Cloudflare dashboard)

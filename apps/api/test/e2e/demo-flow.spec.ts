@@ -5,13 +5,13 @@
  * by making real HTTP requests to a running worker.
  *
  * Run with: npm run test:e2e
- * Requires: Worker running at WORKER_URL (default: http://localhost:8787)
+ * Requires: Worker running at WORKER_URL (default: https://api.docketadmin.com)
  */
 
 import { describe, it, expect } from "vitest";
 
 // Base URL for the worker - can be overridden via environment variable
-const BASE_URL = process.env?.WORKER_URL || "http://localhost:8787";
+const BASE_URL = process.env?.WORKER_URL || "https://api.docketadmin.com";
 
 // =============================================================================
 // Test Helpers

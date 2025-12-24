@@ -138,5 +138,12 @@ export function getAuth(env: AuthEnv) {
       "https://www.docketadmin.com",
       "https://api.docketadmin.com",
     ],
+    advanced: {
+      crossSubDomainCookies: {
+        enabled: true,
+        domain: "docketadmin.com",
+      },
+      useSecureCookies: true,
+    },
   });
 }

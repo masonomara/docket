@@ -61,7 +61,12 @@ async function handleAuthRequest(
     const auth = getAuth(env);
     return await auth.handler(request);
   } catch (error) {
-    return Response.json({ error: String(error) }, { status: 500 });
+    const errStr =
+      error instanceof Error
+        ? `${error.message}\n${error.stack}`
+        : String(error);
+    console.error("Auth handler exception:", errStr);
+    return Response.json({ error: errStr }, { status: 500 });
   }
 }
 

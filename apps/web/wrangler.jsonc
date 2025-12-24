@@ -6,10 +6,12 @@
   "compatibility_date": "2025-09-06",
   "compatibility_flags": ["nodejs_compat"],
   "assets": { "directory": "./build/client" },
-  "vars": { "API_URL": "http://localhost:8787" },
+  "vars": { "API_URL": "https://api.docketadmin.com" },
+  "services": [{ "binding": "API", "service": "docket" }],
   "env": {
     "production": {
       "vars": { "API_URL": "https://api.docketadmin.com" },
+      "services": [{ "binding": "API", "service": "docket" }],
       "routes": [
         { "pattern": "docketadmin.com/*", "zone_name": "docketadmin.com" },
         { "pattern": "www.docketadmin.com/*", "zone_name": "docketadmin.com" },

@@ -136,7 +136,8 @@ export async function decryptAndRotate(
 }
 
 /**
- * Converts an ArrayBuffer to a base64 string
+ * Converts an ArrayBuffer to a URL-safe base64 string.
+ * Uses - and _ instead of + and / to avoid JSON escaping issues.
  */
 export function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
@@ -144,14 +145,18 @@ export function arrayBufferToBase64(buffer: ArrayBuffer): string {
   for (let i = 0; i < bytes.length; i++) {
     binary += String.fromCharCode(bytes[i]);
   }
-  return btoa(binary);
+  // Convert to URL-safe base64
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_");
 }
 
 /**
- * Converts a base64 string to an ArrayBuffer
+ * Converts a base64 string (standard or URL-safe) to an ArrayBuffer.
+ * Handles both + and - as well as / and _ for backwards compatibility.
  */
 export function base64ToArrayBuffer(base64: string): ArrayBuffer {
-  const binary = atob(base64);
+  // Convert URL-safe base64 back to standard base64
+  const standardBase64 = base64.replace(/-/g, "+").replace(/_/g, "/");
+  const binary = atob(standardBase64);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) {
     bytes[i] = binary.charCodeAt(i);
