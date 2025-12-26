@@ -69,8 +69,6 @@ async function fetchCustomFieldsForType(
 ): Promise<ClioCustomField[]> {
   const url = `${CLIO_API_BASE}/custom_fields.json?parent_type=${parentType}&deleted=false&fields=id,name,field_type,parent_type,required,picklist_options`;
 
-  log.debug("Fetching custom fields", { parentType, url });
-
   const response = await fetch(url, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -91,7 +89,6 @@ async function fetchCustomFieldsForType(
   const data = (await response.json()) as ClioCustomFieldApiResponse;
 
   if (!data.data || data.data.length === 0) {
-    log.debug("No custom fields found", { parentType });
     return [];
   }
 
@@ -116,10 +113,6 @@ async function fetchCustomFieldsForType(
 export async function fetchAllCustomFields(
   accessToken: string
 ): Promise<ClioCustomField[]> {
-  log.info("Fetching all custom fields", {
-    parentTypes: CUSTOM_FIELD_PARENT_TYPES,
-  });
-
   const fetchPromises = CUSTOM_FIELD_PARENT_TYPES.map((type) =>
     fetchCustomFieldsForType(type, accessToken)
   );
@@ -133,14 +126,7 @@ export async function fetchAllCustomFields(
     }
   }
 
-  log.info("Custom field fetch complete", {
-    total: allFields.length,
-    byType: {
-      Matter: allFields.filter((f) => f.parentType === "Matter").length,
-      Contact: allFields.filter((f) => f.parentType === "Contact").length,
-    },
-  });
-
+  log.info("Custom fields fetched", { count: allFields.length });
   return allFields;
 }
 

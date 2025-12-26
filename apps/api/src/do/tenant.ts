@@ -898,12 +898,7 @@ Only include modifiedRequest if intent is "modify".`;
       return Response.json({ error: "Method not allowed" }, { status: 405 });
     }
 
-    const { userId, requestId } = (await request.json()) as {
-      userId: string;
-      requestId?: string;
-    };
-    const log = requestId ? this.log.child({ requestId }) : this.log;
-
+    const { userId } = (await request.json()) as { userId: string };
     if (!userId) {
       return Response.json(
         { error: "Missing required field: userId" },
@@ -911,24 +906,9 @@ Only include modifiedRequest if intent is "modify".`;
       );
     }
 
-    log.debug("Getting Clio status", { userId });
-
     const tokens = await getClioTokens(this.ctx.storage, userId, this.env);
-    const connected = tokens !== null;
-    const customFieldsLoaded = this.customFieldsCache.length > 0;
-
-    log.debug("Clio status result", {
-      userId,
-      connected,
-      customFieldsLoaded,
-      customFieldsCount: this.customFieldsCache.length,
-      schemaVersion: this.schemaVersion,
-      tokenExpired: tokens ? tokens.expires_at < Date.now() : null,
-    });
-
     return Response.json({
-      connected,
-      customFieldsLoaded,
+      connected: tokens !== null,
       customFieldsCount: this.customFieldsCache.length,
       schemaVersion: this.schemaVersion,
     });
@@ -1207,11 +1187,6 @@ Only include modifiedRequest if intent is "modify".`;
       try {
         this.customFieldsCache = JSON.parse(rows[0].schema as string);
         this.customFieldsFetchedAt = rows[0].fetched_at as number;
-        this.log.debug("Loaded custom fields from cache", {
-          count: this.customFieldsCache.length,
-          fetchedAt: new Date(this.customFieldsFetchedAt).toISOString(),
-          ageMinutes: Math.round((Date.now() - this.customFieldsFetchedAt) / 60000),
-        });
       } catch {
         this.log.warn("Failed to parse cached custom fields");
       }

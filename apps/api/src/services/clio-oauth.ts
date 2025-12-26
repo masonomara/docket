@@ -365,17 +365,10 @@ export async function storeClioTokens(
   tokens: ClioTokens,
   encryptionKey: string
 ): Promise<void> {
-  log.debug("Encrypting and storing Clio tokens", {
-    userId,
-    expiresAt: new Date(tokens.expires_at).toISOString(),
-  });
-
   const tokenJson = JSON.stringify(tokens);
   const encrypted = await encrypt(tokenJson, userId, encryptionKey);
   const encryptedBase64 = arrayBufferToBase64(encrypted);
-
   await storage.put(`clio_token:${userId}`, encryptedBase64);
-  log.debug("Clio tokens stored successfully", { userId });
 }
 
 /**
@@ -391,28 +384,16 @@ export async function getClioTokens(
     | undefined;
 
   if (!encryptedBase64) {
-    log.debug("No stored Clio tokens found", { userId });
     return null;
   }
 
   try {
     const encrypted = base64ToArrayBuffer(encryptedBase64);
     const decrypted = await decrypt(encrypted, userId, env);
-    const tokens = JSON.parse(decrypted) as ClioTokens;
-    log.debug("Retrieved Clio tokens", {
-      userId,
-      tokenExpired: tokens.expires_at < Date.now(),
-      expiresAt: new Date(tokens.expires_at).toISOString(),
-    });
-    return tokens;
+    return JSON.parse(decrypted) as ClioTokens;
   } catch (error) {
-    // Decryption failed - token may be corrupted or key changed
     const message = error instanceof Error ? error.message : String(error);
-    log.error("Failed to decrypt Clio tokens", {
-      userId,
-      error: message,
-      hint: "Token may be corrupted or encryption key may have changed",
-    });
+    log.error("Failed to decrypt Clio tokens", { userId, error: message });
     return null;
   }
 }
