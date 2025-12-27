@@ -12,7 +12,7 @@
 .headerInfo h1 {
   font-size: 21px;
   line-height: 26px;
-  font-weight: 400;
+  font-weight: 500;
   color: var(--text-primary);
   margin: 0;
 }
@@ -64,7 +64,7 @@
 .uploadIcon {
   font-size: 27px;
   line-height: 33px;
-  font-weight: 400;
+  font-weight: 500;
 }
 /* subhead (14/19/600) */
 .uploadText {
