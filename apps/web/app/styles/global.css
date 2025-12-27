@@ -20,27 +20,27 @@
   --surface-2: #2251bf;
   --surface-3: #2251bf;
   --brand-primary: rgba(249, 249, 249, 1);
-  --brand-secondary: rgba(249, 249, 249, 1);
-  --brand-tertiary: rgba(249, 249, 249, 1);
-  --brand-highlight: rgba(249, 249, 249, 0.15);
+  --brand-secondary: rgba(249, 249, 249, 0.87);
+  --brand-tertiary: rgba(249, 249, 249, 0.6);
+  --brand-highlight: rgba(249, 249, 249, 0.13);
   --border-dark: rgba(249, 249, 249, 1);
-  --border-default: rgba(249, 249, 249, 0.5);
+  --border-default: rgba(249, 249, 249, 0.4);
   --text-primary: rgba(249, 249, 249, 1);
-  --text-secondary: rgba(249, 249, 249, 1);
-  --text-tertiary: rgba(249, 249, 249, 1);
-  --text-highlight: rgba(249, 249, 249, 0.15);
+  --text-secondary: rgba(249, 249, 249, 0.87);
+  --text-tertiary: rgba(249, 249, 249, 0.6);
+  --text-highlight: rgba(249, 249, 249, 0.13);
   --error-primary: rgba(249, 249, 249, 1);
-  --error-secondary: rgba(249, 249, 249, 1);
-  --error-tertiary: rgba(249, 249, 249, 1);
-  --error-highlight: rgba(249, 249, 249, 0.15);
+  --error-secondary: rgba(249, 249, 249, 0.87);
+  --error-tertiary: rgba(249, 249, 249, 0.6);
+  --error-highlight: rgba(249, 249, 249, 0.13);
   --success-primary: rgba(249, 249, 249, 1);
-  --success-secondary: rgba(249, 249, 249, 1);
-  --success-tertiary: rgba(249, 249, 249, 1);
-  --success-highlight: rgba(249, 249, 249, 0.15);
+  --success-secondary: rgba(249, 249, 249, 0.87);
+  --success-tertiary: rgba(249, 249, 249, 0.6);
+  --success-highlight: rgba(249, 249, 249, 0.13);
   --overlay: rgba(34, 81, 191, 0.6);
   --button-primary: rgba(249, 249, 249, 1);
   --button-primary-text: #2251bf;
-  --button-primary-border: rgba(249, 249, 249, 1);
+  --button-primary-border: rgba(249, 249, 249, 0.13);
   --button-secondary: #2251bf;
   --button-secondary-text: rgba(249, 249, 249, 1);
   --button-secondary-border: rgba(249, 249, 249, 1);
@@ -155,7 +155,7 @@ body {
 .btn-secondary {
   background: transparent;
   color: var(--text-primary);
-  border: 1px solid var(--border-default);
+  border: 1px solid var(--border-dark);
 }
 .btn-secondary:hover:not(:disabled) {
   background: var(--surface-2);
@@ -178,17 +178,19 @@ body {
 }
 /* btn-sm uses footnote with 500 weight (12/16/600) */
 .btn-sm {
-  padding: 0.25rem 0.5rem;
+  padding: 0px 10px;
   font-size: 12px;
   line-height: 16px;
   font-weight: 500;
+  height: 32px;
+  border-radius: 6px;
 }
 /* btn-lg uses body with 500 weight (16/21/600) */
 .btn-lg {
-  padding: 0.625rem 1.25rem;
+  padding: 0px 16px;
   font-size: 16px;
   line-height: 21px;
-  height: 40px;
+  height: 44px;
   border-radius: 8px;
   font-weight: 500;
 }

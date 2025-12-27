@@ -168,13 +168,13 @@ No new tables or migrations. Both queries hit indexed columns:
 
 **Manual Testing Checkpoints:**
 
-- [ ] New user signup flow completes
-- [ ] Existing user login flow completes
-- [ ] Google OAuth works
-- [ ] "Change" email link works in step 2
-- [ ] Forgot password link works
-- [ ] Invitation flow pre-fills email
-- [ ] Error messages display correctly
+- [x] New user signup flow completes
+- [x] Existing user login flow completes
+- [x] Google OAuth works
+- [x] "Change" email link works in step 2
+- [x] Forgot password link works
+- [x] Invitation flow pre-fills email
+- [x] Error messages display correctly
 
 ## Testing
 

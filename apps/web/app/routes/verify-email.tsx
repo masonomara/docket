@@ -94,11 +94,11 @@ export default function VerifyEmailPage() {
             <h1 className={styles.title}>Verification failed</h1>
             <p className={styles.subtitle}>{errorMessage}</p>
             <Link
-              to="/login"
+              to="/auth"
               className={styles.submitButton}
               style={linkButtonStyles}
             >
-              Go to Login
+              Sign In
             </Link>
           </>
         )}

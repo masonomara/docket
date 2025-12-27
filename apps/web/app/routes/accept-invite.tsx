@@ -24,13 +24,13 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   );
 
   if (!sessionResponse.ok) {
-    throw redirect(`/login?invitation=${invitationId}`);
+    throw redirect(`/auth?invitation=${invitationId}`);
   }
 
   const sessionData = (await sessionResponse.json()) as SessionResponse | null;
 
   if (!sessionData?.user) {
-    throw redirect(`/login?invitation=${invitationId}`);
+    throw redirect(`/auth?invitation=${invitationId}`);
   }
 
   // Fetch invitation details

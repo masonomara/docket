@@ -6,6 +6,7 @@
   "scripts": {
     "predeploy": "npm run kb:manifest",
     "deploy": "npm run predeploy && wrangler d1 migrations apply docket-db --remote && wrangler deploy",
+    "deploy:tail": "wrangler deploy && wrangler tail --format pretty",
     "dev": "wrangler dev",
     "start": "wrangler dev",
     "test": "vitest",

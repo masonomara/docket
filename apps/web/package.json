@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "react-router dev",
     "build": "react-router build",
-    "deploy": "npm run build && wrangler deploy",
+    "deploy": "npm run build && wrangler deploy --env production",
     "start": "react-router-serve ./build/server/index.js",
     "typecheck": "react-router typegen && tsc",
     "test": "vitest run",

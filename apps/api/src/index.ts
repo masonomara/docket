@@ -30,6 +30,7 @@ import {
   handleGetAccountDeletionPreview,
   handleDeleteAccount,
 } from "./handlers/account";
+import { handleCheckEmail } from "./handlers/auth";
 import {
   handleGetDocuments,
   handleUploadDocument,
@@ -169,6 +170,14 @@ async function routeRequest(
   path: string,
   method: string
 ): Promise<Response | null> {
+  // ============================================================
+  // Authentication
+  // ============================================================
+
+  if (path === "/api/check-email" && method === "POST") {
+    return handleCheckEmail(request, env);
+  }
+
   // ============================================================
   // Organization Management
   // ============================================================

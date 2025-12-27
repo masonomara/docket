@@ -92,11 +92,11 @@ export default function ResetPasswordPage() {
             password.
           </p>
           <Link
-            to="/login"
+            to="/auth"
             className={styles.submitButton}
             style={linkButtonStyles}
           >
-            Go to Login
+            Sign In
           </Link>
         </div>
       </main>
@@ -153,7 +153,7 @@ export default function ResetPasswordPage() {
             />
           </div>
 
-          <div className={styles.fieldGroupLast}>
+          <div className={styles.fieldGroup}>
             <label htmlFor="confirmPassword" className={styles.label}>
               Confirm Password
             </label>
@@ -179,8 +179,8 @@ export default function ResetPasswordPage() {
         </form>
 
         <p className={styles.footer}>
-          <Link to="/login" className={styles.footerLink}>
-            Back to login
+          <Link to="/auth" className={styles.footerLink}>
+            Back to sign in
           </Link>
         </p>
       </div>

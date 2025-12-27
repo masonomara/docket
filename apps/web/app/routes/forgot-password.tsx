@@ -53,8 +53,8 @@ export default function ForgotPasswordPage() {
             password reset link.
           </p>
           <p className={styles.footer}>
-            <Link to="/login" className={styles.footerLink}>
-              Back to login
+            <Link to="/auth" className={styles.footerLink}>
+              Back to sign in
             </Link>
           </p>
         </div>
@@ -74,7 +74,7 @@ export default function ForgotPasswordPage() {
         {errorMessage && <div className={styles.errorBox}>{errorMessage}</div>}
 
         <form onSubmit={handleSubmit}>
-          <div className={styles.fieldGroupLast}>
+          <div className={styles.fieldGroup}>
             <label htmlFor="email" className={styles.label}>
               Email
             </label>
@@ -100,8 +100,8 @@ export default function ForgotPasswordPage() {
 
         <p className={styles.footer}>
           Remember your password?{" "}
-          <Link to="/login" className={styles.footerLink}>
-            Log in
+          <Link to="/auth" className={styles.footerLink}>
+            Sign in
           </Link>
         </p>
       </div>

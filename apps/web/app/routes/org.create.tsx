@@ -53,13 +53,13 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   );
 
   if (!sessionResponse.ok) {
-    throw redirect("/login");
+    throw redirect("/auth");
   }
 
   const sessionData = (await sessionResponse.json()) as SessionResponse | null;
 
   if (!sessionData?.user) {
-    throw redirect("/login");
+    throw redirect("/auth");
   }
 
   // Check if user already has an organization

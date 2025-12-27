@@ -69,7 +69,7 @@ export async function sendInvitationEmail(
   env: EmailEnv,
   input: SendInvitationInput
 ): Promise<SendResult> {
-  const acceptUrl = `${APP_URL}/signup?invitation=${input.invitationId}`;
+  const acceptUrl = `${APP_URL}/auth?invitation=${input.invitationId}`;
 
   const subject = `You've been invited to join ${input.orgName} on Docket`;
 

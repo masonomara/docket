@@ -9,8 +9,8 @@
   background: var(--surface-1);
 }
 .container {
-  padding: 32px;
-  max-width: 476px;
+  padding: 24px;
+  max-width: 480px;
   width: 100%;
   display: flex;
   flex-direction: column;
@@ -33,12 +33,18 @@
   line-height: 21px;
   font-weight: 400;
   margin-top: 0.8em;
+  width: 100%;
+}
+.formGroup {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
 .fieldGroup {
-  margin-bottom: 10px;
-}
-.fieldGroupLast {
-  margin-bottom: 1.5rem;
+  margin-bottom: 16px;
+  width: 100%;
 }
 .label {
   display: none;
@@ -47,7 +53,7 @@
 .input {
   width: 100%;
   padding: 0.5rem;
-  border: 1px solid var(--border-dark);
+  border: 1px solid var(--border-default);
   border-radius: 8px;
   background: var(--container);
   height: 42px;
@@ -55,6 +61,7 @@
   font-size: 16px;
   line-height: 21px;
   font-weight: 400;
+  width: 100%;
 }
 .input::placeholder {
   color: var(--text-tertiary);
@@ -63,16 +70,12 @@
 }
 /* footnote (12/16/400) */
 .divider {
-  margin: 0.8em 0;
+  margin: 16px 0;
   font-size: 12px;
   line-height: 16px;
   font-weight: 400;
-  color: var(--text-secondary);
-}
-.socialButtonContainer {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
 }
 /* callout (15/20/600) */
 .ssoButton {

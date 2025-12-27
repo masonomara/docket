@@ -2,7 +2,7 @@ import { useState } from "react";
 import { redirect, useNavigate } from "react-router";
 import type { Route } from "./+types/account.settings";
 import { apiFetch } from "~/lib/api";
-import { API_URL, authClient } from "~/lib/auth-client";
+import { API_URL, authClient, signOut } from "~/lib/auth-client";
 import type { SessionResponse, OrgMembership } from "~/lib/types";
 import { AppLayout } from "~/components/AppLayout";
 import styles from "~/styles/org-settings.module.css";
@@ -24,13 +24,13 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   );
 
   if (!sessionResponse.ok) {
-    throw redirect("/login");
+    throw redirect("/auth");
   }
 
   const sessionData = (await sessionResponse.json()) as SessionResponse | null;
 
   if (!sessionData?.user) {
-    throw redirect("/login");
+    throw redirect("/auth");
   }
 
   // Fetch user's organization membership
@@ -121,9 +121,9 @@ export default function AccountSettingsPage({
         throw new Error(data.error || "Failed to delete account");
       }
 
-      // Sign out and redirect to login
+      // Sign out and redirect to auth
       await authClient.signOut();
-      navigate("/login");
+      navigate("/auth");
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to delete account";
@@ -159,6 +159,23 @@ export default function AccountSettingsPage({
             <span className={styles.infoLabel}>Name</span>
             <span className={styles.infoValue}>{user.name}</span>
           </div>
+        </div>
+      </section>
+
+      {/* Session Section */}
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}>Session</h2>
+        <div className={styles.infoCard}>
+          <div className={styles.dangerInfo}>
+            <h3>Sign Out</h3>
+            <p>Sign out of your account on this device.</p>
+          </div>
+          <button
+            onClick={() => signOut().then(() => (window.location.href = "/auth"))}
+            className="btn btn-secondary"
+          >
+            Sign Out
+          </button>
         </div>
       </section>
 
