@@ -560,6 +560,7 @@ header {
   gap: 8px;
   pointer-events: none;
   margin-right: 10px;
+  background: var(--surface-2) !important;
 }
 
 .status-dot {

@@ -293,11 +293,9 @@ export default function MembersPage({ loaderData }: Route.ComponentProps) {
         {/* Pending Invitations Section */}
         {invitations.length > 0 && (
           <section>
-            <div className="section-header">
-              <h2 className="text-title-3">
-                Pending Invitations ({invitations.length})
-              </h2>
-            </div>
+            <h2 className="text-title-3">
+              Pending Invitations ({invitations.length})
+            </h2>
 
             <div className="tableWrapper">
               <table className="table">

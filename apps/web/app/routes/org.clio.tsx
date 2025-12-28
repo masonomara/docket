@@ -3,7 +3,7 @@ import { redirect, useSearchParams, useRevalidator } from "react-router";
 import type { Route } from "./+types/org.clio";
 import { apiFetch } from "~/lib/api";
 import { API_URL } from "~/lib/auth-client";
-import { Cable, LockKeyhole, Plus } from "lucide-react";
+import { Cable, LockKeyhole, Plus, RotateCw } from "lucide-react";
 import type { SessionResponse, OrgMembership } from "~/lib/types";
 import { AppLayout } from "~/components/AppLayout";
 import { PageLayout } from "~/components/PageLayout";
@@ -172,13 +172,12 @@ export default function ClioPage({ loaderData }: Route.ComponentProps) {
     : "Not Loaded";
 
   const statusIndicator = (
-    <div className="status-indicator btn btn-sm btn-secondaryƒ">
+    <div className="status-indicator btn btn-sm btn-secondary">
       <span
         className={`status-dot ${clioStatus.connected ? "status-dot-success" : "status-dot-error"}`}
       />
-      <span className="text-secondary">
-        {clioStatus.connected ? "Connected" : "Not Connected"}
-      </span>
+
+      {clioStatus.connected ? "Connected" : "Not Connected"}
     </div>
   );
 
@@ -193,7 +192,8 @@ export default function ClioPage({ loaderData }: Route.ComponentProps) {
       )}
       {clioStatus.connected && (
         <button onClick={handleConnect} className="btn btn-secondary btn-sm">
-          Reconnect
+          <RotateCw strokeWidth={1.75} size={16} />
+          Refresh
         </button>
       )}
     </>
@@ -236,16 +236,24 @@ export default function ClioPage({ loaderData }: Route.ComponentProps) {
         {isAdmin && clioStatus.connected && (
           <section>
             <h2 className="text-title-3">Schema Management</h2>
-            <p className="section-description">
-              Refresh the schema cache to pick up Clio configuration changes.
-            </p>
-            <button
-              onClick={handleRefreshSchema}
-              disabled={isRefreshing}
-              className="btn btn-secondary btn-sm"
-            >
-              {isRefreshing ? "Refreshing..." : "Refresh Schema"}
-            </button>
+
+            <div className="info-card">
+              <div>
+                <h3 className="text-headline">Refresh Clio Schema</h3>
+
+                <p className="section-description">
+                  Refresh the schema cache to pick up Clio configuration
+                  changes.
+                </p>
+              </div>
+              <button
+                onClick={handleRefreshSchema}
+                disabled={isRefreshing}
+                className="btn btn-sm btn-secondary"
+              >
+                {isRefreshing ? "Refreshing..." : "Refresh Schema"}
+              </button>
+            </div>
           </section>
         )}
 
@@ -283,25 +291,34 @@ export default function ClioPage({ loaderData }: Route.ComponentProps) {
 
         {/* Disconnect Section (only when connected) */}
         {clioStatus.connected && (
-          <section className="dangerSection">
-            <h2 className="text-title-3">Disconnect Clio</h2>
-            <p className="section-description">
-              Disconnecting will revoke Docket&apos;s access to your Clio
-              account. You can reconnect at any time.
-            </p>
-            <button
-              onClick={() => setShowDisconnectModal(true)}
-              className="btn btn-danger-outline btn-sm"
-            >
-              Disconnect
-            </button>
+          <section>
+            <h2 className="text-title-3">Danger Zone</h2>
+
+            <div className="info-card">
+              <div>
+                <h3 className="text-headline">Disconnect Clio</h3>
+                <p className="section-description">
+                  Disconnecting will revoke Docket&apos;s access to your Clio
+                  account. You can reconnect at any time.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowDisconnectModal(true)}
+                className="btn btn-sm btn-danger"
+              >
+                Disconnect
+              </button>
+            </div>
           </section>
         )}
       </PageLayout>
 
       {/* Disconnect Confirmation Modal */}
       {showDisconnectModal && (
-        <div className="modal-overlay" onClick={() => setShowDisconnectModal(false)}>
+        <div
+          className="modal-overlay"
+          onClick={() => setShowDisconnectModal(false)}
+        >
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-title-3">Disconnect Clio?</h2>
             <p className="text-secondary">
