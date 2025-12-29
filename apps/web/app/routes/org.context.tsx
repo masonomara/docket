@@ -9,7 +9,7 @@ import type { OrgContextDocument } from "~/lib/types";
 import { AppLayout } from "~/components/AppLayout";
 import { PageLayout } from "~/components/PageLayout";
 import styles from "~/styles/org-context.module.css";
-import { Info, Plus } from "lucide-react";
+import { FilePlusCorner, FileUp, Info, Plus } from "lucide-react";
 
 const ACCEPTED_FILE_TYPES =
   ".pdf,.docx,.xlsx,.pptx,.odt,.ods,.numbers,.md,.txt,.html,.csv,.xml";
@@ -233,8 +233,8 @@ function InfoBanner() {
 function UploadPrompt() {
   return (
     <>
-      <Plus className={styles.uploadPlus} color="var(--text-primary)" />
-      <span className={styles.uploadText}>Drop file or click to upload</span>
+      <FileUp strokeWidth={1.33} className={styles.uploadPlus} color="var(--text-primary)" />
+      <span className={styles.uploadText}>Drag or click to upload</span>
       <span className={styles.uploadHint}>
         PDF, Word, Excel, or text files (max 25MB)
       </span>

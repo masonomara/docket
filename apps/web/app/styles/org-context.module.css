@@ -7,21 +7,19 @@
    ----------------------------------------------------------------------------- */
 
 .uploadArea {
-  border: 1px dashed var(--border-default);
-  border-radius: 8px;
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
   padding: 32px;
-  background: var(--surface-2);
+  background: var(--container);
   text-align: center;
-  transition:
-    border-color 0.2s,
-    background-color 0.2s;
+  transition: all 0.15s ease;
 }
 
 .uploadArea:hover,
 .uploadArea.uploading,
 .uploadArea.dragOver {
   border-color: var(--border-dark);
-  background: var(--surface-2);
+
 }
 
 /* -----------------------------------------------------------------------------
