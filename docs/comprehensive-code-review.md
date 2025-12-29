@@ -14,28 +14,6 @@ This review consolidates findings from four distinct perspectives analyzing the 
 
 ## Items to Complete
 
-### 26. Session/Membership Lookup Repeated
-
-**Category:** Flow Disruption
-**Files:** All handlers in `apps/api/src/handlers/`
-
-Every handler starts with same session/membership lookup pattern. This is middleware crying out for actual middleware.
-
-**Recommendation:** Either adopt Hono router with middleware or create `withAuth` wrapper.
-
----
-
-### 30. Missing Error Boundaries in Web Routes
-
-**Impact:** High
-**Files:** `apps/web/app/routes/org.clio.tsx`, etc.
-
-Routes fetch data but have limited error handling. When API calls fail, users see partial/incorrect UI.
-
-**Recommendation:** Add explicit error states to loader data. Display error UI instead of "default" states.
-
----
-
 ### 31. No Integration Test Coverage for Web App
 
 **Impact:** High
