@@ -1,11 +1,25 @@
+/* ==========================================================================
+   App Layout
+   Main layout container with sidebar navigation
+   ========================================================================== */
+
+/* Layout Container */
 .layout {
   display: flex;
   min-height: 100svh;
 }
 
+/* ==========================================================================
+   Mobile Overlay
+   ========================================================================== */
+
 .overlay {
   display: none;
 }
+
+/* ==========================================================================
+   Sidebar
+   ========================================================================== */
 
 .sidebar {
   width: 255px;
@@ -17,10 +31,11 @@
   flex-direction: column;
   gap: 8px;
   position: fixed;
-  top: 0px;
-  bottom: 0px;
+  top: 0;
+  bottom: 0;
 }
 
+/* Sidebar Header - Logo and Close Button */
 .sidebarHeader {
   display: flex;
   justify-content: space-between;
@@ -28,7 +43,7 @@
 }
 
 .logo {
-  padding: 3.75px 8px 3.75px;
+  padding: 3.75px 8px;
 }
 
 .logo img {
@@ -40,6 +55,10 @@
   display: none;
 }
 
+/* ==========================================================================
+   Navigation Sections
+   ========================================================================== */
+
 .section {
   margin-bottom: 8px;
   gap: 4px;
@@ -48,16 +67,24 @@
   width: 100%;
 }
 
-/* caption-1 (11/13/600) */
 .sectionLabel {
   font-size: 12px;
   line-height: 16px;
   font-weight: 500;
   text-transform: uppercase;
   color: var(--text-tertiary);
-  padding: 16px 8px 0px;
+  padding: 16px 8px 0;
   border-top: 1px solid var(--border-default);
 }
+
+/* Remove border from first section */
+.section:first-of-type .sectionLabel {
+  border-top: none;
+}
+
+/* ==========================================================================
+   Navigation Items
+   ========================================================================== */
 
 .navList {
   list-style: none;
@@ -66,38 +93,27 @@
   gap: 2px;
 }
 
-/* subhead (14/19/600) */
 .navItem {
   display: flex;
   align-items: center;
   gap: 10px;
   height: 36px;
-  padding: 0px 8px;
+  padding: 0 8px;
   border-radius: 6px;
   color: var(--text-secondary);
   text-decoration: none;
   font-size: 14px;
   line-height: 19px;
-  font-weight: 400;
   transition: background 0.15s ease;
 }
 
-.navItem:hover {
+.navItem:hover,
+.navItemActive {
   color: var(--text-primary);
 }
 
 .navItemActive {
   background: var(--surface-3);
-  font-weight: 400;
-  color: var(--text-primary);
-}
-
-.navItem:hover .navIcon {
-  color: var(--text-primary);
-}
-
-.navItemActive .navIcon {
-  color: var(--text-primary);
 }
 
 .navIcon {
@@ -107,23 +123,30 @@
   color: var(--text-secondary);
 }
 
-.orgInfo {
+.navItem:hover .navIcon,
+.navItemActive .navIcon {
+  color: var(--text-primary);
+}
 
-  padding: 8px 8px 8px;
+/* ==========================================================================
+   Organization Info (Bottom of Sidebar)
+   ========================================================================== */
+
+.orgInfoDivider {
+  margin-top: auto;
+  height: 1px;
+  width: 100%;
+  background-color: var(--border-default);
+}
+
+.orgInfo {
+  padding: 8px;
   text-decoration: none;
   display: flex;
   align-items: center;
   gap: 10px;
   border-radius: 6px;
   transition: background 0.15s ease;
-}
-
-.orgInfoDivider {
-    margin-top: auto;
-  height: 1px;
-  width: 100%;
-  background-color: var(--border-default);
-
 }
 
 .orgAvatar {
@@ -149,7 +172,6 @@
 .orgName {
   font-size: 14px;
   line-height: 19px;
-  font-weight: 400;
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
@@ -162,6 +184,7 @@
   color: var(--text-tertiary);
 }
 
+/* Org info hover states */
 .orgInfo:hover .orgName {
   color: var(--text-primary);
 }
@@ -174,6 +197,10 @@
   background-color: var(--surface-3);
 }
 
+/* ==========================================================================
+   Main Content Area
+   ========================================================================== */
+
 .content {
   flex: 1;
   background: var(--surface-1);
@@ -185,15 +212,19 @@
 }
 
 .contentInner {
-  padding: 0px 22px 44px;
+  padding: 0 22px 44px;
   display: flex;
   align-items: flex-start;
   justify-content: center;
   min-width: 0;
 }
 
-/* Mobile styles */
+/* ==========================================================================
+   Mobile Styles (max-width: 768px)
+   ========================================================================== */
+
 @media (max-width: 768px) {
+  /* Show overlay when menu is open */
   .overlay {
     display: block;
     position: fixed;
@@ -201,16 +232,18 @@
     background: rgba(0, 0, 0, 0.5);
     z-index: 90;
   }
+
+  /* Remove sidebar margin on mobile */
   .content {
-    margin-left: 0px;
+    margin-left: 0;
   }
 
+  /* Slide-in sidebar from right */
   .sidebar {
     position: fixed;
     top: 0;
     right: 0;
     bottom: 0;
-
     min-width: 255px;
     width: calc(100vw - 40px);
     max-width: 355px;
@@ -227,14 +260,5 @@
 
   .closeButton {
     display: flex;
-  }
-
-  .closeButton:hover {
-    background: var(--surface-3);
-    color: var(--text-primary);
-  }
-
-  .contentInner {
-    padding: 0px 22px 44px;
   }
 }

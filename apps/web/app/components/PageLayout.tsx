@@ -1,14 +1,7 @@
-import { createContext, useContext } from "react";
+import { useContext } from "react";
 import { Menu } from "lucide-react";
+import { PageLayoutContext } from "~/components/AppLayout";
 import styles from "~/styles/page-layout.module.css";
-
-interface PageLayoutContextValue {
-  onMenuOpen: () => void;
-}
-
-export const PageLayoutContext = createContext<PageLayoutContextValue | null>(
-  null
-);
 
 interface PageLayoutProps {
   title?: string;
@@ -23,41 +16,52 @@ export function PageLayout({
   actions,
   children,
 }: PageLayoutProps) {
-  const context = useContext(PageLayoutContext);
+  const layoutContext = useContext(PageLayoutContext);
+
+  function handleMenuClick() {
+    if (layoutContext) {
+      layoutContext.onMenuOpen();
+    }
+  }
+
+  const showMenuButton = layoutContext !== null;
 
   return (
     <div className={styles.page}>
       <header className={styles.header}>
+        {/* Title and subtitle */}
         <div className={styles.headerContent}>
           <h1 className="text-title-1">{title}</h1>
-          {subtitle && (
-            <p
-              className="text-body text-secondary"
-              style={{ marginTop: "0.5em", color: "var(--text-secondary)" }}
-            >
-              {subtitle}
-            </p>
-          )}
+          {subtitle && <p className={styles.subtitle}>{subtitle}</p>}
+
+          {/* Actions shown below title on mobile */}
           {actions && (
             <div className={styles.actionsMobileWrapper}>{actions}</div>
           )}
         </div>
+
+        {/* Actions and menu button */}
         <div className={styles.headerActions}>
+          {/* Actions shown inline on desktop */}
           {actions && (
             <div className={styles.actionsDesktopWrapper}>{actions}</div>
           )}
-          {context && (
+
+          {/* Mobile menu button */}
+          {showMenuButton && (
             <button
               type="button"
               className={`${styles.menuButton} btn-sm btn btn-secondary`}
-              onClick={context.onMenuOpen}
+              onClick={handleMenuClick}
               aria-label="Open menu"
             >
-              <span>Menu</span> <Menu size={16} />
+              <span>Menu</span>
+              <Menu size={16} />
             </button>
           )}
         </div>
       </header>
+
       {children}
     </div>
   );

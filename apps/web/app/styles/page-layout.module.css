@@ -1,22 +1,42 @@
+/* ==========================================================================
+   Page Layout
+   Standard page structure with header, actions, and content
+   ========================================================================== */
+
 .page {
   max-width: 1280px;
   width: 100%;
   min-width: 0;
 }
 
+/* ==========================================================================
+   Page Header
+   ========================================================================== */
+
 .header {
   display: flex;
-  flex-direction: row;
   justify-content: space-between;
   align-items: flex-start;
   gap: 16px;
   margin-bottom: 24px;
 }
 
+/* Title and subtitle container */
 .headerContent {
   flex: 1;
   min-width: 0;
 }
+
+.subtitle {
+  margin-top: 0.5em;
+  color: var(--text-secondary);
+  font-size: 16px;
+  line-height: 21px;
+}
+
+/* ==========================================================================
+   Header Actions
+   ========================================================================== */
 
 .headerActions {
   display: flex;
@@ -24,25 +44,31 @@
   gap: 8px;
   flex-shrink: 0;
 }
+
+/* Desktop: Show actions inline with header */
 .actionsDesktopWrapper {
   display: flex;
 }
+
+/* Mobile: Show actions below title (hidden on desktop) */
 .actionsMobileWrapper {
   display: none;
 }
+
+/* Menu button - hidden on desktop */
 .menuButton {
   display: none;
 }
 
-.menuButton:hover {
-  background: var(--surface-2);
-}
+/* ==========================================================================
+   Mobile Styles (max-width: 768px)
+   ========================================================================== */
 
 @media (max-width: 768px) {
   .header {
-    flex-direction: row;
     gap: 12px;
   }
+
   .header h1 {
     flex: 1;
   }
@@ -51,12 +77,16 @@
     justify-content: space-between;
   }
 
+  /* Show menu button on mobile */
   .menuButton {
     display: flex;
   }
+
+  /* Hide desktop actions, show mobile actions */
   .actionsDesktopWrapper {
     display: none;
   }
+
   .actionsMobileWrapper {
     display: flex;
     margin-top: 16px;

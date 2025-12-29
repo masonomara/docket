@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { createContext, useState } from "react";
 import { Link } from "react-router";
 import {
   LayoutDashboard,
@@ -9,43 +9,67 @@ import {
   X,
 } from "lucide-react";
 import type { OrgMembership } from "~/lib/types";
-import { PageLayoutContext } from "~/components/PageLayout";
 import styles from "~/styles/app-layout.module.css";
+
+export const PageLayoutContext = createContext<{
+  onMenuOpen: () => void;
+} | null>(null);
 
 interface AppLayoutProps {
   children: React.ReactNode;
-  user: { id: string; email: string; name: string };
   org: OrgMembership | null;
   currentPath: string;
 }
 
-/** Helper to build nav item class names */
-function navItemClass(path: string, currentPath: string): string {
-  const isActive = currentPath === path;
-  return isActive
-    ? `${styles.navItem} ${styles.navItemActive}`
-    : styles.navItem;
-}
-
 export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+
   const isAdmin = org?.role === "admin";
 
-  function handleCloseMenu() {
+  function getNavItemClass(path: string) {
+    if (currentPath === path) {
+      return `${styles.navItem} ${styles.navItemActive}`;
+    }
+    return styles.navItem;
+  }
+
+  function getOrgInitials(orgName: string) {
+    const words = orgName.split(" ");
+    const firstTwoWords = words.slice(0, 2);
+    const initials = firstTwoWords.map((word) => word[0]).join("");
+    return initials.toUpperCase();
+  }
+
+  function getOrgRoleLabel() {
+    if (org?.isOwner) {
+      return "Owner";
+    }
+    if (org?.role === "admin") {
+      return "Admin";
+    }
+    return "Member";
+  }
+
+  function openMenu() {
+    setMenuOpen(true);
+  }
+
+  function closeMenu() {
     setMenuOpen(false);
   }
 
   return (
     <div className={styles.layout}>
-      {/* Mobile overlay */}
+      {/* Mobile overlay - click to close menu */}
       {menuOpen && (
         <div
           className={styles.overlay}
-          onClick={handleCloseMenu}
+          onClick={closeMenu}
           aria-hidden="true"
         />
       )}
 
+      {/* Sidebar navigation */}
       <aside
         className={`${styles.sidebar} ${menuOpen ? styles.sidebarOpen : ""}`}
       >
@@ -56,24 +80,20 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
           <button
             type="button"
             className={`${styles.closeButton} btn-sm btn`}
-            onClick={handleCloseMenu}
+            onClick={closeMenu}
             aria-label="Close menu"
           >
-            <span>Close</span> <X size={16} />
+            <span>Close</span>
+            <X size={16} />
           </button>
         </div>
 
-        {/* Work section - always visible */}
+        {/* Work section */}
         <nav className={styles.section}>
-          <div className={styles.sectionLabel} style={{ borderTop: "none" }}>
-            Work
-          </div>
+          <div className={styles.sectionLabel}>Work</div>
           <ul className={styles.navList}>
             <li>
-              <Link
-                to="/dashboard"
-                className={navItemClass("/dashboard", currentPath)}
-              >
+              <Link to="/dashboard" className={getNavItemClass("/dashboard")}>
                 <LayoutDashboard
                   className={styles.navIcon}
                   strokeWidth={1.75}
@@ -84,7 +104,7 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
           </ul>
         </nav>
 
-        {/* Manage section - admin only */}
+        {/* Admin-only management section */}
         {isAdmin && (
           <nav className={styles.section}>
             <div className={styles.sectionLabel}>Manage</div>
@@ -92,17 +112,14 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
               <li>
                 <Link
                   to="/org/context"
-                  className={navItemClass("/org/context", currentPath)}
+                  className={getNavItemClass("/org/context")}
                 >
                   <FileText className={styles.navIcon} strokeWidth={1.75} />
                   Knowledge Base
                 </Link>
               </li>
               <li>
-                <Link
-                  to="/org/clio"
-                  className={navItemClass("/org/clio", currentPath)}
-                >
+                <Link to="/org/clio" className={getNavItemClass("/org/clio")}>
                   <Plug className={styles.navIcon} strokeWidth={1.75} />
                   Clio Connection
                 </Link>
@@ -110,7 +127,7 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
               <li>
                 <Link
                   to="/org/members"
-                  className={navItemClass("/org/members", currentPath)}
+                  className={getNavItemClass("/org/members")}
                 >
                   <Users className={styles.navIcon} />
                   Members
@@ -120,14 +137,14 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
           </nav>
         )}
 
-        {/* Account section - always visible */}
+        {/* Account section */}
         <nav className={styles.section}>
           <div className={styles.sectionLabel}>Account</div>
           <ul className={styles.navList}>
             <li>
               <Link
                 to="/account/settings"
-                className={navItemClass("/account/settings", currentPath)}
+                className={getNavItemClass("/account/settings")}
               >
                 <CircleUser className={styles.navIcon} strokeWidth={1.75} />
                 User Settings
@@ -135,40 +152,32 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
             </li>
           </ul>
         </nav>
+
         <div className={styles.orgInfoDivider} />
-        {/* Org info at bottom */}
+
+        {/* Organization info at bottom of sidebar */}
         {org?.org?.name && (
           <Link
             to="/org/settings"
-            className={`${styles.orgInfo} ${currentPath === "/org/settings" ? styles.orgInfoActive : ""}`}
+            className={`${styles.orgInfo} ${
+              currentPath === "/org/settings" ? styles.orgInfoActive : ""
+            }`}
           >
             <span className={styles.orgAvatar}>
-              {org.org.name
-                .split(" ")
-                .slice(0, 2)
-                .map((word: string) => word[0])
-                .join("")
-                .toUpperCase()}
+              {getOrgInitials(org.org.name)}
             </span>
             <span className={styles.orgDetails}>
               <span className={styles.orgName}>{org.org.name}</span>
-              <span className={styles.orgRole}>
-                {org.isOwner
-                  ? "Owner"
-                  : org.role === "admin"
-                    ? "Admin"
-                    : "Member"}
-              </span>
+              <span className={styles.orgRole}>{getOrgRoleLabel()}</span>
             </span>
           </Link>
         )}
       </aside>
 
+      {/* Main content area */}
       <main className={styles.content}>
         <div className={styles.contentInner}>
-          <PageLayoutContext.Provider
-            value={{ onMenuOpen: () => setMenuOpen(true) }}
-          >
+          <PageLayoutContext.Provider value={{ onMenuOpen: openMenu }}>
             {children}
           </PageLayoutContext.Provider>
         </div>

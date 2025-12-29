@@ -13,19 +13,11 @@ import {
   PRACTICE_AREAS,
 } from "~/lib/org-constants";
 
-const STEPS = [
-  {
-    title: "Firm Type",
-    subtitle: "What type of firm are you creating?",
-  },
-  { title: "Basic Information", subtitle: "Tell us about your firm" },
-  { title: "Jurisdictions", subtitle: "Select the states where you practice" },
-  { title: "Practice Areas", subtitle: "Select your areas of practice" },
-];
+/* ==========================================================================
+   Types & Constants
+   ========================================================================== */
 
-type StepNumber = 1 | 2 | 3 | 4;
-
-interface CreateOrgFormData {
+interface FormData {
   orgType: string;
   name: string;
   firmSize: string;
@@ -33,7 +25,7 @@ interface CreateOrgFormData {
   practiceAreas: string[];
 }
 
-const INITIAL_FORM_DATA: CreateOrgFormData = {
+const INITIAL_FORM_DATA: FormData = {
   orgType: "",
   name: "",
   firmSize: "",
@@ -41,30 +33,38 @@ const INITIAL_FORM_DATA: CreateOrgFormData = {
   practiceAreas: [],
 };
 
+const WIZARD_STEPS = [
+  { title: "Firm Type", subtitle: "What type of firm are you creating?" },
+  { title: "Basic Information", subtitle: "Tell us about your firm" },
+  { title: "Jurisdictions", subtitle: "Select the states where you practice" },
+  { title: "Practice Areas", subtitle: "Select your areas of practice" },
+];
+
+/* ==========================================================================
+   Loader
+   ========================================================================== */
+
 export async function loader({ request, context }: Route.LoaderArgs) {
   const cookie = request.headers.get("cookie") || "";
 
-  // Check if user is logged in
+  // Check if user is authenticated
   const sessionResponse = await apiFetch(
     context,
     "/api/auth/get-session",
     cookie
   );
-
   if (!sessionResponse.ok) {
     throw redirect("/auth");
   }
 
   const sessionData = (await sessionResponse.json()) as SessionResponse | null;
-
   if (!sessionData?.user) {
     throw redirect("/auth");
   }
 
   // Fetch user's organization membership
-  const orgResponse = await apiFetch(context, "/api/user/org", cookie);
-
   let orgMembership: OrgMembership | null = null;
+  const orgResponse = await apiFetch(context, "/api/user/org", cookie);
   if (orgResponse.ok) {
     const orgData = (await orgResponse.json()) as OrgMembership | null;
     if (orgData?.org) {
@@ -72,85 +72,122 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     }
   }
 
-  return {
-    user: sessionData.user,
-    org: orgMembership,
-  };
+  return { user: sessionData.user, org: orgMembership };
 }
+
+/* ==========================================================================
+   Component
+   ========================================================================== */
 
 export default function Dashboard({ loaderData }: Route.ComponentProps) {
   const { user, org } = loaderData;
   const revalidator = useRevalidator();
 
-  // Create org modal state
-  const [showCreateOrgModal, setShowCreateOrgModal] = useState(false);
-  const [step, setStep] = useState<StepNumber>(1);
-  const [form, setForm] = useState<CreateOrgFormData>(INITIAL_FORM_DATA);
+  // Modal state
+  const [showModal, setShowModal] = useState(false);
+  const [currentStep, setCurrentStep] = useState(1);
+  const [formData, setFormData] = useState<FormData>(INITIAL_FORM_DATA);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  function resetModal() {
-    setStep(1);
-    setForm(INITIAL_FORM_DATA);
+  /* --------------------------------------------------------------------------
+     Modal Handlers
+     -------------------------------------------------------------------------- */
+
+  function openModal() {
+    setShowModal(true);
+  }
+
+  function closeModal() {
+    setShowModal(false);
+    setCurrentStep(1);
+    setFormData(INITIAL_FORM_DATA);
     setError(null);
     setIsSubmitting(false);
   }
 
-  function handleCloseModal() {
-    setShowCreateOrgModal(false);
-    resetModal();
+  function handleOverlayClick() {
+    closeModal();
   }
 
-  function updateField<K extends keyof CreateOrgFormData>(
-    key: K,
-    value: CreateOrgFormData[K]
+  function handleModalContentClick(event: React.MouseEvent) {
+    // Prevent clicks inside the modal from closing it
+    event.stopPropagation();
+  }
+
+  /* --------------------------------------------------------------------------
+     Form Handlers
+     -------------------------------------------------------------------------- */
+
+  function updateFormField<K extends keyof FormData>(
+    field: K,
+    value: FormData[K]
   ) {
-    setForm((prev) => ({ ...prev, [key]: value }));
+    setFormData((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
   }
 
   function toggleArrayField(
     field: "jurisdictions" | "practiceAreas",
     id: string
   ) {
-    setForm((prev) => {
-      const currentArray = prev[field];
-      const isSelected = currentArray.includes(id);
-      const newArray = isSelected
-        ? currentArray.filter((item) => item !== id)
-        : [...currentArray, id];
-      return { ...prev, [field]: newArray };
+    setFormData((prev) => {
+      const currentValues = prev[field];
+      const isSelected = currentValues.includes(id);
+
+      if (isSelected) {
+        // Remove from array
+        return {
+          ...prev,
+          [field]: currentValues.filter((item) => item !== id),
+        };
+      } else {
+        // Add to array
+        return {
+          ...prev,
+          [field]: [...currentValues, id],
+        };
+      }
     });
   }
 
+  /* --------------------------------------------------------------------------
+     Step Navigation
+     -------------------------------------------------------------------------- */
+
   function canProceedToNextStep(): boolean {
-    switch (step) {
+    switch (currentStep) {
       case 1:
-        return form.orgType !== "";
+        return formData.orgType !== "";
       case 2:
-        return form.name.trim() !== "" && form.firmSize !== "";
+        return formData.name.trim() !== "" && formData.firmSize !== "";
       case 3:
-        return form.jurisdictions.length > 0;
+        return formData.jurisdictions.length > 0;
       case 4:
-        return form.practiceAreas.length > 0;
+        return formData.practiceAreas.length > 0;
       default:
         return false;
     }
   }
 
-  function goToPreviousStep() {
-    if (step > 1) {
-      setStep((prev) => (prev - 1) as StepNumber);
-    }
+  function goToNextStep() {
+    setCurrentStep((prev) => prev + 1);
   }
 
-  function goToNextStep() {
-    if (step < 4 && canProceedToNextStep()) {
-      setStep((prev) => (prev + 1) as StepNumber);
-    }
+  function goToPreviousStep() {
+    setCurrentStep((prev) => prev - 1);
   }
+
+  /* --------------------------------------------------------------------------
+     Form Submission
+     -------------------------------------------------------------------------- */
 
   async function handleSubmit() {
-    if (!canProceedToNextStep()) return;
+    if (!canProceedToNextStep()) {
+      return;
+    }
 
     setError(null);
     setIsSubmitting(true);
@@ -161,10 +198,10 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          name: form.name.trim(),
-          firmSize: form.firmSize,
-          jurisdictions: form.jurisdictions,
-          practiceTypes: form.practiceAreas,
+          name: formData.name.trim(),
+          firmSize: formData.firmSize,
+          jurisdictions: formData.jurisdictions,
+          practiceTypes: formData.practiceAreas,
         }),
       });
 
@@ -173,24 +210,68 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
         throw new Error(data.error || "Failed to create firm");
       }
 
-      handleCloseModal();
+      closeModal();
       revalidator.revalidate();
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Something went wrong";
-      setError(message);
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("Something went wrong");
+      }
     } finally {
       setIsSubmitting(false);
     }
   }
 
-  const currentStepConfig = STEPS[step - 1];
+  /* --------------------------------------------------------------------------
+     Render Helpers
+     -------------------------------------------------------------------------- */
+
+  function getProgressStepClass(stepNumber: number): string {
+    if (stepNumber === currentStep) {
+      return "modal-progress-step active";
+    }
+    if (stepNumber < currentStep) {
+      return "modal-progress-step completed";
+    }
+    return "modal-progress-step";
+  }
+
+  function getOptionCardClass(isSelected: boolean): string {
+    if (isSelected) {
+      return "modal-option-card selected";
+    }
+    return "modal-option-card";
+  }
+
+  function getSizeCardClass(isSelected: boolean): string {
+    if (isSelected) {
+      return "modal-size-card selected";
+    }
+    return "modal-size-card";
+  }
+
+  function getCheckboxItemClass(isSelected: boolean): string {
+    if (isSelected) {
+      return "modal-checkbox-item selected";
+    }
+    return "modal-checkbox-item";
+  }
+
+  /* --------------------------------------------------------------------------
+     Render
+     -------------------------------------------------------------------------- */
+
+  const currentStepInfo = WIZARD_STEPS[currentStep - 1];
+  const isLastStep = currentStep === 4;
+  const canProceed = canProceedToNextStep();
 
   return (
-    <AppLayout user={user} org={org} currentPath="/dashboard">
+    <AppLayout org={org} currentPath="/dashboard">
       <PageLayout title="Dashboard" subtitle={`Welcome back, ${user.name}`}>
-        {org === null ? (
-          <section>
+        {/* Show onboarding section if user has no org */}
+        {org === null && (
+          <section className="section">
             <h2 className="text-title-3">Get Started</h2>
             <div className="info-card">
               <div>
@@ -200,69 +281,58 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
                   Docket, or wait for an invitation.
                 </p>
               </div>
-              <button
-                onClick={() => setShowCreateOrgModal(true)}
-                className="btn btn-sm btn-primary"
-              >
+              <button onClick={openModal} className="btn btn-sm btn-primary">
                 Create firm
               </button>
             </div>
           </section>
-        ) : (
-          <></>
         )}
       </PageLayout>
 
-      {showCreateOrgModal && (
-        <div className="modal-overlay" onClick={handleCloseModal}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+      {/* Create Firm Modal */}
+      {showModal && (
+        <div className="modal-overlay" onClick={handleOverlayClick}>
+          <div className="modal-content" onClick={handleModalContentClick}>
+            {/* Progress indicator */}
             <div className="modal-header">
               <div className="modal-progress">
-                {[
-                  "Firm Type",
-                  "Basic Info",
-                  "Jurisdiction",
-                  "Practice Areas",
-                ].map((label, i) => {
-                  const stepNumber = i + 1;
-                  const isActive = stepNumber === step;
-                  const isCompleted = stepNumber < step;
-                  let stepClass = "modal-progress-step";
-                  if (isActive) stepClass += " active";
-                  else if (isCompleted) stepClass += " completed";
-                  return (
-                    <div key={stepNumber} className="modal-progress-item">
-                      <div className={stepClass} />
-                    </div>
-                  );
-                })}
+                {[1, 2, 3, 4].map((stepNumber) => (
+                  <div key={stepNumber} className="modal-progress-item">
+                    <div className={getProgressStepClass(stepNumber)} />
+                  </div>
+                ))}
               </div>
             </div>
 
+            {/* Step content */}
             <div className="modal-body">
-              <h2 className="text-title-3">{currentStepConfig.title}</h2>
+              <h2 className="text-title-3">{currentStepInfo.title}</h2>
               <p className="text-secondary text-callout">
-                {currentStepConfig.subtitle}
+                {currentStepInfo.subtitle}
               </p>
 
               {error && <div className="alert alert-error">{error}</div>}
 
-              {step === 1 && (
+              {/* Step 1: Organization Type */}
+              {currentStep === 1 && (
                 <div className="modal-option-grid">
-                  {ORGANIZATION_TYPES.map((type) => (
+                  {ORGANIZATION_TYPES.map((orgType) => (
                     <button
-                      key={type.id}
+                      key={orgType.id}
                       type="button"
-                      className={`modal-option-card${form.orgType === type.id ? " selected" : ""}`}
-                      onClick={() => updateField("orgType", type.id)}
+                      className={getOptionCardClass(
+                        formData.orgType === orgType.id
+                      )}
+                      onClick={() => updateFormField("orgType", orgType.id)}
                     >
-                      {type.label}
+                      {orgType.label}
                     </button>
                   ))}
                 </div>
               )}
 
-              {step === 2 && (
+              {/* Step 2: Basic Information */}
+              {currentStep === 2 && (
                 <>
                   <div className="form-group">
                     <label className="form-label" htmlFor="orgName">
@@ -272,11 +342,12 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
                       id="orgName"
                       type="text"
                       className="form-input"
-                      value={form.name}
-                      onChange={(e) => updateField("name", e.target.value)}
+                      value={formData.name}
+                      onChange={(e) => updateFormField("name", e.target.value)}
                       placeholder="Smith & Associates"
                     />
                   </div>
+
                   <div className="form-group">
                     <label className="form-label">Firm Size</label>
                     <div className="modal-option-grid">
@@ -284,8 +355,10 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
                         <button
                           key={size.id}
                           type="button"
-                          className={`modal-size-card${form.firmSize === size.id ? " selected" : ""}`}
-                          onClick={() => updateField("firmSize", size.id)}
+                          className={getSizeCardClass(
+                            formData.firmSize === size.id
+                          )}
+                          onClick={() => updateFormField("firmSize", size.id)}
                         >
                           <span className="text-callout">{size.label}</span>
                           <br />
@@ -299,55 +372,66 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
                 </>
               )}
 
-              {step === 3 && (
+              {/* Step 3: Jurisdictions */}
+              {currentStep === 3 && (
                 <div className="modal-body-scroll">
                   <div className="modal-checkbox-grid">
-                    {US_STATES.map((state) => (
-                      <label
-                        key={state}
-                        className={`modal-checkbox-item${form.jurisdictions.includes(state) ? " selected" : ""}`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={form.jurisdictions.includes(state)}
-                          onChange={() =>
-                            toggleArrayField("jurisdictions", state)
-                          }
-                          className="modal-checkbox-input"
-                        />
-                        <span className="text-subhead">{state}</span>
-                      </label>
-                    ))}
+                    {US_STATES.map((state) => {
+                      const isSelected = formData.jurisdictions.includes(state);
+                      return (
+                        <label
+                          key={state}
+                          className={getCheckboxItemClass(isSelected)}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() =>
+                              toggleArrayField("jurisdictions", state)
+                            }
+                            className="modal-checkbox-input"
+                          />
+                          <span className="text-subhead">{state}</span>
+                        </label>
+                      );
+                    })}
                   </div>
                 </div>
               )}
 
-              {step === 4 && (
+              {/* Step 4: Practice Areas */}
+              {currentStep === 4 && (
                 <div className="modal-body-scroll">
                   <div className="modal-checkbox-grid-2col">
-                    {PRACTICE_AREAS.map((area) => (
-                      <label
-                        key={area.id}
-                        className={`modal-checkbox-item${form.practiceAreas.includes(area.id) ? " selected" : ""}`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={form.practiceAreas.includes(area.id)}
-                          onChange={() =>
-                            toggleArrayField("practiceAreas", area.id)
-                          }
-                          className="modal-checkbox-input"
-                        />
-                        <span className="text-subhead">{area.label}</span>
-                      </label>
-                    ))}
+                    {PRACTICE_AREAS.map((area) => {
+                      const isSelected = formData.practiceAreas.includes(
+                        area.id
+                      );
+                      return (
+                        <label
+                          key={area.id}
+                          className={getCheckboxItemClass(isSelected)}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() =>
+                              toggleArrayField("practiceAreas", area.id)
+                            }
+                            className="modal-checkbox-input"
+                          />
+                          <span className="text-subhead">{area.label}</span>
+                        </label>
+                      );
+                    })}
                   </div>
                 </div>
               )}
             </div>
 
+            {/* Modal actions */}
             <div className="modal-actions">
-              {step > 1 && (
+              {currentStep > 1 && (
                 <button
                   type="button"
                   className="btn btn-secondary btn-lg btn-lg-fit"
@@ -356,23 +440,24 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
                   Back
                 </button>
               )}
-              {step < 4 ? (
+
+              {isLastStep ? (
                 <button
                   type="button"
                   className="btn btn-primary btn-lg btn-lg-fit"
-                  onClick={goToNextStep}
-                  disabled={!canProceedToNextStep()}
+                  onClick={handleSubmit}
+                  disabled={!canProceed || isSubmitting}
                 >
-                  Continue
+                  {isSubmitting ? "Creating..." : "Create Firm"}
                 </button>
               ) : (
                 <button
                   type="button"
                   className="btn btn-primary btn-lg btn-lg-fit"
-                  onClick={handleSubmit}
-                  disabled={!canProceedToNextStep() || isSubmitting}
+                  onClick={goToNextStep}
+                  disabled={!canProceed}
                 >
-                  {isSubmitting ? "Creating..." : "Create Firm"}
+                  Continue
                 </button>
               )}
             </div>
