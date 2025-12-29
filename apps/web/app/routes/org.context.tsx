@@ -12,7 +12,7 @@ import type {
 import { AppLayout } from "~/components/AppLayout";
 import { PageLayout } from "~/components/PageLayout";
 import styles from "~/styles/org-context.module.css";
-import { Info, Plus, Settings } from "lucide-react";
+import { Info, Plus } from "lucide-react";
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const cookie = request.headers.get("cookie") || "";
@@ -210,8 +210,8 @@ export default function DocumentsPage({ loaderData }: Route.ComponentProps) {
   return (
     <AppLayout user={user} org={org} currentPath="/org/context">
       <PageLayout
-        title="Org Context"
-        subtitle="Upload your firm's internal documents for Docket to use when answering questions."
+        title="Knowledge Base"
+        subtitle="Upload internal procedures and policies for Docket to reference when answering questions."
       >
         <section className="infoSection">
           <Info
@@ -221,8 +221,7 @@ export default function DocumentsPage({ loaderData }: Route.ComponentProps) {
           />
           <div>
             <h3 className="text-headline">
-              Upload procedures, templates, and policies. Avoid sensitive client
-              data.
+              Available to all members. Avoid uploading sensitive client data.
             </h3>
           </div>
         </section>
@@ -268,10 +267,10 @@ export default function DocumentsPage({ loaderData }: Route.ComponentProps) {
                     color={"var(--text-primary)"}
                   />
                   <span className={styles.uploadText}>
-                    Drop a file here or click to upload
+                    Drop file or click to upload
                   </span>
                   <span className={styles.uploadHint}>
-                    PDF, DOCX, XLSX, or text files (max 25MB)
+                    PDF, Word, Excel, or text files (max 25MB)
                   </span>
                 </>
               )}
@@ -294,7 +293,6 @@ export default function DocumentsPage({ loaderData }: Route.ComponentProps) {
                   <tr>
                     <th>Filename</th>
                     <th>Size</th>
-                    <th>Chunks</th>
                     <th>Uploaded</th>
                     <th>Actions</th>
                   </tr>
@@ -304,7 +302,6 @@ export default function DocumentsPage({ loaderData }: Route.ComponentProps) {
                     <tr key={doc.id}>
                       <td>{doc.filename}</td>
                       <td>{formatFileSize(doc.size)}</td>
-                      <td>{doc.chunkCount}</td>
                       <td>{new Date(doc.uploadedAt).toLocaleDateString()}</td>
                       <td style={{ textAlign: "right" }}>
                         <button
@@ -320,30 +317,6 @@ export default function DocumentsPage({ loaderData }: Route.ComponentProps) {
               </table>
             </div>
           )}
-        </section>
-
-        {/* Information Section */}
-        <section className="infoSection">
-          <Settings
-            strokeWidth={2}
-            size={16}
-            style={{ marginTop: "1.5px", minHeight: "16px", minWidth: "16px" }}
-          />
-
-          <div>
-            <h3 className="text-headline">How Org Context works</h3>
-            <ol
-              className="text-secondary"
-              style={{ paddingLeft: "1.25rem", lineHeight: "1.75" }}
-            >
-              <li>Upload a document (PDF, DOCX, Markdown, etc.)</li>
-              <li>Docket extracts text and creates vector embeddings</li>
-              <li>
-                When users ask questions, relevant chunks are included in
-                context
-              </li>
-            </ol>
-          </div>
         </section>
       </PageLayout>
     </AppLayout>

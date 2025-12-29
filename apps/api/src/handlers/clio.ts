@@ -155,10 +155,18 @@ export async function handleClioStatus(
     return Response.json({ connected: false, schemaLoaded: false });
   }
 
-  const status = (await response.json()) as {
+  const doStatus = (await response.json()) as {
     connected: boolean;
-    schemaLoaded: boolean;
+    customFieldsCount: number;
     schemaVersion?: number;
+    lastSyncedAt?: number;
+  };
+
+  const status = {
+    connected: doStatus.connected,
+    schemaLoaded: doStatus.customFieldsCount > 0,
+    schemaVersion: doStatus.schemaVersion,
+    lastSyncedAt: doStatus.lastSyncedAt,
   };
 
   log.debug("Clio status retrieved", { ...status, userId, orgId });

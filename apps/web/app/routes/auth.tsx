@@ -214,7 +214,7 @@ export default function AuthPage() {
           </h1>
           <p className={styles.subtitle}>
             This invitation to join {invitation.orgName} has expired. Please
-            contact your organization admin.
+            contact your firm admin.
           </p>
           <Link to="/auth" className="btn btn-primary btn-lg">
             Back to Sign In

@@ -95,7 +95,7 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
                   className={navItemClass("/org/context", currentPath)}
                 >
                   <FileText className={styles.navIcon} strokeWidth={1.75} />
-                  Organization Context
+                  Knowledge Base
                 </Link>
               </li>
               <li>

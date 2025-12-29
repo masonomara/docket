@@ -1015,6 +1015,7 @@ Only include modifiedRequest if intent is "modify".`;
       connected: tokens !== null,
       customFieldsCount: this.customFieldsCache.length,
       schemaVersion: this.schemaVersion,
+      lastSyncedAt: this.customFieldsFetchedAt,
     });
   }
 

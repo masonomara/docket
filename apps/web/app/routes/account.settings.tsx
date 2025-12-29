@@ -147,11 +147,10 @@ export default function AccountSettingsPage({
           message?: string;
         };
 
-        // Handle special case where user owns organizations
+        // Handle special case where user owns firms
         if (data.error === "sole_owner") {
           throw new Error(
-            data.message ||
-              "You must transfer ownership of your organizations first"
+            data.message || "You must transfer ownership of your firm first"
           );
         }
 
@@ -291,12 +290,10 @@ export default function AccountSettingsPage({
                   Your account (<strong>{deletionPreview.user?.email}</strong>)
                 </li>
                 {deletionPreview.orgsOwned > 0 && (
-                  <li>{deletionPreview.orgsOwned} organization(s) you own</li>
+                  <li>{deletionPreview.orgsOwned} firm(s) you own</li>
                 )}
                 {deletionPreview.orgMemberships > 0 && (
-                  <li>
-                    {deletionPreview.orgMemberships} organization membership(s)
-                  </li>
+                  <li>{deletionPreview.orgMemberships} firm membership(s)</li>
                 )}
                 <li>All your conversations and messages</li>
               </ul>

@@ -126,10 +126,10 @@ export default function SettingsPage({ loaderData }: Route.ComponentProps) {
 
       if (!response.ok) {
         const data = (await response.json()) as { error?: string };
-        throw new Error(data.error || "Failed to update organization");
+        throw new Error(data.error || "Failed to update firm");
       }
 
-      setSuccess("Organization updated");
+      setSuccess("Firm updated");
       revalidator.revalidate();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to save";
@@ -189,7 +189,7 @@ export default function SettingsPage({ loaderData }: Route.ComponentProps) {
 
       if (!response.ok) {
         const data = (await response.json()) as { error?: string };
-        throw new Error(data.error || "Failed to delete organization");
+        throw new Error(data.error || "Failed to delete firm");
       }
 
       navigate("/dashboard");
@@ -209,17 +209,17 @@ export default function SettingsPage({ loaderData }: Route.ComponentProps) {
 
   return (
     <AppLayout user={user} org={org} currentPath="/org/settings">
-      <PageLayout title="Organization Settings">
+      <PageLayout title="Firm Settings">
         {error && <div className="alert alert-error">{error}</div>}
         {success && <div className="alert alert-success">{success}</div>}
 
-        {/* Organization Information Section */}
+        {/* Firm Information Section */}
         <section>
-          <h2 className="text-title-3">Organization</h2>
+          <h2 className="text-title-3">Firm</h2>
           <div className="form-card">
             <div className="form-group">
               <label htmlFor="orgName" className="form-label">
-                Organization Name
+                Firm Name
               </label>
               <input
                 id="orgName"
@@ -327,27 +327,27 @@ export default function SettingsPage({ loaderData }: Route.ComponentProps) {
             <h2 className="text-title-3">Danger Zone</h2>
             <div className="info-card">
               <div>
-                <h3 className="text-headline">Delete Organization</h3>
+                <h3 className="text-headline">Delete Firm</h3>
                 <p className="text-secondary">
-                  Permanently delete this organization and all its data. This
-                  action cannot be undone.
+                  Permanently delete this firm and all its data. This action
+                  cannot be undone.
                 </p>
               </div>
               <button
                 onClick={handleShowDeleteModal}
                 className="btn btn-sm btn-danger"
               >
-                Delete Organization
+                Delete Firm
               </button>
             </div>
           </section>
         )}
 
-        {/* Delete Organization Modal */}
+        {/* Delete Firm Modal */}
         {showDeleteModal && deletionPreview && (
           <div className="modal-overlay" onClick={handleCloseDeleteModal}>
             <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-              <h2 className="modal-title">Delete Organization</h2>
+              <h2 className="modal-title">Delete Firm</h2>
 
               <div
                 className="alert alert-error"
@@ -358,11 +358,11 @@ export default function SettingsPage({ loaderData }: Route.ComponentProps) {
 
               <ul className="text-secondary text-callout">
                 <li>
-                  <strong>{deletionPreview.org?.name}</strong> organization
+                  <strong>{deletionPreview.org?.name}</strong>
                 </li>
                 <li>{deletionPreview.members} member(s)</li>
                 <li>{deletionPreview.invitations} pending invitation(s)</li>
-                <li>{deletionPreview.orgContextChunks} document chunk(s)</li>
+                <li>{deletionPreview.orgContextChunks} document(s)</li>
                 <li>All conversations, Clio connections, and audit logs</li>
               </ul>
 
@@ -376,7 +376,7 @@ export default function SettingsPage({ loaderData }: Route.ComponentProps) {
                   value={confirmName}
                   onChange={(e) => setConfirmName(e.target.value)}
                   className="form-input"
-                  placeholder="Organization name"
+                  placeholder="Firm name"
                 />
               </div>
 
@@ -394,7 +394,7 @@ export default function SettingsPage({ loaderData }: Route.ComponentProps) {
                   disabled={isDeleting || confirmName !== org.org.name}
                   className="btn btn-danger btn-lg btn-lg-fit"
                 >
-                  {isDeleting ? "Deleting..." : "Delete Organization"}
+                  {isDeleting ? "Deleting..." : "Delete Firm"}
                 </button>
               </div>
             </div>

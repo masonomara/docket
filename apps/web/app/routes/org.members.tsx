@@ -134,7 +134,7 @@ export default function MembersPage({ loaderData }: Route.ComponentProps) {
   }
 
   async function handleRemoveMember(member: OrgMember) {
-    const confirmed = confirm(`Remove ${member.name} from the organization?`);
+    const confirmed = confirm(`Remove ${member.name} from the firm?`);
     if (!confirmed) {
       return;
     }
@@ -273,7 +273,7 @@ export default function MembersPage({ loaderData }: Route.ComponentProps) {
                             )}
                             {canEditRole && (
                               <button
-                                className="btn-primary btn-primary-danger"
+                                className="btn btn-sm btn-danger"
                                 onClick={() => handleRemoveMember(member)}
                               >
                                 Remove
@@ -565,7 +565,7 @@ function TransferOwnershipModal({
               value={confirmName}
               onChange={(e) => setConfirmName(e.target.value)}
               className="form-input"
-              placeholder="Organization name"
+              placeholder="Firm name"
               required
             />
           </div>

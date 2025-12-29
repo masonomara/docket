@@ -93,7 +93,7 @@ export default function AcceptInvitePage({ loaderData }: Route.ComponentProps) {
     return (
       <ErrorPage
         title="Invitation Expired"
-        message={`This invitation to join ${invitation.orgName} has expired. Please contact your organization admin.`}
+        message={`This invitation to join ${invitation.orgName} has expired. Please contact your firm admin.`}
       />
     );
   }
@@ -165,7 +165,7 @@ export default function AcceptInvitePage({ loaderData }: Route.ComponentProps) {
           disabled={isAccepting}
           className={styles.submitButton}
         >
-          {isAccepting ? "Joining..." : "Join Organization"}
+          {isAccepting ? "Joining..." : "Join Firm"}
         </button>
 
         <p className={styles.footer}>

@@ -3,7 +3,7 @@ import { redirect, useSearchParams, useRevalidator } from "react-router";
 import type { Route } from "./+types/org.clio";
 import { apiFetch } from "~/lib/api";
 import { API_URL } from "~/lib/auth-client";
-import { Cable, LockKeyhole, Plus, RotateCw } from "lucide-react";
+import { Plus, RotateCw } from "lucide-react";
 import type { SessionResponse, OrgMembership } from "~/lib/types";
 import { AppLayout } from "~/components/AppLayout";
 import { PageLayout } from "~/components/PageLayout";
@@ -12,6 +12,7 @@ interface ClioStatus {
   connected: boolean;
   schemaLoaded: boolean;
   schemaVersion?: number;
+  lastSyncedAt?: number;
 }
 
 // Error messages for OAuth error codes
@@ -138,7 +139,7 @@ export default function ClioPage({ loaderData }: Route.ComponentProps) {
     }
   }
 
-  async function handleRefreshSchema() {
+  async function handleSync() {
     setError(null);
     setSuccess(null);
     setIsRefreshing(true);
@@ -151,25 +152,23 @@ export default function ClioPage({ loaderData }: Route.ComponentProps) {
 
       if (!response.ok) {
         const data = (await response.json()) as { error?: string };
-        throw new Error(data.error || "Failed to refresh schema");
+        throw new Error(data.error || "Failed to sync");
       }
 
-      const result = (await response.json()) as { count: number };
-      setSuccess(`Schema refreshed. ${result.count} object types loaded.`);
+      setSuccess("Clio configuration synced.");
       revalidator.revalidate();
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Failed to refresh schema";
+      const message = err instanceof Error ? err.message : "Failed to sync";
       setError(message);
     } finally {
       setIsRefreshing(false);
     }
   }
 
-  // Build schema version display text
-  const schemaVersionText = clioStatus.schemaLoaded
-    ? `Loaded (v${clioStatus.schemaVersion || "?"})`
-    : "Not Loaded";
+  // Format last synced date
+  const lastSyncedText = clioStatus.lastSyncedAt
+    ? `Last synced ${new Date(clioStatus.lastSyncedAt).toLocaleDateString()}`
+    : null;
 
   const statusIndicator = (
     <div className="status-indicator btn btn-sm btn-secondary">
@@ -184,16 +183,10 @@ export default function ClioPage({ loaderData }: Route.ComponentProps) {
   const actionButtons = (
     <>
       {statusIndicator}
-      {!clioStatus.connected && (
-        <button onClick={handleConnect} className="btn btn-primary btn-sm">
-          <Plus strokeWidth={1.75} size={16} />
-          Connect to Clio
-        </button>
-      )}
       {clioStatus.connected && (
         <button onClick={handleConnect} className="btn btn-secondary btn-sm">
           <RotateCw strokeWidth={1.75} size={16} />
-          Refresh
+          Reconnect
         </button>
       )}
     </>
@@ -203,91 +196,67 @@ export default function ClioPage({ loaderData }: Route.ComponentProps) {
     <AppLayout user={user} org={org} currentPath="/org/clio">
       <PageLayout
         title="Clio Connection"
-        subtitle="Connect your Clio account to let Docket query and manage your case data."
+        subtitle="Connect your Clio account to query matters, contacts, and calendar data."
         actions={actionButtons}
       >
         {error && <div className="alert alert-error">{error}</div>}
         {success && <div className="alert alert-success">{success}</div>}
 
-        {/* Connection Status Section */}
-        <section>
-          <h2 className="text-title-3">Connection Status</h2>
-          <div className="tableWrapper">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Clio Account</th>
-                  <th>Schema Cache</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>
-                    {clioStatus.connected ? "Connected" : "Not Connected"}
-                  </td>
-                  <td>{schemaVersionText}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        {/* Schema Management Section (Admin only, when connected) */}
-        {isAdmin && clioStatus.connected && (
+        {/* Connect to Clio - show only when not connected */}
+        {!clioStatus.connected && (
           <section>
-            <h2 className="text-title-3">Schema Management</h2>
-
+            <h2 className="text-title-3">Connect to Clio</h2>
             <div className="info-card">
               <div>
-                <h3 className="text-headline">Refresh Clio Schema</h3>
-
-                <p className="section-description">
-                  Refresh the schema cache to pick up Clio configuration
-                  changes.
-                </p>
+                <h3 className="text-headline">What Docket does with Clio</h3>
+                <ul
+                  className="text-secondary"
+                  style={{ marginTop: ".2em", marginLeft: "1em" }}
+                >
+                  <li>Query matters, contacts, tasks, and calendar entries</li>
+                  <li>Create and update records</li>
+                  <li>Search across your firm&apos;s case data</li>
+                  <li>
+                    Access is encrypted and limited to your Clio permissions
+                  </li>
+                </ul>
               </div>
               <button
-                onClick={handleRefreshSchema}
-                disabled={isRefreshing}
-                className="btn btn-sm btn-secondary"
+                onClick={handleConnect}
+                className="btn btn-sm btn-primary"
               >
-                {isRefreshing ? "Refreshing..." : "Refresh Schema"}
+                <Plus strokeWidth={1.75} size={16} />
+                Connect to Clio
               </button>
             </div>
           </section>
         )}
 
-        {/* Information Section */}
-        <section className="infoSection">
-          <Cable
-            strokeWidth={2}
-            size={16}
-            style={{ marginTop: "1.5px", minHeight: "16px", minWidth: "16px" }}
-          />
-          <div>
-            <h3 className="text-headline">What Docket can do with Clio</h3>
-            <ul className="text-secondary">
-              <li>Query matters, contacts, tasks, and calendar entries</li>
-              <li>Create and update records (Admin only, with confirmation)</li>
-              <li>Search across your firm&apos;s case data</li>
-            </ul>
-          </div>
-        </section>
-        <section className="infoSection">
-          <LockKeyhole
-            strokeWidth={2}
-            size={16}
-            style={{ marginTop: "1.5px", minHeight: "16px", minWidth: "16px" }}
-          />
-          <div>
-            <h3 className="text-headline">Security</h3>
-            <ul className="text-secondary">
-              <li>Tokens are encrypted and stored securely</li>
-              <li>Access is limited to your Clio permissions</li>
-              <li>Write operations require explicit confirmation</li>
-            </ul>
-          </div>
-        </section>
+        {/* Sync Section (Admin only, when connected) */}
+        {isAdmin && clioStatus.connected && (
+          <section>
+            <h2 className="text-title-3">Sync Clio Configuration</h2>
+
+            <div className="info-card">
+              <div>
+                <h3 className="text-headline">
+                  {lastSyncedText || "Not synced yet"}
+                </h3>
+                <p className="section-description">
+                  If you&apos;ve added custom fields or changed your Clio setup,
+                  sync to update Docket. Auto-syncs hourly.
+                </p>
+              </div>
+              <button
+                onClick={handleSync}
+                disabled={isRefreshing}
+                className="btn btn-sm btn-secondary"
+              >
+                {isRefreshing ? "Syncing..." : "Sync Now"}
+              </button>
+            </div>
+          </section>
+        )}
 
         {/* Disconnect Section (only when connected) */}
         {clioStatus.connected && (
@@ -298,8 +267,7 @@ export default function ClioPage({ loaderData }: Route.ComponentProps) {
               <div>
                 <h3 className="text-headline">Disconnect Clio</h3>
                 <p className="section-description">
-                  Disconnecting will revoke Docket&apos;s access to your Clio
-                  account. You can reconnect at any time.
+                  Revokes Docket&apos;s access. You can reconnect anytime.
                 </p>
               </div>
               <button
@@ -323,7 +291,7 @@ export default function ClioPage({ loaderData }: Route.ComponentProps) {
             <h2 className="text-title-3">Disconnect Clio?</h2>
             <p className="text-secondary">
               This will revoke Docket&apos;s access to your Clio account. You
-              can reconnect at any time.
+              can reconnect anytime.
             </p>
             <div className="modal-actions">
               <button

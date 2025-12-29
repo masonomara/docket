@@ -57,6 +57,7 @@ dist
 !.dev.vars.example
 .env*
 !.env.example
+!.env.test.example
 .wrangler/
 
 
