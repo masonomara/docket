@@ -11,11 +11,7 @@ import {
 import globalStyles from "./styles/global.css?url";
 import styles from "./styles/auth.module.css";
 
-/**
- * Links to load for every page.
- */
 export const links: LinksFunction = () => [
-  // Google Fonts
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
   {
     rel: "preconnect",
@@ -26,13 +22,9 @@ export const links: LinksFunction = () => [
     rel: "stylesheet",
     href: "https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&display=swap",
   },
-  // Global styles
   { rel: "stylesheet", href: globalStyles },
 ];
 
-/**
- * Root layout component that wraps all pages.
- */
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
@@ -43,9 +35,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Links />
       </head>
       <body>
-        {/* Page content */}
         {children}
-
         <ScrollRestoration />
         <Scripts />
       </body>
@@ -53,19 +43,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
 }
 
-/**
- * Root route component.
- */
 export default function Root() {
   return <Outlet />;
 }
 
-/**
- * Error boundary for uncaught errors.
- */
 export function ErrorBoundary() {
   const error = useRouteError();
-
   let title = "Something went wrong";
   let message = "An unexpected error occurred. Please try again.";
 

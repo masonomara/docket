@@ -1,38 +1,55 @@
 import { API_URL } from "./auth-client";
 
 /**
- * Generates a short request ID for tracing.
+ * Generate a short request ID for tracing requests through the system.
  */
 export function generateRequestId(): string {
   return crypto.randomUUID().slice(0, 8);
 }
 
-const MAX_RETRIES = 2;
-const BASE_DELAY_MS = 500;
+/**
+ * Retry delays in milliseconds for failed requests.
+ * We use exponential backoff: 500ms, then 1000ms.
+ */
+const RETRY_DELAYS = [500, 1000];
+const MAX_ATTEMPTS = 3;
 
+/**
+ * Wraps a fetch call with automatic retry logic for server errors (5xx).
+ * Client errors (4xx) are returned immediately without retry.
+ */
 async function fetchWithRetry(
   doFetch: () => Promise<Response>
 ): Promise<Response> {
   let lastResponse: Response | undefined;
 
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const response = await doFetch();
 
+    // Success or client error - return immediately
     if (response.status < 500) {
       return response;
     }
 
+    // Server error - save response and maybe retry
     lastResponse = response;
 
-    if (attempt < MAX_RETRIES) {
-      const delay = BASE_DELAY_MS * Math.pow(2, attempt);
-      await new Promise((resolve) => setTimeout(resolve, delay));
+    // Don't wait after the last attempt
+    const isLastAttempt = attempt === MAX_ATTEMPTS - 1;
+    if (!isLastAttempt) {
+      await new Promise((resolve) =>
+        setTimeout(resolve, RETRY_DELAYS[attempt])
+      );
     }
   }
 
+  // All retries exhausted, return the last failed response
   return lastResponse!;
 }
 
+/**
+ * API endpoint paths. Dynamic paths are functions that take an ID parameter.
+ */
 export const ENDPOINTS = {
   auth: {
     session: "/api/auth/get-session",
@@ -69,13 +86,22 @@ export const ENDPOINTS = {
 } as const;
 
 /**
- * Makes an authenticated API request, using the service binding when available
- * (for server-side requests in Cloudflare Workers) or falling back to fetch.
- *
- * @param context - The loader/action context from React Router
- * @param path - API path like "/api/auth/get-session"
- * @param cookie - The cookie header from the incoming request
- * @param requestId - Request ID for tracing (passed in X-Request-Id header)
+ * The shape of the Cloudflare context object passed to loaders.
+ * We only care about the API service binding for direct worker-to-worker calls.
+ */
+interface CloudflareContext {
+  cloudflare?: {
+    env?: {
+      API?: {
+        fetch: typeof fetch;
+      };
+    };
+  };
+}
+
+/**
+ * Fetch from the API, using service binding when available (faster, no network hop)
+ * or falling back to regular HTTP fetch in development.
  */
 export async function apiFetch(
   context: unknown,
@@ -83,36 +109,28 @@ export async function apiFetch(
   cookie: string,
   requestId?: string
 ): Promise<Response> {
+  // Build headers
   const headers: Record<string, string> = { Cookie: cookie };
   if (requestId) {
     headers["X-Request-Id"] = requestId;
   }
-  const requestOptions = { headers };
 
-  // Try to use the Cloudflare service binding if available (server-side)
-  const cloudflareContext = context as {
-    cloudflare?: {
-      env?: {
-        API?: { fetch: typeof fetch };
-      };
-    };
-  };
+  // Try to use the Cloudflare service binding for worker-to-worker calls
+  const cloudflareContext = context as CloudflareContext;
+  const apiBinding = cloudflareContext.cloudflare?.env?.API;
 
-  const serviceBinding = cloudflareContext.cloudflare?.env?.API;
-
-  if (serviceBinding) {
+  if (apiBinding) {
     try {
-      return await fetchWithRetry(async () => {
-        const request = new Request(
-          `https://api.docketadmin.com${path}`,
-          requestOptions
-        );
-        return serviceBinding.fetch(request);
+      const request = new Request(`https://api.docketadmin.com${path}`, {
+        headers,
       });
+      return await fetchWithRetry(() => apiBinding.fetch(request));
     } catch (error) {
       console.error("Service binding fetch failed:", error);
+      // Fall through to regular fetch
     }
   }
 
-  return fetchWithRetry(() => fetch(`${API_URL}${path}`, requestOptions));
+  // Fallback to regular HTTP fetch (used in development)
+  return fetchWithRetry(() => fetch(`${API_URL}${path}`, { headers }));
 }
