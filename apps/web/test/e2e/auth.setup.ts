@@ -1,14 +1,23 @@
-import { test as setup, expect } from "@playwright/test";
-
-const authFile = "test/e2e/.auth/user.json";
-
 /**
- * Authentication setup for E2E tests.
+ * Auth Setup for E2E Tests
  *
- * This logs in with a test account and saves the browser state.
- * Handles cases where user is already logged in, needs to log in, or needs to sign up.
+ * This setup file authenticates a test user and saves the session state
+ * so that subsequent tests can run as an authenticated user.
+ *
+ * To run authenticated tests, set these environment variables:
+ *   - TEST_USER_EMAIL: Email of the test account
+ *   - TEST_USER_PASSWORD: Password for the test account
+ *   - TEST_USER_NAME: Display name (used if creating a new account)
+ *
+ * Or set E2E_AUTH_ENABLED=true to use the defaults.
  */
 
+import { test as setup, expect } from "@playwright/test";
+
+// Where to save the authenticated session
+const AUTH_STATE_FILE = "test/e2e/.auth/user.json";
+
+// Test user credentials (from env or defaults for local testing)
 const TEST_USER = {
   email: process.env.TEST_USER_EMAIL || "test@e2e.docket.local",
   password: process.env.TEST_USER_PASSWORD || "TestPassword123!",
@@ -16,92 +25,96 @@ const TEST_USER = {
 };
 
 setup("authenticate", async ({ page }) => {
-  setup.skip(
-    !process.env.TEST_USER_EMAIL && !process.env.E2E_AUTH_ENABLED,
-    "Skipped: Set TEST_USER_EMAIL or E2E_AUTH_ENABLED to run authenticated tests"
-  );
+  // Skip if auth testing isn't enabled
+  const authEnabled =
+    process.env.TEST_USER_EMAIL || process.env.E2E_AUTH_ENABLED;
 
-  // First check if we're already logged in by going to dashboard
-  await page.goto("/dashboard");
-  await page.waitForTimeout(2000);
-
-  // If we're on dashboard, we're already logged in
-  if (page.url().includes("/dashboard")) {
-    console.log(`Already logged in, saving state`);
-    await page.context().storageState({ path: authFile });
+  if (!authEnabled) {
+    setup.skip(
+      true,
+      "Skipped: Set TEST_USER_EMAIL or E2E_AUTH_ENABLED to run authenticated tests"
+    );
     return;
   }
 
-  // Not logged in, go to auth page
+  // First, check if we're already logged in
+  await page.goto("/dashboard");
+  await page.waitForTimeout(2000);
+
+  const alreadyLoggedIn = page.url().includes("/dashboard");
+  if (alreadyLoggedIn) {
+    await page.context().storageState({ path: AUTH_STATE_FILE });
+    return;
+  }
+
+  // Navigate to auth page and enter email
   await page.goto("/auth");
   await page.waitForTimeout(1000);
 
-  // Enter email
   await page.getByLabel(/email/i).fill(TEST_USER.email);
   await page.getByRole("button", { name: "Continue", exact: true }).click();
-
-  // Wait for form transition
   await page.waitForTimeout(1500);
 
-  // Check which form appeared
-  const loginHeading = page.getByRole("heading", { name: /welcome back/i });
-  const signupHeading = page.getByRole("heading", {
-    name: /create your account/i,
-  });
-  const oauthHeading = page.getByText(/uses Google sign-in/i);
+  // Determine which auth flow we're in
+  const isLoginPage = await page
+    .getByRole("heading", { name: /welcome back/i })
+    .isVisible()
+    .catch(() => false);
 
-  const isLogin = await loginHeading.isVisible().catch(() => false);
-  const isSignup = await signupHeading.isVisible().catch(() => false);
-  const isOAuth = await oauthHeading.isVisible().catch(() => false);
+  const isSignupPage = await page
+    .getByRole("heading", { name: /create your account/i })
+    .isVisible()
+    .catch(() => false);
 
-  if (isOAuth) {
+  const isOAuthOnlyPage = await page
+    .getByText(/uses Google sign-in/i)
+    .isVisible()
+    .catch(() => false);
+
+  // Handle OAuth-only accounts (can't test these with password)
+  if (isOAuthOnlyPage) {
     throw new Error(
       `Account ${TEST_USER.email} uses Google sign-in. ` +
         `Create a password-based test account instead.`
     );
   }
 
-  if (isSignup) {
-    // Account doesn't exist - create it
-    console.log(`Creating new test account: ${TEST_USER.email}`);
-
+  // Handle new account signup
+  if (isSignupPage) {
     await page.getByLabel(/name/i).fill(TEST_USER.name);
     await page.getByLabel(/password/i).fill(TEST_USER.password);
     await page.getByRole("button", { name: /sign up/i }).click();
-
-    // Check if we need email verification
     await page.waitForTimeout(2000);
 
+    // Check if we made it to dashboard
     if (page.url().includes("/dashboard")) {
-      // No verification needed, we're in
-      await page.context().storageState({ path: authFile });
+      await page.context().storageState({ path: AUTH_STATE_FILE });
       return;
     }
 
-    const checkEmailHeading = page.getByRole("heading", {
-      name: /check your email/i,
-    });
-    const needsVerification = await checkEmailHeading
+    // Check if email verification is required
+    const needsVerification = await page
+      .getByRole("heading", { name: /check your email/i })
       .isVisible()
       .catch(() => false);
 
     if (needsVerification) {
       throw new Error(
-        `Account created for ${TEST_USER.email} but requires email verification.\n` +
-          `Please verify the email and run tests again.`
+        `Account created for ${TEST_USER.email} but requires email verification. ` +
+          `Verify the account manually or use a pre-verified test account.`
       );
     }
-  } else if (isLogin) {
-    // Account exists - log in
-    console.log(`Logging in as: ${TEST_USER.email}`);
+  }
 
+  // Handle existing account login
+  if (isLoginPage) {
     await page.getByLabel(/password/i).fill(TEST_USER.password);
     await page.getByRole("button", { name: /log in/i }).click();
-
-    // Wait for redirect
     await expect(page).toHaveURL("/dashboard", { timeout: 10000 });
-  } else {
-    // Take a screenshot to debug
+  }
+
+  // If we got here without handling a known state, something went wrong
+  if (!isLoginPage && !isSignupPage) {
     await page.screenshot({ path: "test-results/auth-debug.png" });
     throw new Error(
       `Unexpected auth state for ${TEST_USER.email}. ` +
@@ -109,7 +122,6 @@ setup("authenticate", async ({ page }) => {
     );
   }
 
-  // Save the authenticated state
-  await page.context().storageState({ path: authFile });
-  console.log(`Auth state saved to ${authFile}`);
+  // Save the authenticated session
+  await page.context().storageState({ path: AUTH_STATE_FILE });
 });
