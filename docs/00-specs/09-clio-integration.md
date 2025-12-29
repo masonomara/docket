@@ -28,12 +28,14 @@ Base URL: `https://app.clio.com/api/v4/`
 Clio has no schema introspection API - base object fields are documented in the API Reference and known to the LLM. Only custom fields (firm-specific) need to be fetched dynamically.
 
 **Fetch custom fields per-org:**
+
 ```
 GET /api/v4/custom_fields.json?parent_type=Matter&deleted=false
 GET /api/v4/custom_fields.json?parent_type=Contact&deleted=false
 ```
 
 Cached in DO SQLite with `fetched_at` timestamp. Lazy refresh (automatic, no user action):
+
 - First Clio API call (no cached custom fields)
 - Cache older than 1 hour (checked on each Clio API call)
 - Developer bumps `CLIO_SCHEMA_VERSION`
@@ -45,6 +47,52 @@ Per-user tokens stored encrypted in DO Storage (AES-GCM). Access tokens expire a
 ## Clio Multi-Tenant Architecture
 
 Clio's OAuth model supports multi-tenant applications. Each user authorizes Docket independently via OAuth, so each authorization creates a distinct `access_token` for that user. Tokens are per-user, not per-firm. Docket stores tokens in DO Storage keyed by `user_id`. Rate limits apply per access token, so heavy usage by one firm doesn't affect others. Each org's DO stores its users' Clio tokens in DO Storage (encrypted AES-GCM). Cross-org token access is architecturally impossible—DOs are isolated by `org_id`
+
+## Clio Request Body Format
+
+**POST/PATCH body structure:**
+
+```json
+{
+  "data": {
+    "field1": "value1",
+    "field2": "value2"
+  }
+}
+```
+
+Do NOT nest under object type. This is wrong:
+
+```json
+{
+  "data": {
+    "contact": { "first_name": "Test" }
+  }
+}
+```
+
+This is correct:
+
+```json
+{
+  "data": {
+    "first_name": "Test",
+    "last_name": "Smith",
+    "type": "Person"
+  }
+}
+```
+
+**Contact required fields:**
+
+- `type`: Must be `"Person"` or `"Company"`
+- For Person: `first_name` and `last_name`
+- For Company: `name`
+
+**Matter required fields:**
+
+- `description`: Matter title
+- `client`: Contact ID reference (the client must exist first)
 
 ## Clio Error Handling
 

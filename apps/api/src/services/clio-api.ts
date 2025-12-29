@@ -208,21 +208,18 @@ export function buildReadQuery(
 /**
  * Build a POST body for creating a new Clio object.
  *
- * Clio expects the format: { data: { objectType: { ...fields } } }
+ * Clio expects the format: { data: { ...fields } }
  */
 export function buildCreateBody(
   objectType: string,
   data: Record<string, unknown>
 ): { endpoint: string; body: Record<string, unknown> } {
   const endpoint = getEndpoint(objectType);
-  const objectKey = objectType.toLowerCase();
 
   return {
     endpoint: `/${endpoint}.json`,
     body: {
-      data: {
-        [objectKey]: data,
-      },
+      data,
     },
   };
 }
@@ -230,7 +227,7 @@ export function buildCreateBody(
 /**
  * Build a PATCH body for updating an existing Clio object.
  *
- * Clio expects the format: { data: { objectType: { ...fields } } }
+ * Clio expects the format: { data: { ...fields } }
  */
 export function buildUpdateBody(
   objectType: string,
@@ -238,14 +235,11 @@ export function buildUpdateBody(
   data: Record<string, unknown>
 ): { endpoint: string; body: Record<string, unknown> } {
   const endpoint = getEndpoint(objectType);
-  const objectKey = objectType.toLowerCase();
 
   return {
     endpoint: `/${endpoint}/${id}.json`,
     body: {
-      data: {
-        [objectKey]: data,
-      },
+      data,
     },
   };
 }

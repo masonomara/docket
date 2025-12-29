@@ -290,6 +290,7 @@ Created `src/storage/r2-paths.ts` with:
 - `R2Paths` object for consistent path generation (docs, audit log prefixes, archived conversations)
 
 Audit logging moved to `TenantDO.appendAuditLog()` with one-object-per-entry pattern:
+
 - Each audit entry stored as separate R2 object: `orgs/{org}/audit/YYYY/MM/DD/{timestamp}-{uuid}.json`
 - No read-modify-write — eliminates race conditions
 - List by date prefix for retrieval
@@ -333,3 +334,29 @@ Interactive Phase 3 verification page with:
 - **Vectorize tab**: Embed text and query with org_id filtering
 
 Auto-runs checks on load. All actions use query params for API calls.
+
+## Step 8: Clio API Smoke Test
+
+### 8.1 Test Endpoints (Removed)
+
+Created temporary test endpoints to verify Clio CRUD operations:
+
+- `POST /api/test/clio` - Test read/create/update/delete with structured params
+- `POST /api/test/clio-raw` - Send raw endpoint/body to debug format issues
+
+**Removed after testing completed.**
+
+### 8.2 Fixed Request Body Format
+
+Discovered Clio expects `{ data: { ...fields } }` not `{ data: { contact: { ...fields } } }`.
+
+Updated `buildCreateBody` and `buildUpdateBody` in `clio-api.ts`. Added documentation to `09-clio-integration.md`.
+
+### 8.3 CRUD Test Results
+
+All operations passed:
+
+- CREATE: Contact created successfully
+- READ: Contact retrieved by ID
+- UPDATE: Contact modified
+- DELETE: Contact removed (204 No Content)
