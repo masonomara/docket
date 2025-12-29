@@ -2,16 +2,6 @@ import { Env } from "../types/env";
 import { KB_CONFIG } from "../config/kb";
 import { createLogger } from "../lib/logger";
 
-// ============================================================================
-// Types
-// ============================================================================
-
-interface OrgSettings {
-  jurisdictions: string[];
-  practiceTypes: string[];
-  firmSize: string | null;
-}
-
 interface ChunkWithSource {
   content: string;
   source: string;
@@ -22,21 +12,16 @@ export interface RAGContext {
   orgChunks: ChunkWithSource[];
 }
 
-interface VectorMatch {
-  id: string;
-  score: number;
+interface OrgSettings {
+  jurisdictions: string[];
+  practiceTypes: string[];
+  firmSize: string | null;
 }
 
-// Maximum number of filter values we'll send to Vectorize
-const MAX_FILTER_VALUES = 5;
-
-// ============================================================================
-// Main Entry Points
-// ============================================================================
-
 /**
- * Retrieves relevant context from both the Knowledge Base and the
- * organization's uploaded documents.
+ * Main entry point for RAG context retrieval.
+ * Embeds the query, then fetches relevant chunks from both the
+ * shared Knowledge Base and the org-specific context.
  */
 export async function retrieveRAGContext(
   env: Env,
@@ -44,204 +29,168 @@ export async function retrieveRAGContext(
   orgId: string,
   orgSettings: OrgSettings
 ): Promise<RAGContext> {
+  const logger = createLogger({ component: "rag-retrieval", orgId });
+
   try {
     // Generate embedding for the user's query
-    const queryVector = await generateQueryEmbedding(env, query);
+    const embeddingResult = (await env.AI.run("@cf/baai/bge-base-en-v1.5", {
+      text: [query],
+    })) as { data: number[][] };
+    const queryVector = embeddingResult.data[0];
 
-    // Fetch from both sources in parallel
+    // Fetch chunks from both sources in parallel
     const [kbChunks, orgChunks] = await Promise.all([
       retrieveKBChunks(env, queryVector, orgSettings),
       retrieveOrgChunks(env, queryVector, orgId),
     ]);
 
-    // Trim results to fit within token budget
-    const context = { kbChunks, orgChunks };
-    return applyTokenBudget(context);
+    // Trim to fit within token budget
+    return applyTokenBudget({ kbChunks, orgChunks });
   } catch (error) {
-    const log = createLogger({ component: "rag-retrieval", orgId });
-    log.error("RAG retrieval failed", { error });
+    logger.error("RAG retrieval failed", { error });
     return { kbChunks: [], orgChunks: [] };
   }
 }
 
 /**
- * Formats the retrieved context into a string suitable for inclusion
- * in an LLM prompt.
+ * Formats RAG context into XML-style documents for the LLM prompt.
  */
 export function formatRAGContext(context: RAGContext): string {
   const sections: string[] = [];
 
   if (context.kbChunks.length > 0) {
-    const formattedChunks = formatChunksAsXml(context.kbChunks);
-    sections.push(`## Knowledge Base\n\n${formattedChunks}`);
+    const formatted = formatChunks(context.kbChunks);
+    sections.push(`## Knowledge Base\n\n${formatted}`);
   }
 
   if (context.orgChunks.length > 0) {
-    const formattedChunks = formatChunksAsXml(context.orgChunks);
-    sections.push(`## Firm Context\n\n${formattedChunks}`);
+    const formatted = formatChunks(context.orgChunks);
+    sections.push(`## Firm Context\n\n${formatted}`);
   }
 
   return sections.join("\n\n");
 }
 
-// ============================================================================
-// Embedding Generation
-// ============================================================================
-
-/**
- * Generates a vector embedding for the given query text.
- */
-async function generateQueryEmbedding(env: Env, query: string): Promise<number[]> {
-  const result = await env.AI.run("@cf/baai/bge-base-en-v1.5", {
-    text: [query],
-  }) as { data: number[][] };
-
-  return result.data[0];
+function formatChunks(chunks: ChunkWithSource[]): string {
+  return chunks
+    .map(
+      (chunk) =>
+        `<document source="${chunk.source}">\n${chunk.content}\n</document>`
+    )
+    .join("\n\n");
 }
-
-// ============================================================================
-// Knowledge Base Retrieval
-// ============================================================================
 
 /**
  * Retrieves relevant chunks from the shared Knowledge Base.
- *
- * We run multiple queries with different filters (general, federal,
- * jurisdiction-specific, practice-type, firm-size) and merge the results
- * to get the best matches across all categories.
+ * Runs multiple filter queries to cover different content types,
+ * then deduplicates and returns the top results.
  */
 async function retrieveKBChunks(
   env: Env,
   queryVector: number[],
   orgSettings: OrgSettings
 ): Promise<ChunkWithSource[]> {
-  // Build the set of filters we want to query
+  // Build filters for different KB content types
   const filters = buildKBFilters(orgSettings);
 
   // Query Vectorize with each filter in parallel
-  const allResults = await Promise.all(
+  const filterResults = await Promise.all(
     filters.map((filter) => queryVectorize(env, queryVector, filter))
   );
 
-  // Merge results, keeping only the best score for each chunk ID
+  // Merge results, keeping the best score for each chunk ID
   const bestScoreById = new Map<string, number>();
-
-  for (const results of allResults) {
+  for (const results of filterResults) {
     for (const match of results) {
-      const existingScore = bestScoreById.get(match.id) ?? -1;
-      if (match.score > existingScore) {
+      const currentBest = bestScoreById.get(match.id) ?? -1;
+      if (match.score > currentBest) {
         bestScoreById.set(match.id, match.score);
       }
     }
   }
 
-  // Sort by score and take the top K
-  const sortedEntries = [...bestScoreById.entries()].sort(
+  // Sort by score and take the top results
+  const sortedEntries = Array.from(bestScoreById.entries()).sort(
     (a, b) => b[1] - a[1]
   );
-  const topChunkIds = sortedEntries
-    .slice(0, KB_CONFIG.KB_TOP_K)
-    .map(([id]) => id);
+  const topIds = sortedEntries.slice(0, KB_CONFIG.KB_TOP_K).map(([id]) => id);
 
-  if (topChunkIds.length === 0) {
+  if (topIds.length === 0) {
     return [];
   }
 
-  return fetchKBChunksFromDB(env, topChunkIds);
+  // Fetch the actual chunk content from D1
+  return fetchKBChunksFromDB(env, topIds);
 }
 
-/**
- * Builds the set of Vectorize filters based on the organization's settings.
- *
- * We always include general content and federal content, then add
- * jurisdiction/practice/firm-size specific filters if configured.
- */
 function buildKBFilters(
-  settings: OrgSettings
+  orgSettings: OrgSettings
 ): VectorizeVectorMetadataFilter[] {
   const filters: VectorizeVectorMetadataFilter[] = [
-    // Always include general and federal content
     { type: "kb", category: "general" },
     { type: "kb", jurisdiction: "federal" },
   ];
 
   // Add jurisdiction-specific filter if the org has jurisdictions set
-  if (settings.jurisdictions.length > 0) {
-    const jurisdictions = settings.jurisdictions.slice(0, MAX_FILTER_VALUES);
+  if (orgSettings.jurisdictions.length > 0) {
     filters.push({
       type: "kb",
-      jurisdiction: { $in: jurisdictions },
+      jurisdiction: { $in: orgSettings.jurisdictions.slice(0, 5) },
     });
   }
 
-  // Add practice-type filter if the org has practice types set
-  if (settings.practiceTypes.length > 0) {
-    const practiceTypes = settings.practiceTypes.slice(0, MAX_FILTER_VALUES);
+  // Add practice type filter if the org has practice types set
+  if (orgSettings.practiceTypes.length > 0) {
     filters.push({
       type: "kb",
-      practice_type: { $in: practiceTypes },
+      practice_type: { $in: orgSettings.practiceTypes.slice(0, 5) },
     });
   }
 
-  // Add firm-size filter if the org has firm size set
-  if (settings.firmSize) {
+  // Add firm size filter if set
+  if (orgSettings.firmSize) {
     filters.push({
       type: "kb",
-      firm_size: settings.firmSize,
+      firm_size: orgSettings.firmSize,
     });
   }
 
   return filters;
 }
 
-/**
- * Queries the Vectorize index with the given filter.
- */
 async function queryVectorize(
   env: Env,
   queryVector: number[],
   filter: VectorizeVectorMetadataFilter
-): Promise<VectorMatch[]> {
-  const results = await env.VECTORIZE.query(queryVector, {
+): Promise<{ id: string; score: number }[]> {
+  const result = await env.VECTORIZE.query(queryVector, {
     topK: KB_CONFIG.KB_TOP_K,
     returnMetadata: "all",
     filter,
   });
 
-  return results.matches.map((match) => ({
+  return result.matches.map((match) => ({
     id: match.id,
     score: match.score,
   }));
 }
 
-/**
- * Fetches the actual chunk content from D1, preserving the order of chunkIds.
- */
 async function fetchKBChunksFromDB(
   env: Env,
-  chunkIds: string[]
+  ids: string[]
 ): Promise<ChunkWithSource[]> {
-  // Build the query with placeholders
-  const placeholders = chunkIds.map(() => "?").join(", ");
-  const query = `
-    SELECT id, content, source
-    FROM kb_chunks
-    WHERE id IN (${placeholders})
-  `;
+  const placeholders = ids.map(() => "?").join(", ");
+  const query = `SELECT id, content, source FROM kb_chunks WHERE id IN (${placeholders})`;
 
   const result = await env.DB.prepare(query)
-    .bind(...chunkIds)
+    .bind(...ids)
     .all<{ id: string; content: string; source: string }>();
 
-  // Create a lookup map for fast access
-  const chunksById = new Map(
-    result.results.map((chunk) => [chunk.id, chunk])
-  );
+  // Return chunks in the same order as the input IDs (preserving score order)
+  const chunksById = new Map(result.results.map((chunk) => [chunk.id, chunk]));
 
-  // Return chunks in the same order as chunkIds (preserves score ordering)
   const orderedChunks: ChunkWithSource[] = [];
-
-  for (const id of chunkIds) {
+  for (const id of ids) {
     const chunk = chunksById.get(id);
     if (chunk) {
       orderedChunks.push({
@@ -254,58 +203,38 @@ async function fetchKBChunksFromDB(
   return orderedChunks;
 }
 
-// ============================================================================
-// Organization Context Retrieval
-// ============================================================================
-
 /**
- * Retrieves relevant chunks from the organization's uploaded documents.
+ * Retrieves relevant chunks from the org-specific context.
  */
 async function retrieveOrgChunks(
   env: Env,
   queryVector: number[],
   orgId: string
 ): Promise<ChunkWithSource[]> {
-  // Query Vectorize for this org's content only
   const results = await env.VECTORIZE.query(queryVector, {
     topK: KB_CONFIG.ORG_TOP_K,
     returnMetadata: "all",
-    filter: {
-      type: "org",
-      org_id: orgId,
-    },
+    filter: { type: "org", org_id: orgId },
   });
 
   if (results.matches.length === 0) {
     return [];
   }
 
-  // Fetch the chunk content from D1
-  const chunkIds = results.matches.map((match) => match.id);
-  const placeholders = chunkIds.map(() => "?").join(", ");
-
-  const query = `
-    SELECT content, source
-    FROM org_context_chunks
-    WHERE id IN (${placeholders}) AND org_id = ?
-  `;
+  const ids = results.matches.map((match) => match.id);
+  const placeholders = ids.map(() => "?").join(", ");
+  const query = `SELECT content, source FROM org_context_chunks WHERE id IN (${placeholders}) AND org_id = ?`;
 
   const result = await env.DB.prepare(query)
-    .bind(...chunkIds, orgId)
+    .bind(...ids, orgId)
     .all<{ content: string; source: string }>();
 
   return result.results;
 }
 
-// ============================================================================
-// Token Budget Management
-// ============================================================================
-
 /**
- * Trims the context to fit within the configured token budget.
- *
- * We process KB chunks first, then org chunks, adding each chunk
- * only if it fits within the remaining budget.
+ * Trims chunks to fit within the token budget.
+ * Processes KB chunks first, then org chunks.
  */
 function applyTokenBudget(context: RAGContext): RAGContext {
   const budgetInChars = KB_CONFIG.TOKEN_BUDGET * KB_CONFIG.CHARS_PER_TOKEN;
@@ -316,20 +245,18 @@ function applyTokenBudget(context: RAGContext): RAGContext {
     orgChunks: [],
   };
 
-  // Add KB chunks first (they're typically higher priority)
+  // Process KB chunks first
   for (const chunk of context.kbChunks) {
     const chunkSize = estimateChunkSize(chunk);
-
     if (chunkSize <= remainingBudget) {
       result.kbChunks.push(chunk);
       remainingBudget -= chunkSize;
     }
   }
 
-  // Then add org chunks with remaining budget
+  // Then process org chunks with remaining budget
   for (const chunk of context.orgChunks) {
     const chunkSize = estimateChunkSize(chunk);
-
     if (chunkSize <= remainingBudget) {
       result.orgChunks.push(chunk);
       remainingBudget -= chunkSize;
@@ -339,25 +266,7 @@ function applyTokenBudget(context: RAGContext): RAGContext {
   return result;
 }
 
-/**
- * Estimates the size of a chunk when formatted (includes XML wrapper overhead).
- */
 function estimateChunkSize(chunk: ChunkWithSource): number {
-  const xmlWrapperOverhead = 20; // <document source="...">...</document>
-  return chunk.content.length + chunk.source.length + xmlWrapperOverhead;
-}
-
-// ============================================================================
-// Formatting Helpers
-// ============================================================================
-
-/**
- * Formats an array of chunks as XML documents.
- */
-function formatChunksAsXml(chunks: ChunkWithSource[]): string {
-  return chunks
-    .map((chunk) => {
-      return `<document source="${chunk.source}">\n${chunk.content}\n</document>`;
-    })
-    .join("\n\n");
+  // Content + source + XML wrapper overhead
+  return chunk.content.length + chunk.source.length + 20;
 }
