@@ -282,12 +282,12 @@ Each phase needs to have simple unit, integration (if applicable), and end-to-en
 
 API (`apps/api`):
 
-- [ ] Create `src/handlers/chat.ts`:
+- [x] Create `src/handlers/chat.ts`:
   - `handleChatMessage` — SSE streaming
   - `handleGetConversations` — List user's conversations
   - `handleGetConversation` — Get conversation with messages
   - `handleDeleteConversation` — Delete conversation
-- [ ] Update `src/do/tenant.ts`:
+- [x] Update `src/do/tenant.ts`:
   - `GET /conversations` — List by updatedAt desc, limit 50
   - `GET /conversation/:id` — Conversation + messages
   - `DELETE /conversation/:id`
@@ -295,11 +295,11 @@ API (`apps/api`):
   - Add step events: `rag_lookup`, `llm_thinking`, `clio_call`, `clio_result`
   - `handleAcceptConfirmation`
   - `handleRejectConfirmation`
-- [ ] Update `src/index.ts`:
+- [x] Update `src/index.ts`:
   - Routes: `POST /api/chat`, `GET /api/conversations`, `GET /api/conversations/:id`, `DELETE /api/conversations/:id`
   - Routes: `POST /api/confirmations/:id/accept`, `POST /api/confirmations/:id/reject`
   - Use `withMember` middleware
-- [ ] Add `conversationScope: "personal"` for web channel messages
+- [x] Add `conversationScope: "personal"` for web channel messages
 
 Web (`apps/web`):
 

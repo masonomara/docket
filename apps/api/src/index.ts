@@ -41,6 +41,14 @@ import {
   handleUploadDocument,
   handleDeleteDocument,
 } from "./handlers/documents";
+import {
+  handleChatMessage,
+  handleGetConversations,
+  handleGetConversation,
+  handleDeleteConversation,
+  handleAcceptConfirmation,
+  handleRejectConfirmation,
+} from "./handlers/chat";
 
 import type { Env } from "./types/env";
 
@@ -164,6 +172,14 @@ const staticRoutes: Record<string, Record<string, RouteHandler>> = {
     GET: withAdmin(handleGetDocuments),
     POST: withAdmin(handleUploadDocument),
   },
+
+  // Chat
+  "/api/chat": {
+    POST: withMember(handleChatMessage),
+  },
+  "/api/conversations": {
+    GET: withMember(handleGetConversations),
+  },
 };
 
 /**
@@ -233,6 +249,42 @@ function matchDynamicRoute(
     const documentId = documentMatch[1];
     return withAdmin((req, e, ctx) =>
       handleDeleteDocument(req, e, ctx, documentId)
+    )(request, env);
+  }
+
+  // /api/conversations/:id - GET or DELETE a specific conversation
+  const conversationMatch = path.match(/^\/api\/conversations\/([^/]+)$/);
+  if (conversationMatch) {
+    const conversationId = conversationMatch[1];
+
+    if (method === "GET") {
+      return withMember((req, e, ctx) =>
+        handleGetConversation(req, e, ctx, conversationId)
+      )(request, env);
+    }
+
+    if (method === "DELETE") {
+      return withMember((req, e, ctx) =>
+        handleDeleteConversation(req, e, ctx, conversationId)
+      )(request, env);
+    }
+  }
+
+  // /api/confirmations/:id/accept - Accept a pending confirmation
+  const acceptMatch = path.match(/^\/api\/confirmations\/([^/]+)\/accept$/);
+  if (acceptMatch && method === "POST") {
+    const confirmationId = acceptMatch[1];
+    return withMember((req, e, ctx) =>
+      handleAcceptConfirmation(req, e, ctx, confirmationId)
+    )(request, env);
+  }
+
+  // /api/confirmations/:id/reject - Reject a pending confirmation
+  const rejectMatch = path.match(/^\/api\/confirmations\/([^/]+)\/reject$/);
+  if (rejectMatch && method === "POST") {
+    const confirmationId = rejectMatch[1];
+    return withMember((req, e, ctx) =>
+      handleRejectConfirmation(req, e, ctx, confirmationId)
     )(request, env);
   }
 
