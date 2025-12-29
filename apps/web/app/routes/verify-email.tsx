@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams, Link } from "react-router";
 import type { MetaFunction } from "react-router";
-import { authClient } from "~/lib/auth-client";
+import { verifyEmail } from "~/lib/auth-client";
 import styles from "~/styles/auth.module.css";
 
 export const meta: MetaFunction = () => [
@@ -50,7 +50,7 @@ export default function VerifyEmailPage() {
     }
 
     // Call the verification API
-    authClient.verifyEmail({ query: { token } }).then((result) => {
+    verifyEmail({ query: { token } }).then((result) => {
       if (result.error) {
         setStatus("error");
         setErrorMessage(result.error.message || "Failed to verify email.");

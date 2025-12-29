@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useSearchParams, Link } from "react-router";
 import type { MetaFunction } from "react-router";
-import { authClient } from "~/lib/auth-client";
+import { resetPassword } from "~/lib/auth-client";
 import styles from "~/styles/auth.module.css";
 
 export const meta: MetaFunction = () => [
@@ -67,7 +67,7 @@ export default function ResetPasswordPage() {
 
     setIsLoading(true);
 
-    const resetResult = await authClient.resetPassword({
+    const resetResult = await resetPassword({
       newPassword: password,
       token,
     });

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router";
 import type { MetaFunction } from "react-router";
-import { authClient } from "~/lib/auth-client";
+import { requestPasswordReset } from "~/lib/auth-client";
 import styles from "~/styles/auth.module.css";
 
 export const meta: MetaFunction = () => [
@@ -26,7 +26,7 @@ export default function ForgotPasswordPage() {
     setErrorMessage(null);
     setIsLoading(true);
 
-    const resetResult = await authClient.requestPasswordReset({
+    const resetResult = await requestPasswordReset({
       email,
       redirectTo: `${window.location.origin}/reset-password`,
     });
