@@ -147,11 +147,7 @@ export function withOwner(handler: OwnerHandler): RouteHandler {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const membership = await env.DB.prepare(
-      `SELECT org_id, is_owner FROM org_members WHERE user_id = ?`
-    )
-      .bind(session.user.id)
-      .first<{ org_id: string; is_owner: number }>();
+    const membership = await getMembership(env.DB, session.user.id);
 
     if (!membership) {
       logAuthzFailure("withOwner", "No organization", {
