@@ -94,10 +94,10 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
           <ul className={styles.navList}>
             <li>
               <Link to="/dashboard" className={getNavItemClass("/dashboard")}>
-                <LayoutDashboard
+                {/* <LayoutDashboard
                   className={styles.navIcon}
                   strokeWidth={1.75}
-                />
+                /> */}
                 Dashboard
               </Link>
             </li>
@@ -114,13 +114,13 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
                   to="/org/context"
                   className={getNavItemClass("/org/context")}
                 >
-                  <FileText className={styles.navIcon} strokeWidth={1.75} />
+                  {/* <FileText className={styles.navIcon} strokeWidth={1.75} /> */}
                   Knowledge Base
                 </Link>
               </li>
               <li>
                 <Link to="/org/clio" className={getNavItemClass("/org/clio")}>
-                  <Plug className={styles.navIcon} strokeWidth={1.75} />
+                  {/* <Plug className={styles.navIcon} strokeWidth={1.75} /> */}
                   Clio Connection
                 </Link>
               </li>
@@ -129,7 +129,7 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
                   to="/org/members"
                   className={getNavItemClass("/org/members")}
                 >
-                  <Users className={styles.navIcon} />
+                  {/* <Users className={styles.navIcon} /> */}
                   Members
                 </Link>
               </li>
@@ -146,7 +146,7 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
                 to="/account/settings"
                 className={getNavItemClass("/account/settings")}
               >
-                <CircleUser className={styles.navIcon} strokeWidth={1.75} />
+                {/* <CircleUser className={styles.navIcon} strokeWidth={1.75} /> */}
                 User Settings
               </Link>
             </li>
