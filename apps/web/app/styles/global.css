@@ -1,20 +1,15 @@
 /* ==========================================================================
-   Global Styles
-   Design tokens, base styles, and reusable components
-   ========================================================================== */
-
-/* ==========================================================================
-   Design Tokens (CSS Variables)
+   Design Tokens (CSS Custom Properties)
    ========================================================================== */
 
 :root {
-  /* Surfaces */
+  /* Backgrounds */
   --container: #ffffff;
   --surface-1: #f9f8f6;
   --surface-2: #f4f3f0;
   --surface-3: #e8e5dd;
 
-  /* Text Colors */
+  /* Text */
   --text-primary: #131416;
   --text-secondary: #3c3d43;
   --text-tertiary: #6f717a;
@@ -24,17 +19,17 @@
   --border-dark: rgba(29, 29, 35, 0.3);
   --border-default: rgba(29, 29, 35, 0.15);
 
-  /* Brand Colors */
+  /* Brand */
   --brand-primary: #2053b9;
   --brand-secondary: #255ccc;
   --brand-highlight: rgba(32, 83, 185, 0.15);
 
-  /* Error Colors */
+  /* Status: Error */
   --error-primary: #a82639;
   --error-secondary: #b92b40;
   --error-highlight: rgba(168, 38, 57, 0.15);
 
-  /* Success Colors */
+  /* Status: Success */
   --success-primary: #016644;
   --success-secondary: #00714a;
   --success-highlight: rgba(1, 102, 68, 0.15);
@@ -42,7 +37,7 @@
   /* Overlay */
   --overlay: rgba(29, 29, 35, 0.6);
 
-  /* Button Colors */
+  /* Buttons */
   --button-primary: #131416;
   --button-primary-text: #ffffff;
   --button-primary-border: rgba(29, 29, 35, 0.15);
@@ -52,7 +47,7 @@
 }
 
 /* ==========================================================================
-   CSS Reset
+   Reset & Base Styles
    ========================================================================== */
 
 *,
@@ -163,17 +158,18 @@ strong {
    Buttons
    ========================================================================== */
 
+/* Base button styles */
 .btn {
   cursor: pointer;
   font-size: 14px;
   line-height: 19px;
   font-weight: 500;
-  transition: background 0.15s ease;
   white-space: nowrap;
   display: flex;
   align-items: center;
   justify-content: center;
   text-decoration: none;
+  transition: background 0.15s ease;
 }
 
 .btn:disabled {
@@ -181,7 +177,7 @@ strong {
   cursor: not-allowed;
 }
 
-/* Primary Button */
+/* Button variants */
 .btn-primary {
   background: var(--text-primary) !important;
   color: var(--container);
@@ -192,7 +188,6 @@ strong {
   background: var(--text-secondary) !important;
 }
 
-/* Secondary Button */
 .btn-secondary {
   background: transparent;
   color: var(--text-primary);
@@ -203,7 +198,6 @@ strong {
   background: var(--surface-2);
 }
 
-/* Danger Button */
 .btn-danger {
   background: var(--error-primary) !important;
   color: var(--container);
@@ -214,7 +208,6 @@ strong {
   background: var(--error-secondary) !important;
 }
 
-/* Danger Outline Button */
 .btn-danger-outline {
   background: transparent;
   color: var(--error-primary);
@@ -225,7 +218,7 @@ strong {
   background: var(--error-highlight);
 }
 
-/* Small Button */
+/* Button sizes */
 .btn-sm {
   padding: 0 10px;
   gap: 6px;
@@ -242,19 +235,7 @@ strong {
   background: var(--surface-2);
 }
 
-/* Large Button */
-.btn-lg {
-  padding: 0 20px;
-  font-size: 16px;
-  line-height: 21px;
-  height: 44px;
-  border-radius: 8px;
-  font-weight: 500;
-  width: 100%;
-  gap: 10px;
-}
-
-/* Large Button (fit content) */
+.btn-lg,
 .btn-lg-fit {
   padding: 0 20px;
   font-size: 16px;
@@ -262,11 +243,18 @@ strong {
   height: 44px;
   border-radius: 8px;
   font-weight: 500;
-  width: fit-content !important;
   gap: 10px;
 }
 
-/* Button Group */
+.btn-lg {
+  width: 100%;
+}
+
+.btn-lg-fit {
+  width: fit-content !important;
+}
+
+/* Button groups */
 .btn-group {
   display: flex;
   gap: 8px;
@@ -288,50 +276,6 @@ strong {
 
 .link-button:hover {
   text-decoration: underline;
-}
-
-/* ==========================================================================
-   Section Component
-   ========================================================================== */
-
-.section {
-  margin-bottom: 16px;
-  padding: 22px;
-  border-radius: 12px;
-  gap: 22px;
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--border-default);
-  min-width: 0;
-  overflow: hidden;
-}
-
-.section-description {
-  color: var(--text-secondary);
-  font-size: 14px;
-  line-height: 19px;
-}
-
-/* ==========================================================================
-   Info Section
-   ========================================================================== */
-
-.infoSection {
-  background-color: var(--surface-2);
-  border: 1px solid var(--border-default);
-  display: flex;
-  flex-direction: row;
-  gap: 10px;
-  align-items: flex-start;
-}
-
-.infoSection * {
-  font-size: 14px !important;
-  line-height: 19px !important;
-}
-
-.infoSection ul {
-  padding-left: 1em;
 }
 
 /* ==========================================================================
@@ -399,13 +343,115 @@ strong {
   color: var(--error-primary);
 }
 
+.alert-error .link-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--error-primary);
+  font-size: inherit;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
 .alert-success {
   background: var(--success-highlight);
   color: var(--success-primary);
 }
 
 /* ==========================================================================
-   Modal
+   Sections
+   ========================================================================== */
+
+.section {
+  margin-bottom: 16px;
+  padding: 22px;
+  border-radius: 12px;
+  gap: 22px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-default);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.section-description {
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 19px;
+}
+
+.infoSection {
+  background-color: var(--surface-2);
+  border: 1px solid var(--border-default);
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.infoSection * {
+  font-size: 14px !important;
+  line-height: 19px !important;
+}
+
+.infoSection ul {
+  padding-left: 1em;
+}
+
+/* ==========================================================================
+   Cards
+   ========================================================================== */
+
+.card {
+  background: var(--surface-2);
+  border-radius: 8px;
+  padding: 1.5rem;
+  min-width: 0;
+}
+
+.card-sm {
+  padding: 1rem;
+}
+
+.card-lg {
+  padding: 2rem;
+}
+
+.info-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 22px;
+  width: 100%;
+  min-width: 0;
+}
+
+.info-card * {
+  font-size: 14px;
+  line-height: 19px;
+}
+
+.form-card {
+  display: grid;
+  justify-content: space-between;
+  align-items: center;
+  gap: 22px;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: 1fr 1fr;
+}
+
+.danger-card {
+  background: var(--error-highlight);
+  border: 1px solid var(--error-tertiary);
+  border-radius: 8px;
+  padding: 1.5rem;
+  min-width: 0;
+}
+
+/* ==========================================================================
+   Modals
    ========================================================================== */
 
 .modal-overlay {
@@ -477,7 +523,7 @@ strong {
   justify-content: flex-end;
 }
 
-/* Modal Progress Steps */
+/* Modal progress indicator */
 .modal-progress {
   display: flex;
   gap: 8px;
@@ -515,7 +561,7 @@ strong {
   color: var(--text-primary);
 }
 
-/* Modal Option Cards */
+/* Modal option cards (for selection UI) */
 .modal-option-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -532,8 +578,8 @@ strong {
   border: 1px solid var(--border-default);
   border-radius: 8px;
   cursor: pointer;
-  transition: all 0.15s ease;
   color: var(--text-secondary);
+  transition: all 0.15s ease;
 }
 
 .modal-option-card:hover,
@@ -549,7 +595,7 @@ strong {
   color: var(--text-primary);
 }
 
-/* Modal Checkbox Grid */
+/* Modal checkbox grids */
 .modal-checkbox-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
@@ -575,8 +621,8 @@ strong {
   border: 1px solid var(--border-default);
   border-radius: 6px;
   cursor: pointer;
-  transition: all 0.15s ease;
   color: var(--text-secondary);
+  transition: all 0.15s ease;
 }
 
 .modal-checkbox-item:hover,
@@ -600,61 +646,7 @@ strong {
 }
 
 /* ==========================================================================
-   Cards
-   ========================================================================== */
-
-.card {
-  background: var(--surface-2);
-  border-radius: 8px;
-  padding: 1.5rem;
-  min-width: 0;
-}
-
-.card-sm {
-  padding: 1rem;
-}
-
-.card-lg {
-  padding: 2rem;
-}
-
-/* Info Card - row layout with content and actions */
-.info-card {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 22px;
-  width: 100%;
-  min-width: 0;
-}
-
-.info-card * {
-  font-size: 14px;
-  line-height: 19px;
-}
-
-/* Form Card - grid layout */
-.form-card {
-  display: grid;
-  justify-content: space-between;
-  align-items: center;
-  gap: 22px;
-  width: 100%;
-  min-width: 0;
-  grid-template-columns: 1fr 1fr;
-}
-
-/* Danger Card */
-.danger-card {
-  background: var(--error-highlight);
-  border: 1px solid var(--error-tertiary);
-  border-radius: 8px;
-  padding: 1.5rem;
-  min-width: 0;
-}
-
-/* ==========================================================================
-   Table
+   Tables
    ========================================================================== */
 
 .tableWrapper {
@@ -709,7 +701,7 @@ strong {
 }
 
 /* ==========================================================================
-   Badges
+   Badges & Chips
    ========================================================================== */
 
 .badge {
@@ -730,10 +722,6 @@ strong {
 .badge-admin {
   background: var(--surface-3);
 }
-
-/* ==========================================================================
-   Chips
-   ========================================================================== */
 
 .chip-grid {
   display: flex;
@@ -782,7 +770,7 @@ strong {
 }
 
 /* ==========================================================================
-   Info Rows
+   Info Rows (key-value display)
    ========================================================================== */
 
 .info-row {
@@ -812,10 +800,9 @@ strong {
 }
 
 /* ==========================================================================
-   Utility Classes
+   Layout Utilities
    ========================================================================== */
 
-/* Grid Layouts */
 .grid-2 {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -828,7 +815,6 @@ strong {
   gap: 8px;
 }
 
-/* Flexbox Utilities */
 .flex-between {
   display: flex;
   justify-content: space-between;
@@ -837,7 +823,10 @@ strong {
   gap: 16px;
 }
 
-/* Links */
+/* ==========================================================================
+   Misc Components
+   ========================================================================== */
+
 .back-link {
   color: var(--text-secondary);
   text-decoration: none;
@@ -849,7 +838,6 @@ strong {
   color: var(--text-primary);
 }
 
-/* Empty State */
 .empty-state {
   padding: 0;
   text-align: left;
@@ -860,19 +848,8 @@ strong {
   min-width: 0;
 }
 
-.alert-error .link-button {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--error-primary);
-  font-size: inherit;
-  padding: 0;
-  text-decoration: underline;
-  text-underline-offset: 0.15em;
-}
-
 /* ==========================================================================
-   Responsive Overrides
+   Responsive Adjustments
    ========================================================================== */
 
 @media (max-width: 768px) {
