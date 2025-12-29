@@ -4,14 +4,21 @@ export interface LogContext {
   requestId?: string;
   orgId?: string;
   userId?: string;
+  handler?: string;
   [key: string]: unknown;
 }
 
 export type Logger = ReturnType<typeof createLogger>;
 
 /**
- * Creates a structured JSON logger with optional context.
- * Child loggers inherit parent context.
+ * Creates a structured JSON logger with context that gets included in every log entry.
+ *
+ * Usage:
+ *   const logger = createLogger({ requestId: "abc123", handler: "clio" });
+ *   logger.info("Processing request", { matterId: "12345" });
+ *
+ * To add more context later, use .child():
+ *   const childLogger = logger.child({ orgId: "org-456" });
  */
 export function createLogger(context: LogContext = {}) {
   function log(
@@ -19,7 +26,7 @@ export function createLogger(context: LogContext = {}) {
     message: string,
     extra?: Record<string, unknown>
   ): void {
-    // Build the log entry
+    // Build the log entry with all context
     const entry: Record<string, unknown> = {
       level,
       message,
@@ -28,74 +35,69 @@ export function createLogger(context: LogContext = {}) {
       ...extra,
     };
 
-    // Extract error details if present
+    // Extract error details if an Error object was passed
     if (extra?.error instanceof Error) {
       entry.error = extra.error.message;
       entry.stack = extra.error.stack;
     }
 
-    // Output as JSON
     const output = JSON.stringify(entry);
 
-    // Use appropriate console method based on level
-    switch (level) {
-      case "error":
-        console.error(output);
-        break;
-      case "warn":
-        console.warn(output);
-        break;
-      default:
-        console.log(output);
+    // Route to appropriate console method
+    if (level === "error") {
+      console.error(output);
+    } else if (level === "warn") {
+      console.warn(output);
+    } else {
+      console.log(output);
     }
   }
 
   return {
     debug: (msg: string, extra?: Record<string, unknown>) =>
       log("debug", msg, extra),
+
     info: (msg: string, extra?: Record<string, unknown>) =>
       log("info", msg, extra),
+
     warn: (msg: string, extra?: Record<string, unknown>) =>
       log("warn", msg, extra),
+
     error: (msg: string, extra?: Record<string, unknown>) =>
       log("error", msg, extra),
 
-    /**
-     * Creates a child logger that inherits this logger's context
-     * plus additional context.
-     */
     child: (childContext: LogContext) =>
       createLogger({ ...context, ...childContext }),
   };
 }
 
 /**
- * Generates a short request ID for tracing.
+ * Generates a short unique ID for request tracing.
+ * Uses first 8 chars of a UUID for brevity while maintaining uniqueness.
  */
 export function generateRequestId(): string {
   return crypto.randomUUID().slice(0, 8);
 }
 
-/**
- * Default logger instance for convenience.
- */
+/** Default logger instance for cases where no context is needed */
 export const logger = createLogger();
 
 /**
- * Logs an authorization failure for security auditing.
+ * Logs an authorization failure with consistent formatting.
+ * Used by session middleware when access is denied.
  */
 export function logAuthzFailure(
   handler: string,
   reason: string,
-  context: { userId?: string; email?: string; path?: string; orgId?: string }
+  context: {
+    userId?: string;
+    email?: string;
+    path?: string;
+    orgId?: string;
+  }
 ): void {
-  const log = createLogger({
-    requestId: generateRequestId(),
-    handler,
-  });
-
-  log.warn("Authorization failed", {
-    reason,
-    ...context,
-  });
+  createLogger({ requestId: generateRequestId(), handler }).warn(
+    "Authorization failed",
+    { reason, ...context }
+  );
 }

@@ -2,7 +2,10 @@ import { getAuth } from "./lib/auth";
 import { withAuth, withMember, withAdmin, withOwner } from "./lib/session";
 import { TenantDO } from "./do/tenant";
 import { generateRequestId } from "./lib/logger";
+
+// Handler imports
 import { handleTeamsMessage } from "./handlers/teams";
+import { handleCheckEmail } from "./handlers/auth";
 import {
   handleClioCallback,
   handleClioConnectAuth,
@@ -33,20 +36,20 @@ import {
   handleUpdateAccount,
   handleDeleteAccount,
 } from "./handlers/account";
-import { handleCheckEmail } from "./handlers/auth";
 import {
   handleGetDocuments,
   handleUploadDocument,
   handleDeleteDocument,
 } from "./handlers/documents";
+
 import type { Env } from "./types/env";
 
 export { TenantDO };
 export type { Env };
 
-// -----------------------------------------------------------------------------
+// ============================================================================
 // CORS Configuration
-// -----------------------------------------------------------------------------
+// ============================================================================
 
 const ALLOWED_ORIGINS = [
   "http://localhost:5173",
@@ -54,7 +57,7 @@ const ALLOWED_ORIGINS = [
   "https://www.docketadmin.com",
 ];
 
-function getCorsHeaders(request: Request): HeadersInit {
+function getCorsHeaders(request: Request): Record<string, string> {
   const origin = request.headers.get("Origin") || "";
   const allowedOrigin = ALLOWED_ORIGINS.includes(origin)
     ? origin
@@ -75,10 +78,12 @@ function withCors(
   requestId: string
 ): Response {
   const headers = new Headers(response.headers);
+
   for (const [key, value] of Object.entries(getCorsHeaders(request))) {
     headers.set(key, value);
   }
   headers.set("X-Request-Id", requestId);
+
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -86,17 +91,23 @@ function withCors(
   });
 }
 
-// -----------------------------------------------------------------------------
-// Route Handler Type
-// -----------------------------------------------------------------------------
+// ============================================================================
+// Route Definitions
+// ============================================================================
 
 type RouteHandler = (request: Request, env: Env) => Promise<Response>;
 
-// Static routes: exact path + method -> handler
+/**
+ * Static routes - paths that don't have dynamic segments.
+ * Format: { [path]: { [method]: handler } }
+ */
 const staticRoutes: Record<string, Record<string, RouteHandler>> = {
+  // Auth
   "/api/check-email": {
     POST: handleCheckEmail,
   },
+
+  // Organization management
   "/api/org": {
     POST: withAuth(handleCreateOrg),
     PATCH: withAdmin(handleUpdateOrg),
@@ -108,6 +119,8 @@ const staticRoutes: Record<string, Record<string, RouteHandler>> = {
   "/api/user/org": {
     GET: withAuth(handleGetUserOrg),
   },
+
+  // Clio integration
   "/api/clio/connect": {
     GET: withMember(handleClioConnectAuth),
   },
@@ -120,16 +133,24 @@ const staticRoutes: Record<string, Record<string, RouteHandler>> = {
   "/api/org/clio/refresh-schema": {
     POST: withAdmin(handleClioRefreshSchema),
   },
+
+  // Members
   "/api/org/members": {
     GET: withMember(handleGetMembers),
   },
+
+  // Invitations
   "/api/org/invitations": {
     GET: withAdmin(handleGetInvitations),
     POST: withAdmin(handleSendInvitation),
   },
+
+  // Ownership transfer
   "/api/org/transfer-ownership": {
     POST: withAdmin(handleTransferOwnership),
   },
+
+  // Account
   "/api/account/deletion-preview": {
     GET: withAuth(handleGetAccountDeletionPreview),
   },
@@ -137,42 +158,47 @@ const staticRoutes: Record<string, Record<string, RouteHandler>> = {
     PATCH: withAuth(handleUpdateAccount),
     DELETE: withAuth(handleDeleteAccount),
   },
+
+  // Org Context (Knowledge Base documents)
   "/api/org/context": {
     GET: withAdmin(handleGetDocuments),
     POST: withAdmin(handleUploadDocument),
   },
 };
 
-// -----------------------------------------------------------------------------
-// Dynamic Route Matching
-// -----------------------------------------------------------------------------
-
+/**
+ * Matches dynamic routes with path parameters.
+ * Returns null if no match, otherwise returns a Promise<Response>.
+ */
 function matchDynamicRoute(
   path: string,
   method: string,
   request: Request,
   env: Env
 ): Promise<Response> | null {
-  // /api/org/members/:memberId
-  const memberMatch = path.match(/^\/api\/org\/members\/([^/]+)$/);
-  if (memberMatch) {
-    const memberId = memberMatch[1];
+  // /api/org/members/:memberId - DELETE or PATCH a specific member
+  const memberIdMatch = path.match(/^\/api\/org\/members\/([^/]+)$/);
+  if (memberIdMatch) {
+    const memberId = memberIdMatch[1];
+
     if (method === "DELETE") {
       return withAdmin((req, e, ctx) =>
         handleRemoveMember(req, e, ctx, memberId)
       )(request, env);
     }
+
     if (method === "PATCH") {
       return withAdmin((req, e, ctx) =>
         handleUpdateMemberRole(req, e, ctx, memberId)
       )(request, env);
     }
+
     return Promise.resolve(
       Response.json({ error: "Method not allowed" }, { status: 405 })
     );
   }
 
-  // /api/org/invitations/:invitationId
+  // /api/org/invitations/:invitationId - DELETE (revoke) a specific invitation
   const revokeInvitationMatch = path.match(
     /^\/api\/org\/invitations\/([^/]+)$/
   );
@@ -183,14 +209,14 @@ function matchDynamicRoute(
     )(request, env);
   }
 
-  // /api/invitations/:invitationId (public, no auth)
+  // /api/invitations/:invitationId - GET invitation details (public)
   const getInvitationMatch = path.match(/^\/api\/invitations\/([^/]+)$/);
   if (getInvitationMatch && method === "GET") {
     const invitationId = getInvitationMatch[1];
     return handleGetInvitation(request, env, invitationId);
   }
 
-  // /api/invitations/:invitationId/accept
+  // /api/invitations/:invitationId/accept - POST to accept an invitation
   const acceptInvitationMatch = path.match(
     /^\/api\/invitations\/([^/]+)\/accept$/
   );
@@ -201,7 +227,7 @@ function matchDynamicRoute(
     )(request, env);
   }
 
-  // /api/org/context/:documentId
+  // /api/org/context/:documentId - DELETE a specific document
   const documentMatch = path.match(/^\/api\/org\/context\/([^/]+)$/);
   if (documentMatch && method === "DELETE") {
     const documentId = documentMatch[1];
@@ -213,28 +239,26 @@ function matchDynamicRoute(
   return null;
 }
 
-// -----------------------------------------------------------------------------
-// Main Worker Entry Point
-// -----------------------------------------------------------------------------
+// ============================================================================
+// Main Worker Export
+// ============================================================================
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
     const method = request.method;
-
-    // Extract request ID from header or generate one
     const requestId =
       request.headers.get("X-Request-Id") || generateRequestId();
 
     // Handle CORS preflight
     if (method === "OPTIONS") {
-      const headers = getCorsHeaders(request) as Record<string, string>;
+      const headers = getCorsHeaders(request);
       headers["X-Request-Id"] = requestId;
       return new Response(null, { status: 204, headers });
     }
 
-    // Health check endpoints (no CORS needed)
+    // Health check endpoints
     if (path === "/health") {
       return Response.json({ status: "ok" });
     }
@@ -251,11 +275,11 @@ export default {
       }
     }
 
-    // Better Auth handles its own routing
+    // better-auth handles all /api/auth/* routes
     if (path.startsWith("/api/auth")) {
       try {
-        const authResponse = await getAuth(env).handler(request);
-        return withCors(authResponse, request, requestId);
+        const response = await getAuth(env).handler(request);
+        return withCors(response, request, requestId);
       } catch (error) {
         const message =
           error instanceof Error
@@ -265,24 +289,21 @@ export default {
       }
     }
 
-    // Teams webhook (no CORS needed - Teams calls this directly)
+    // Teams webhook (no auth, validated by Teams signature)
     if (path === "/api/messages") {
       return handleTeamsMessage(request, env);
     }
 
-    // Clio OAuth callback (no CORS - browser redirect)
+    // Clio OAuth callback (no auth, uses state parameter for validation)
     if (path === "/clio/callback") {
       return handleClioCallback(request, env);
     }
 
     // Try static routes first
     const methodHandlers = staticRoutes[path];
-    if (methodHandlers) {
-      const handler = methodHandlers[method];
-      if (handler) {
-        const response = await handler(request, env);
-        return withCors(response, request, requestId);
-      }
+    if (methodHandlers && methodHandlers[method]) {
+      const response = await methodHandlers[method](request, env);
+      return withCors(response, request, requestId);
     }
 
     // Try dynamic routes
@@ -292,7 +313,7 @@ export default {
       return withCors(response, request, requestId);
     }
 
-    // Not found
+    // No route matched
     return withCors(
       Response.json({ error: "Not found" }, { status: 404 }),
       request,

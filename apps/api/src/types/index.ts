@@ -1,13 +1,15 @@
 import { z } from "zod";
 
-// =============================================================================
-// Basic Types & Enums
-// =============================================================================
+// ============================================================================
+// Role and Type Definitions
+// ============================================================================
 
 export type OrgRole = "admin" | "member";
-// Note: "chatgpt" is reserved for Version 2
+
 export type ChannelType = "teams" | "slack" | "mcp" | "chatgpt" | "web";
+
 export type FirmSize = "solo" | "small" | "mid" | "large";
+
 export type ConversationScope =
   | "personal"
   | "groupChat"
@@ -16,9 +18,9 @@ export type ConversationScope =
   | "channel"
   | "api";
 
-// =============================================================================
-// Organization & Membership
-// =============================================================================
+// ============================================================================
+// Organization Types
+// ============================================================================
 
 export interface Organization {
   id: string;
@@ -42,10 +44,8 @@ export interface OrgMembership {
   createdAt: number;
 }
 
-/**
- * Raw database row for org_members table.
- * Use orgMemberRowToEntity() to convert to OrgMembership.
- */
+// Database row format (snake_case, numeric booleans)
+// Use orgMemberRowToEntity() to convert to OrgMembership.
 export interface OrgMemberRow {
   id: string;
   user_id: string;
@@ -66,9 +66,9 @@ export function orgMemberRowToEntity(row: OrgMemberRow): OrgMembership {
   };
 }
 
-// =============================================================================
-// Invitations
-// =============================================================================
+// ============================================================================
+// Invitation Types
+// ============================================================================
 
 export interface Invitation {
   id: string;
@@ -81,34 +81,15 @@ export interface Invitation {
   acceptedAt: number | null;
 }
 
-// =============================================================================
-// Channel Links
-// =============================================================================
+// ============================================================================
+// Channel Types
+// ============================================================================
 
 export interface ChannelLink {
   channelType: ChannelType;
   channelUserId: string;
   userId: string;
 }
-
-// =============================================================================
-// Audit Logging
-// =============================================================================
-
-export interface AuditEntry {
-  id: string;
-  userId: string;
-  action: string;
-  objectType: string;
-  params: Record<string, unknown>;
-  result: "success" | "error";
-  errorMessage?: string;
-  createdAt: string;
-}
-
-// =============================================================================
-// Channel Messages
-// =============================================================================
 
 export interface ChannelMetadata {
   threadId?: string;
@@ -130,10 +111,6 @@ export interface ChannelMessage {
   metadata?: ChannelMetadata;
 }
 
-/**
- * Zod schema for validating incoming channel messages.
- * Used at the API boundary to ensure messages have all required fields.
- */
 export const ChannelMessageSchema = z.object({
   channel: z.enum(["teams", "slack", "mcp", "chatgpt", "web"]),
   orgId: z.string().min(1),
@@ -161,9 +138,24 @@ export const ChannelMessageSchema = z.object({
     .optional(),
 });
 
-// =============================================================================
-// Pending Confirmations (for CUD operations)
-// =============================================================================
+// ============================================================================
+// Audit Types
+// ============================================================================
+
+export interface AuditEntry {
+  id: string;
+  userId: string;
+  action: string;
+  objectType: string;
+  params: Record<string, unknown>;
+  result: "success" | "error";
+  errorMessage?: string;
+  createdAt: string;
+}
+
+// ============================================================================
+// Conversation Types
+// ============================================================================
 
 export interface PendingConfirmation {
   id: string;
@@ -173,9 +165,9 @@ export interface PendingConfirmation {
   expiresAt: number;
 }
 
-// =============================================================================
+// ============================================================================
 // LLM Types
-// =============================================================================
+// ============================================================================
 
 export interface LLMMessage {
   role: "user" | "assistant" | "system";

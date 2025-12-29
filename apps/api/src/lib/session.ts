@@ -2,9 +2,9 @@ import { getAuth } from "./auth";
 import { logAuthzFailure } from "./logger";
 import type { Env } from "../types/env";
 
-// =============================================================================
-// Session Types
-// =============================================================================
+// ============================================================================
+// Context Types - What gets passed to route handlers
+// ============================================================================
 
 export interface AuthUser {
   id: string;
@@ -12,66 +12,80 @@ export interface AuthUser {
   name: string;
 }
 
+/** Base context with just the authenticated user */
 export interface AuthContext {
   user: AuthUser;
 }
 
+/** Context for any org member (admin or regular member) */
 export interface MemberContext extends AuthContext {
   orgId: string;
 }
 
+/** Context for admins, includes whether they're also the owner */
 export interface AdminContext extends AuthContext {
   orgId: string;
   isOwner: boolean;
 }
 
+/** Context for owner-only operations */
 export interface OwnerContext extends AuthContext {
   orgId: string;
 }
 
-// =============================================================================
-// Route Handler Wrappers
-// =============================================================================
+// ============================================================================
+// Handler Types
+// ============================================================================
 
 type RouteHandler = (request: Request, env: Env) => Promise<Response>;
+
 type AuthedHandler = (
   request: Request,
   env: Env,
   ctx: AuthContext
 ) => Promise<Response>;
+
 type MemberHandler = (
   request: Request,
   env: Env,
   ctx: MemberContext
 ) => Promise<Response>;
+
 type AdminHandler = (
   request: Request,
   env: Env,
   ctx: AdminContext
 ) => Promise<Response>;
+
 type OwnerHandler = (
   request: Request,
   env: Env,
   ctx: OwnerContext
 ) => Promise<Response>;
 
+// ============================================================================
+// Authorization Wrappers
+// ============================================================================
+
 /**
- * Wraps a handler to require authentication.
- * The handler receives the authenticated user in ctx.
+ * Requires authentication only (no org membership required).
+ * Use for: account settings, creating an org, accepting invitations.
  */
 export function withAuth(handler: AuthedHandler): RouteHandler {
   return async (request, env) => {
     const session = await getSession(request, env);
+
     if (!session?.user) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
+
     return handler(request, env, { user: session.user });
   };
 }
 
 /**
- * Wraps a handler to require organization membership.
- * The handler receives user and orgId in ctx.
+ * Requires authentication AND membership in an org.
+ * Use for: viewing org data, sending messages, etc.
  */
 export function withMember(handler: MemberHandler): RouteHandler {
   return async (request, env) => {
@@ -84,6 +98,7 @@ export function withMember(handler: MemberHandler): RouteHandler {
     }
 
     const membership = await getMembership(env.DB, session.user.id);
+
     if (!membership) {
       logAuthzFailure("withMember", "No organization", {
         userId: session.user.id,
@@ -103,8 +118,8 @@ export function withMember(handler: MemberHandler): RouteHandler {
 }
 
 /**
- * Wraps a handler to require admin membership.
- * The handler receives user, orgId, and isOwner in ctx.
+ * Requires authentication AND admin role in an org.
+ * Use for: managing members, org settings, invitations.
  */
 export function withAdmin(handler: AdminHandler): RouteHandler {
   return async (request, env) => {
@@ -116,7 +131,12 @@ export function withAdmin(handler: AdminHandler): RouteHandler {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const membership = await getMembership(env.DB, session.user.id, true);
+    const membership = await getMembership(
+      env.DB,
+      session.user.id,
+      true // requireAdmin
+    );
+
     if (!membership) {
       logAuthzFailure("withAdmin", "Not admin", {
         userId: session.user.id,
@@ -134,8 +154,8 @@ export function withAdmin(handler: AdminHandler): RouteHandler {
 }
 
 /**
- * Wraps a handler to require organization ownership.
- * The handler receives user and orgId in ctx.
+ * Requires authentication AND owner status in an org.
+ * Use for: deleting org, transferring ownership.
  */
 export function withOwner(handler: OwnerHandler): RouteHandler {
   return async (request, env) => {
@@ -176,10 +196,14 @@ export function withOwner(handler: OwnerHandler): RouteHandler {
   };
 }
 
-// =============================================================================
-// Core Session Functions
-// =============================================================================
+// ============================================================================
+// Session & Membership Queries
+// ============================================================================
 
+/**
+ * Gets the current session from request cookies.
+ * Returns null if no valid session exists.
+ */
 export async function getSession(request: Request, env: Env) {
   try {
     return await getAuth(env).api.getSession({ headers: request.headers });
@@ -194,14 +218,21 @@ interface MembershipRow {
   is_owner: number;
 }
 
+/**
+ * Looks up a user's org membership.
+ *
+ * @param db - D1 database instance
+ * @param userId - The user to look up
+ * @param requireAdmin - If true, only returns membership if user is an admin
+ */
 export async function getMembership(
   db: D1Database,
   userId: string,
   requireAdmin = false
-) {
+): Promise<MembershipRow | null> {
   const query = requireAdmin
     ? `SELECT org_id, role, is_owner FROM org_members WHERE user_id = ? AND role = 'admin'`
     : `SELECT org_id, role, is_owner FROM org_members WHERE user_id = ?`;
+
   return db.prepare(query).bind(userId).first<MembershipRow>();
 }
-

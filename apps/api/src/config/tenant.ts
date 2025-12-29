@@ -1,17 +1,18 @@
-/**
- * Tenant Durable Object Configuration
- *
- * Central config for conversation, confirmation, and maintenance settings.
- */
+// Time constants in milliseconds
+const MINUTES = 60 * 1000;
+const HOURS = 60 * MINUTES;
+const DAYS = 24 * HOURS;
 
 export const TENANT_CONFIG = {
-  // Conversation context
-  RECENT_MESSAGES_LIMIT: 15, // Messages to include in LLM context
+  // Number of recent messages to include in conversation context
+  RECENT_MESSAGES_LIMIT: 15,
 
-  // Confirmation timeouts
-  CONFIRMATION_TTL_MS: 5 * 60 * 1000, // 5 minutes until confirmation expires
+  // How long a pending confirmation (e.g., "delete this contact?") stays valid
+  CONFIRMATION_TTL_MS: 5 * MINUTES,
 
-  // Maintenance scheduling
-  ALARM_INTERVAL_MS: 24 * 60 * 60 * 1000, // Daily maintenance runs
-  STALE_CONVERSATION_MS: 30 * 24 * 60 * 60 * 1000, // 30 days until archive
+  // How often the Durable Object alarm runs for cleanup tasks
+  ALARM_INTERVAL_MS: 1 * DAYS,
+
+  // Conversations older than this are considered stale and may be cleaned up
+  STALE_CONVERSATION_MS: 30 * DAYS,
 } as const;
