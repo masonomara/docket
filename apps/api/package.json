@@ -1,19 +1,13 @@
 {
   "name": "@docket/api",
-  "version": "0.0.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "predeploy": "npm run kb:manifest",
-    "deploy": "npm run predeploy && wrangler d1 migrations apply docket-db --remote && wrangler deploy",
-    "deploy:tail": "wrangler deploy && wrangler tail --format pretty",
     "dev": "wrangler dev",
-    "start": "wrangler dev",
+    "deploy": "npm run kb:manifest && wrangler d1 migrations apply docket-db --remote && wrangler deploy",
+    "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:e2e": "vitest --config vitest.e2e.config.mts",
-    "test:all": "CLOUDFLARE_ACCOUNT_ID=$(grep CLOUDFLARE_ACCOUNT_ID .dev.vars | cut -d= -f2) vitest run && vitest run --config vitest.e2e.config.mts",
-    "typecheck": "tsc --noEmit",
-    "cf-typegen": "wrangler types",
     "kb:manifest": "npx tsx scripts/generate-kb-manifest.ts"
   },
   "dependencies": {

@@ -1,7 +1,11 @@
 /**
- * Response from the /api/auth/get-session endpoint.
- * Contains both the session details and the authenticated user.
+ * Shared types for the web application.
  */
+
+// ============================================================================
+// Auth Types
+// ============================================================================
+
 export interface SessionResponse {
   session: {
     id: string;
@@ -15,10 +19,12 @@ export interface SessionResponse {
   };
 }
 
-/**
- * A user's membership in an organization.
- * Returned from /api/user/org endpoint.
- */
+// ============================================================================
+// Organization Types
+// ============================================================================
+
+export type OrgRole = "admin" | "member";
+
 export interface OrgMembership {
   org: {
     id: string;
@@ -27,56 +33,48 @@ export interface OrgMembership {
     practiceTypes?: string[];
     firmSize?: string;
   };
-  role: "admin" | "member";
+  role: OrgRole;
   isOwner: boolean;
 }
 
-/**
- * A member of an organization with user details.
- * Returned from /api/org/members endpoint.
- */
 export interface OrgMember {
   id: string;
   userId: string;
   email: string;
   name: string;
-  role: "admin" | "member";
+  role: OrgRole;
   isOwner: boolean;
   createdAt: number;
 }
 
-/**
- * A pending invitation to join an organization.
- * Returned from /api/org/invitations endpoint.
- */
+// ============================================================================
+// Invitation Types
+// ============================================================================
+
 export interface PendingInvitation {
   id: string;
   email: string;
-  role: "admin" | "member";
+  role: OrgRole;
   invitedBy: string;
   inviterName: string;
   createdAt: number;
   expiresAt: number;
 }
 
-/**
- * Invitation details returned from /api/invitations/:id
- * Used on signup/invite acceptance pages.
- */
 export interface InvitationDetails {
   id: string;
   email: string;
   orgName: string;
-  role: "admin" | "member";
+  role: OrgRole;
   inviterName: string;
   isExpired: boolean;
   isAccepted: boolean;
 }
 
-/**
- * An organization context document.
- * Returned from /api/org/context endpoint.
- */
+// ============================================================================
+// Document Types
+// ============================================================================
+
 export interface OrgContextDocument {
   id: string;
   filename: string;
