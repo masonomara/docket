@@ -1,5 +1,31 @@
 import { API_URL } from "./auth-client";
 
+const MAX_RETRIES = 2;
+const BASE_DELAY_MS = 500;
+
+async function fetchWithRetry(
+  doFetch: () => Promise<Response>
+): Promise<Response> {
+  let lastResponse: Response | undefined;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const response = await doFetch();
+
+    if (response.status < 500) {
+      return response;
+    }
+
+    lastResponse = response;
+
+    if (attempt < MAX_RETRIES) {
+      const delay = BASE_DELAY_MS * Math.pow(2, attempt);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+
+  return lastResponse!;
+}
+
 export const ENDPOINTS = {
   auth: {
     session: "/api/auth/get-session",
@@ -65,17 +91,17 @@ export async function apiFetch(
 
   if (serviceBinding) {
     try {
-      const request = new Request(
-        `https://api.docketadmin.com${path}`,
-        requestOptions
-      );
-      return await serviceBinding.fetch(request);
+      return await fetchWithRetry(async () => {
+        const request = new Request(
+          `https://api.docketadmin.com${path}`,
+          requestOptions
+        );
+        return serviceBinding.fetch(request);
+      });
     } catch (error) {
-      // Service binding failed, fall through to regular fetch
       console.error("Service binding fetch failed:", error);
     }
   }
 
-  // Fallback to regular fetch (client-side or if service binding unavailable)
-  return fetch(`${API_URL}${path}`, requestOptions);
+  return fetchWithRetry(() => fetch(`${API_URL}${path}`, requestOptions));
 }
