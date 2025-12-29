@@ -14,17 +14,6 @@ This review consolidates findings from four distinct perspectives analyzing the 
 
 ## Items to Complete
 
-### 33. Magic Strings for API Endpoints
-
-**Impact:** Medium
-**File:** `apps/web/app/lib/api.ts`
-
-Endpoint URLs scattered throughout routes.
-
-**Recommendation:** Create typed API client or `ENDPOINTS` constant object.
-
----
-
 ### 34. No Retry Logic in Web API Client
 
 **Impact:** Medium

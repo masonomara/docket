@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { redirect, useRevalidator } from "react-router";
+import { useRevalidator } from "react-router";
 import type { Route } from "./+types/dashboard";
-import { apiFetch, ENDPOINTS } from "~/lib/api";
+import { ENDPOINTS } from "~/lib/api";
 import { API_URL } from "~/lib/auth-client";
-import type { SessionResponse, OrgMembership } from "~/lib/types";
+import { protectedLoader } from "~/lib/loader-auth";
 import { AppLayout } from "~/components/AppLayout";
 import { PageLayout } from "~/components/PageLayout";
 import {
@@ -44,36 +44,7 @@ const WIZARD_STEPS = [
    Loader
    ========================================================================== */
 
-export async function loader({ request, context }: Route.LoaderArgs) {
-  const cookie = request.headers.get("cookie") || "";
-
-  // Check if user is authenticated
-  const sessionResponse = await apiFetch(
-    context,
-    ENDPOINTS.auth.session,
-    cookie
-  );
-  if (!sessionResponse.ok) {
-    throw redirect("/auth");
-  }
-
-  const sessionData = (await sessionResponse.json()) as SessionResponse | null;
-  if (!sessionData?.user) {
-    throw redirect("/auth");
-  }
-
-  // Fetch user's organization membership
-  let orgMembership: OrgMembership | null = null;
-  const orgResponse = await apiFetch(context, ENDPOINTS.user.org, cookie);
-  if (orgResponse.ok) {
-    const orgData = (await orgResponse.json()) as OrgMembership | null;
-    if (orgData?.org) {
-      orgMembership = orgData;
-    }
-  }
-
-  return { user: sessionData.user, org: orgMembership };
-}
+export const loader = protectedLoader(({ user, org }) => ({ user, org }));
 
 /* ==========================================================================
    Component

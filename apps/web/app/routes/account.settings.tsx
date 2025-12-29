@@ -3,7 +3,7 @@ import { useNavigate } from "react-router";
 import type { Route } from "./+types/account.settings";
 import { API_URL, signOut } from "~/lib/auth-client";
 import { ENDPOINTS } from "~/lib/api";
-import { requireAuth } from "~/lib/loader-auth";
+import { protectedLoader } from "~/lib/loader-auth";
 import { AppLayout } from "~/components/AppLayout";
 import { PageLayout } from "~/components/PageLayout";
 
@@ -21,9 +21,7 @@ interface DeletionPreview {
 // Loader
 // -----------------------------------------------------------------------------
 
-export async function loader({ request, context }: Route.LoaderArgs) {
-  return requireAuth(request, context);
-}
+export const loader = protectedLoader(({ user, org }) => ({ user, org }));
 
 // -----------------------------------------------------------------------------
 // Page Component

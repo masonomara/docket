@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
 import { useSearchParams, useRevalidator } from "react-router";
 import type { Route } from "./+types/org.clio";
-import { apiFetch, ENDPOINTS } from "~/lib/api";
+import { ENDPOINTS } from "~/lib/api";
 import { API_URL } from "~/lib/auth-client";
 import { Plus, RotateCw } from "lucide-react";
-import { requireOrgAuth } from "~/lib/loader-auth";
+import { orgLoader } from "~/lib/loader-auth";
 import { AppLayout } from "~/components/AppLayout";
 import { PageLayout } from "~/components/PageLayout";
 
@@ -34,11 +34,8 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
 // Loader
 // -----------------------------------------------------------------------------
 
-export async function loader({ request, context }: Route.LoaderArgs) {
-  const { user, org } = await requireOrgAuth(request, context);
-  const cookie = request.headers.get("cookie") || "";
-
-  const clioResponse = await apiFetch(context, ENDPOINTS.clio.status, cookie);
+export const loader = orgLoader(async ({ user, org, fetch }) => {
+  const clioResponse = await fetch(ENDPOINTS.clio.status);
 
   let clioStatus: ClioStatus = { connected: false, schemaLoaded: false };
   let loadError: string | null = null;
@@ -50,7 +47,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   }
 
   return { user, org, clioStatus, loadError };
-}
+});
 
 // -----------------------------------------------------------------------------
 // Page Component

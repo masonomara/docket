@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { useRevalidator } from "react-router";
 import type { Route } from "./+types/org.members";
-import { apiFetch, ENDPOINTS } from "~/lib/api";
+import { ENDPOINTS } from "~/lib/api";
 import { API_URL } from "~/lib/auth-client";
-import { requireOrgAuth } from "~/lib/loader-auth";
+import { orgLoader } from "~/lib/loader-auth";
 import type { OrgMember, PendingInvitation } from "~/lib/types";
 import { AppLayout } from "~/components/AppLayout";
 import { PageLayout } from "~/components/PageLayout";
@@ -13,36 +13,33 @@ import { Plus } from "lucide-react";
 // Loader
 // -----------------------------------------------------------------------------
 
-export async function loader({ request, context }: Route.LoaderArgs) {
-  const { user, org } = await requireOrgAuth(request, context, {
-    requireAdmin: true,
-  });
+export const loader = orgLoader(
+  async ({ user, org, fetch }) => {
+    const [membersResponse, invitationsResponse] = await Promise.all([
+      fetch(ENDPOINTS.org.members),
+      fetch(ENDPOINTS.org.invitations),
+    ]);
 
-  const cookie = request.headers.get("cookie") || "";
+    let members: OrgMember[] = [];
+    let invitations: PendingInvitation[] = [];
+    let loadError: string | null = null;
 
-  const [membersResponse, invitationsResponse] = await Promise.all([
-    apiFetch(context, ENDPOINTS.org.members, cookie),
-    apiFetch(context, ENDPOINTS.org.invitations, cookie),
-  ]);
+    if (membersResponse.ok) {
+      members = (await membersResponse.json()) as OrgMember[];
+    } else {
+      loadError = "Failed to load members.";
+    }
 
-  let members: OrgMember[] = [];
-  let invitations: PendingInvitation[] = [];
-  let loadError: string | null = null;
+    if (invitationsResponse.ok) {
+      invitations = (await invitationsResponse.json()) as PendingInvitation[];
+    } else if (!loadError) {
+      loadError = "Failed to load invitations.";
+    }
 
-  if (membersResponse.ok) {
-    members = (await membersResponse.json()) as OrgMember[];
-  } else {
-    loadError = "Failed to load members.";
-  }
-
-  if (invitationsResponse.ok) {
-    invitations = (await invitationsResponse.json()) as PendingInvitation[];
-  } else if (!loadError) {
-    loadError = "Failed to load invitations.";
-  }
-
-  return { user, org, members, invitations, loadError };
-}
+    return { user, org, members, invitations, loadError };
+  },
+  { requireAdmin: true }
+);
 
 // -----------------------------------------------------------------------------
 // Page Component

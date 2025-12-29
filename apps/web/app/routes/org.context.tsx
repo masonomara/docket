@@ -1,10 +1,10 @@
 import { useState, useRef } from "react";
 import { useRevalidator } from "react-router";
 import type { Route } from "./+types/org.context";
-import { apiFetch, ENDPOINTS } from "~/lib/api";
+import { ENDPOINTS } from "~/lib/api";
 import { API_URL } from "~/lib/auth-client";
 import { validateFile, formatFileSize } from "~/lib/file-validation";
-import { requireOrgAuth } from "~/lib/loader-auth";
+import { orgLoader } from "~/lib/loader-auth";
 import type { OrgContextDocument } from "~/lib/types";
 import { AppLayout } from "~/components/AppLayout";
 import { PageLayout } from "~/components/PageLayout";
@@ -22,25 +22,23 @@ const ACCEPTED_FILE_TYPES =
 // Loader
 // -----------------------------------------------------------------------------
 
-export async function loader({ request, context }: Route.LoaderArgs) {
-  const { user, org } = await requireOrgAuth(request, context, {
-    requireAdmin: true,
-  });
+export const loader = orgLoader(
+  async ({ user, org, fetch }) => {
+    const docsResponse = await fetch(ENDPOINTS.org.context);
 
-  const cookie = request.headers.get("cookie") || "";
-  const docsResponse = await apiFetch(context, ENDPOINTS.org.context, cookie);
+    let documents: OrgContextDocument[] = [];
+    let loadError: string | null = null;
 
-  let documents: OrgContextDocument[] = [];
-  let loadError: string | null = null;
+    if (docsResponse.ok) {
+      documents = (await docsResponse.json()) as OrgContextDocument[];
+    } else {
+      loadError = "Failed to load documents.";
+    }
 
-  if (docsResponse.ok) {
-    documents = (await docsResponse.json()) as OrgContextDocument[];
-  } else {
-    loadError = "Failed to load documents.";
-  }
-
-  return { user, org, documents, loadError };
-}
+    return { user, org, documents, loadError };
+  },
+  { requireAdmin: true }
+);
 
 // -----------------------------------------------------------------------------
 // Page Component

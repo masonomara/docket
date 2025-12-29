@@ -4,7 +4,7 @@ import type { Route } from "./+types/org.settings";
 import { API_URL } from "~/lib/auth-client";
 import { ENDPOINTS } from "~/lib/api";
 import { FIRM_SIZES, US_STATES, PRACTICE_AREAS } from "~/lib/org-constants";
-import { requireOrgAuth } from "~/lib/loader-auth";
+import { orgLoader } from "~/lib/loader-auth";
 import { AppLayout } from "~/components/AppLayout";
 import { PageLayout } from "~/components/PageLayout";
 
@@ -23,9 +23,7 @@ interface DeletionPreview {
 // Loader
 // -----------------------------------------------------------------------------
 
-export async function loader({ request, context }: Route.LoaderArgs) {
-  return requireOrgAuth(request, context);
-}
+export const loader = orgLoader(({ user, org }) => ({ user, org }));
 
 // -----------------------------------------------------------------------------
 // Page Component
