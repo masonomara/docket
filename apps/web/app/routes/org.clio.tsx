@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useSearchParams, useRevalidator } from "react-router";
 import type { Route } from "./+types/org.clio";
-import { apiFetch } from "~/lib/api";
+import { apiFetch, ENDPOINTS } from "~/lib/api";
 import { API_URL } from "~/lib/auth-client";
 import { Plus, RotateCw } from "lucide-react";
 import { requireOrgAuth } from "~/lib/loader-auth";
@@ -38,7 +38,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const { user, org } = await requireOrgAuth(request, context);
   const cookie = request.headers.get("cookie") || "";
 
-  const clioResponse = await apiFetch(context, "/api/clio/status", cookie);
+  const clioResponse = await apiFetch(context, ENDPOINTS.clio.status, cookie);
 
   let clioStatus: ClioStatus = { connected: false, schemaLoaded: false };
   let loadError: string | null = null;
@@ -102,7 +102,7 @@ export default function ClioPage({ loaderData }: Route.ComponentProps) {
   // ---------------------------------------------------------------------------
 
   function handleConnect() {
-    window.location.href = `${API_URL}/api/clio/connect`;
+    window.location.href = `${API_URL}${ENDPOINTS.clio.connect}`;
   }
 
   async function handleDisconnect() {
@@ -111,7 +111,7 @@ export default function ClioPage({ loaderData }: Route.ComponentProps) {
     setIsDisconnecting(true);
 
     try {
-      const response = await fetch(`${API_URL}/api/clio/disconnect`, {
+      const response = await fetch(`${API_URL}${ENDPOINTS.clio.disconnect}`, {
         method: "POST",
         credentials: "include",
       });
@@ -137,10 +137,13 @@ export default function ClioPage({ loaderData }: Route.ComponentProps) {
     setIsRefreshing(true);
 
     try {
-      const response = await fetch(`${API_URL}/api/org/clio/refresh-schema`, {
-        method: "POST",
-        credentials: "include",
-      });
+      const response = await fetch(
+        `${API_URL}${ENDPOINTS.org.clioRefreshSchema}`,
+        {
+          method: "POST",
+          credentials: "include",
+        }
+      );
 
       if (!response.ok) {
         const data = (await response.json()) as { error?: string };

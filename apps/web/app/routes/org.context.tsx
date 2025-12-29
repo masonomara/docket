@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { useRevalidator } from "react-router";
 import type { Route } from "./+types/org.context";
-import { apiFetch } from "~/lib/api";
+import { apiFetch, ENDPOINTS } from "~/lib/api";
 import { API_URL } from "~/lib/auth-client";
 import { validateFile, formatFileSize } from "~/lib/file-validation";
 import { requireOrgAuth } from "~/lib/loader-auth";
@@ -28,7 +28,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   });
 
   const cookie = request.headers.get("cookie") || "";
-  const docsResponse = await apiFetch(context, "/api/org/context", cookie);
+  const docsResponse = await apiFetch(context, ENDPOINTS.org.context, cookie);
 
   let documents: OrgContextDocument[] = [];
   let loadError: string | null = null;
@@ -84,7 +84,7 @@ export default function DocumentsPage({ loaderData }: Route.ComponentProps) {
       const formData = new FormData();
       formData.append("file", file);
 
-      const response = await fetch(`${API_URL}/api/org/context`, {
+      const response = await fetch(`${API_URL}${ENDPOINTS.org.context}`, {
         method: "POST",
         body: formData,
         credentials: "include",
@@ -122,10 +122,13 @@ export default function DocumentsPage({ loaderData }: Route.ComponentProps) {
     if (!confirmed) return;
 
     try {
-      const response = await fetch(`${API_URL}/api/org/context/${documentId}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
+      const response = await fetch(
+        `${API_URL}${ENDPOINTS.org.contextDoc(documentId)}`,
+        {
+          method: "DELETE",
+          credentials: "include",
+        }
+      );
 
       if (!response.ok) {
         throw new Error("Failed to delete document");

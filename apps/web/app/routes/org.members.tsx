@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useRevalidator } from "react-router";
 import type { Route } from "./+types/org.members";
-import { apiFetch } from "~/lib/api";
+import { apiFetch, ENDPOINTS } from "~/lib/api";
 import { API_URL } from "~/lib/auth-client";
 import { requireOrgAuth } from "~/lib/loader-auth";
 import type { OrgMember, PendingInvitation } from "~/lib/types";
@@ -21,8 +21,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const cookie = request.headers.get("cookie") || "";
 
   const [membersResponse, invitationsResponse] = await Promise.all([
-    apiFetch(context, "/api/org/members", cookie),
-    apiFetch(context, "/api/org/invitations", cookie),
+    apiFetch(context, ENDPOINTS.org.members, cookie),
+    apiFetch(context, ENDPOINTS.org.invitations, cookie),
   ]);
 
   let members: OrgMember[] = [];
@@ -106,7 +106,7 @@ export default function MembersPage({ loaderData }: Route.ComponentProps) {
   async function handleRoleChange(member: OrgMember, newRole: string) {
     await runAction(
       () =>
-        makeApiRequest(`/api/org/members/${member.userId}`, "PATCH", {
+        makeApiRequest(ENDPOINTS.org.member(member.userId), "PATCH", {
           role: newRole,
         }),
       "Role updated"
@@ -118,7 +118,7 @@ export default function MembersPage({ loaderData }: Route.ComponentProps) {
     if (!confirmed) return;
 
     await runAction(
-      () => makeApiRequest(`/api/org/members/${member.userId}`, "DELETE"),
+      () => makeApiRequest(ENDPOINTS.org.member(member.userId), "DELETE"),
       "Member removed"
     );
   }
@@ -128,7 +128,7 @@ export default function MembersPage({ loaderData }: Route.ComponentProps) {
     if (!confirmed) return;
 
     await runAction(
-      () => makeApiRequest(`/api/org/invitations/${invitation.id}`, "DELETE"),
+      () => makeApiRequest(ENDPOINTS.org.invitation(invitation.id), "DELETE"),
       "Invitation revoked"
     );
   }
@@ -433,7 +433,7 @@ function InviteModal({ onClose, onSuccess }: InviteModalProps) {
     setIsSubmitting(true);
 
     try {
-      const response = await fetch(`${API_URL}/api/org/invitations`, {
+      const response = await fetch(`${API_URL}${ENDPOINTS.org.invitations}`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -554,15 +554,18 @@ function TransferOwnershipModal({
     setIsSubmitting(true);
 
     try {
-      const response = await fetch(`${API_URL}/api/org/transfer-ownership`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          toUserId: targetMember.userId,
-          confirmName,
-        }),
-      });
+      const response = await fetch(
+        `${API_URL}${ENDPOINTS.org.transferOwnership}`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            toUserId: targetMember.userId,
+            confirmName,
+          }),
+        }
+      );
 
       if (!response.ok) {
         const data = (await response.json()) as { error?: string };

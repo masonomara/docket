@@ -14,28 +14,6 @@ This review consolidates findings from four distinct perspectives analyzing the 
 
 ## Items to Complete
 
-### 31. No Integration Test Coverage for Web App
-
-**Impact:** High
-**File:** `apps/web/test/integration/auth.test.ts`
-
-Auth test file is essentially a placeholder. No way to test routes without full app.
-
-**Recommendation:** Add msw for API mocking. Create integration tests for critical flows.
-
----
-
-### 32. Inconsistent Logging
-
-**Impact:** Medium
-**Files:** `apps/api/src/handlers/org.ts`, `apps/api/src/handlers/clio.ts`
-
-Some handlers use structured logger, others use `console.error`.
-
-**Recommendation:** Enforce structured logging everywhere.
-
----
-
 ### 33. Magic Strings for API Endpoints
 
 **Impact:** Medium

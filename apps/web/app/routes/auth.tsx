@@ -7,6 +7,7 @@ import {
   sendVerificationEmail,
   API_URL,
 } from "~/lib/auth-client";
+import { ENDPOINTS } from "~/lib/api";
 import type { InvitationDetails } from "~/lib/types";
 import styles from "~/styles/auth.module.css";
 
@@ -52,10 +53,12 @@ export default function AuthPage() {
       return;
     }
 
+    const id = invitationId;
+
     async function loadInvitation() {
       try {
         const response = await fetch(
-          `${API_URL}/api/invitations/${invitationId}`,
+          `${API_URL}${ENDPOINTS.invitations.get(id)}`,
           { credentials: "include" }
         );
 
@@ -89,7 +92,7 @@ export default function AuthPage() {
     setIsLoading(true);
 
     try {
-      const response = await fetch(`${API_URL}/api/check-email`, {
+      const response = await fetch(`${API_URL}${ENDPOINTS.auth.checkEmail}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.toLowerCase().trim() }),

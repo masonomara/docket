@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate, Link, redirect } from "react-router";
 import type { Route } from "./+types/accept-invite";
-import { apiFetch } from "~/lib/api";
+import { apiFetch, ENDPOINTS } from "~/lib/api";
 import { API_URL } from "~/lib/auth-client";
 import type { SessionResponse, InvitationDetails } from "~/lib/types";
 import styles from "~/styles/auth.module.css";
@@ -19,7 +19,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   // Check if user is logged in
   const sessionResponse = await apiFetch(
     context,
-    "/api/auth/get-session",
+    ENDPOINTS.auth.session,
     cookie
   );
 
@@ -36,7 +36,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   // Fetch invitation details
   const invitationResponse = await apiFetch(
     context,
-    `/api/invitations/${invitationId}`,
+    ENDPOINTS.invitations.get(invitationId),
     cookie
   );
 
@@ -127,7 +127,7 @@ export default function AcceptInvitePage({ loaderData }: Route.ComponentProps) {
 
     try {
       const response = await fetch(
-        `${API_URL}/api/invitations/${invitationId}/accept`,
+        `${API_URL}${ENDPOINTS.invitations.accept(invitationId)}`,
         {
           method: "POST",
           credentials: "include",

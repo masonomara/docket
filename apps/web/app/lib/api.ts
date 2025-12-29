@@ -1,5 +1,40 @@
 import { API_URL } from "./auth-client";
 
+export const ENDPOINTS = {
+  auth: {
+    session: "/api/auth/get-session",
+    checkEmail: "/api/check-email",
+  },
+  account: {
+    base: "/api/account",
+    deletionPreview: "/api/account/deletion-preview",
+  },
+  org: {
+    base: "/api/org",
+    deletionPreview: "/api/org/deletion-preview",
+    members: "/api/org/members",
+    member: (userId: string) => `/api/org/members/${userId}`,
+    invitations: "/api/org/invitations",
+    invitation: (id: string) => `/api/org/invitations/${id}`,
+    transferOwnership: "/api/org/transfer-ownership",
+    context: "/api/org/context",
+    contextDoc: (id: string) => `/api/org/context/${id}`,
+    clioRefreshSchema: "/api/org/clio/refresh-schema",
+  },
+  user: {
+    org: "/api/user/org",
+  },
+  invitations: {
+    get: (id: string) => `/api/invitations/${id}`,
+    accept: (id: string) => `/api/invitations/${id}/accept`,
+  },
+  clio: {
+    status: "/api/clio/status",
+    connect: "/api/clio/connect",
+    disconnect: "/api/clio/disconnect",
+  },
+} as const;
+
 /**
  * Makes an authenticated API request, using the service binding when available
  * (for server-side requests in Cloudflare Workers) or falling back to fetch.

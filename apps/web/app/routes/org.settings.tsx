@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate, useRevalidator } from "react-router";
 import type { Route } from "./+types/org.settings";
 import { API_URL } from "~/lib/auth-client";
+import { ENDPOINTS } from "~/lib/api";
 import { FIRM_SIZES, US_STATES, PRACTICE_AREAS } from "~/lib/org-constants";
 import { requireOrgAuth } from "~/lib/loader-auth";
 import { AppLayout } from "~/components/AppLayout";
@@ -104,7 +105,7 @@ export default function SettingsPage({ loaderData }: Route.ComponentProps) {
     setIsSaving(true);
 
     try {
-      const response = await fetch(`${API_URL}/api/org`, {
+      const response = await fetch(`${API_URL}${ENDPOINTS.org.base}`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -142,9 +143,10 @@ export default function SettingsPage({ loaderData }: Route.ComponentProps) {
     setError(null);
 
     try {
-      const response = await fetch(`${API_URL}/api/org/deletion-preview`, {
-        credentials: "include",
-      });
+      const response = await fetch(
+        `${API_URL}${ENDPOINTS.org.deletionPreview}`,
+        { credentials: "include" }
+      );
 
       if (!response.ok) {
         const data = (await response.json()) as { error?: string };
@@ -169,7 +171,7 @@ export default function SettingsPage({ loaderData }: Route.ComponentProps) {
     setIsDeleting(true);
 
     try {
-      const response = await fetch(`${API_URL}/api/org`, {
+      const response = await fetch(`${API_URL}${ENDPOINTS.org.base}`, {
         method: "DELETE",
         credentials: "include",
         headers: { "Content-Type": "application/json" },

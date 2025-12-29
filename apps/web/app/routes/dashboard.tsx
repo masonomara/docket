@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { redirect, useRevalidator } from "react-router";
 import type { Route } from "./+types/dashboard";
-import { apiFetch } from "~/lib/api";
+import { apiFetch, ENDPOINTS } from "~/lib/api";
 import { API_URL } from "~/lib/auth-client";
 import type { SessionResponse, OrgMembership } from "~/lib/types";
 import { AppLayout } from "~/components/AppLayout";
@@ -50,7 +50,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   // Check if user is authenticated
   const sessionResponse = await apiFetch(
     context,
-    "/api/auth/get-session",
+    ENDPOINTS.auth.session,
     cookie
   );
   if (!sessionResponse.ok) {
@@ -64,7 +64,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 
   // Fetch user's organization membership
   let orgMembership: OrgMembership | null = null;
-  const orgResponse = await apiFetch(context, "/api/user/org", cookie);
+  const orgResponse = await apiFetch(context, ENDPOINTS.user.org, cookie);
   if (orgResponse.ok) {
     const orgData = (await orgResponse.json()) as OrgMembership | null;
     if (orgData?.org) {
@@ -193,7 +193,7 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
     setIsSubmitting(true);
 
     try {
-      const response = await fetch(`${API_URL}/api/org`, {
+      const response = await fetch(`${API_URL}${ENDPOINTS.org.base}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",

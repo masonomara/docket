@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router";
 import type { Route } from "./+types/account.settings";
 import { API_URL, signOut } from "~/lib/auth-client";
+import { ENDPOINTS } from "~/lib/api";
 import { requireAuth } from "~/lib/loader-auth";
 import { AppLayout } from "~/components/AppLayout";
 import { PageLayout } from "~/components/PageLayout";
@@ -58,7 +59,7 @@ export default function AccountSettingsPage({
     setIsSaving(true);
 
     try {
-      const response = await fetch(`${API_URL}/api/account`, {
+      const response = await fetch(`${API_URL}${ENDPOINTS.account.base}`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -83,9 +84,10 @@ export default function AccountSettingsPage({
     setError(null);
 
     try {
-      const response = await fetch(`${API_URL}/api/account/deletion-preview`, {
-        credentials: "include",
-      });
+      const response = await fetch(
+        `${API_URL}${ENDPOINTS.account.deletionPreview}`,
+        { credentials: "include" }
+      );
 
       if (!response.ok) {
         const data = (await response.json()) as { error?: string };
@@ -110,7 +112,7 @@ export default function AccountSettingsPage({
     setIsDeleting(true);
 
     try {
-      const response = await fetch(`${API_URL}/api/account`, {
+      const response = await fetch(`${API_URL}${ENDPOINTS.account.base}`, {
         method: "DELETE",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
