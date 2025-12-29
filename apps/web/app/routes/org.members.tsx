@@ -9,30 +9,25 @@ import { AppLayout } from "~/components/AppLayout";
 import { PageLayout } from "~/components/PageLayout";
 import { Plus } from "lucide-react";
 
-// -----------------------------------------------------------------------------
-// Loader
-// -----------------------------------------------------------------------------
-
 export const loader = orgLoader(
   async ({ user, org, fetch }) => {
-    const [membersResponse, invitationsResponse] = await Promise.all([
+    const [membersRes, invitationsRes] = await Promise.all([
       fetch(ENDPOINTS.org.members),
       fetch(ENDPOINTS.org.invitations),
     ]);
 
-    let members: OrgMember[] = [];
-    let invitations: PendingInvitation[] = [];
+    const members = membersRes.ok
+      ? ((await membersRes.json()) as OrgMember[])
+      : [];
+
+    const invitations = invitationsRes.ok
+      ? ((await invitationsRes.json()) as PendingInvitation[])
+      : [];
+
     let loadError: string | null = null;
-
-    if (membersResponse.ok) {
-      members = (await membersResponse.json()) as OrgMember[];
-    } else {
+    if (!membersRes.ok) {
       loadError = "Failed to load members.";
-    }
-
-    if (invitationsResponse.ok) {
-      invitations = (await invitationsResponse.json()) as PendingInvitation[];
-    } else if (!loadError) {
+    } else if (!invitationsRes.ok) {
       loadError = "Failed to load invitations.";
     }
 
@@ -41,41 +36,26 @@ export const loader = orgLoader(
   { requireAdmin: true }
 );
 
-// -----------------------------------------------------------------------------
-// Page Component
-// -----------------------------------------------------------------------------
-
 export default function MembersPage({ loaderData }: Route.ComponentProps) {
   const { user, org, members, invitations, loadError } = loaderData;
   const revalidator = useRevalidator();
 
-  // Modal state
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [transferTarget, setTransferTarget] = useState<OrgMember | null>(null);
-
-  // Feedback state
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  // ---------------------------------------------------------------------------
-  // API Helpers
-  // ---------------------------------------------------------------------------
-
-  async function makeApiRequest(
-    url: string,
-    method: string,
-    body?: object
-  ): Promise<void> {
-    const response = await fetch(`${API_URL}${url}`, {
+  async function makeApiRequest(url: string, method: string, body?: object) {
+    const res = await fetch(`${API_URL}${url}`, {
       method,
       credentials: "include",
       headers: body ? { "Content-Type": "application/json" } : undefined,
       body: body ? JSON.stringify(body) : undefined,
     });
 
-    if (!response.ok) {
-      const data = (await response.json()) as { error?: string };
+    if (!res.ok) {
+      const data = (await res.json()) as { error?: string };
       throw new Error(data.error || "Request failed");
     }
   }
@@ -83,7 +63,7 @@ export default function MembersPage({ loaderData }: Route.ComponentProps) {
   async function runAction(
     action: () => Promise<void>,
     successMessage: string
-  ): Promise<void> {
+  ) {
     setError(null);
     setSuccess(null);
 
@@ -96,12 +76,8 @@ export default function MembersPage({ loaderData }: Route.ComponentProps) {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Event Handlers
-  // ---------------------------------------------------------------------------
-
-  async function handleRoleChange(member: OrgMember, newRole: string) {
-    await runAction(
+  function handleRoleChange(member: OrgMember, newRole: string) {
+    runAction(
       () =>
         makeApiRequest(ENDPOINTS.org.member(member.userId), "PATCH", {
           role: newRole,
@@ -110,34 +86,29 @@ export default function MembersPage({ loaderData }: Route.ComponentProps) {
     );
   }
 
-  async function handleRemoveMember(member: OrgMember) {
+  function handleRemoveMember(member: OrgMember) {
     const confirmed = confirm(`Remove ${member.name} from the firm?`);
     if (!confirmed) return;
 
-    await runAction(
+    runAction(
       () => makeApiRequest(ENDPOINTS.org.member(member.userId), "DELETE"),
       "Member removed"
     );
   }
 
-  async function handleRevokeInvitation(invitation: PendingInvitation) {
+  function handleRevokeInvitation(invitation: PendingInvitation) {
     const confirmed = confirm(`Revoke invitation to ${invitation.email}?`);
     if (!confirmed) return;
 
-    await runAction(
+    runAction(
       () => makeApiRequest(ENDPOINTS.org.invitation(invitation.id), "DELETE"),
       "Invitation revoked"
     );
   }
 
-  function openTransferModal(member: OrgMember) {
+  function handleTransferClick(member: OrgMember) {
     setTransferTarget(member);
     setShowTransferModal(true);
-  }
-
-  function closeTransferModal() {
-    setShowTransferModal(false);
-    setTransferTarget(null);
   }
 
   function handleInviteSuccess() {
@@ -147,14 +118,16 @@ export default function MembersPage({ loaderData }: Route.ComponentProps) {
   }
 
   function handleTransferSuccess() {
-    closeTransferModal();
+    setShowTransferModal(false);
+    setTransferTarget(null);
     setSuccess("Ownership transferred");
     revalidator.revalidate();
   }
 
-  // ---------------------------------------------------------------------------
-  // Render
-  // ---------------------------------------------------------------------------
+  function handleTransferClose() {
+    setShowTransferModal(false);
+    setTransferTarget(null);
+  }
 
   return (
     <AppLayout org={org} currentPath="/org/members">
@@ -181,79 +154,26 @@ export default function MembersPage({ loaderData }: Route.ComponentProps) {
             </button>
           </div>
         )}
+
         {error && <div className="alert alert-error">{error}</div>}
         {success && <div className="alert alert-success">{success}</div>}
 
-        {/* Current Members */}
-        <section className="section">
-          <div className="section-header">
-            <h2 className="text-title-3">Current Members ({members.length})</h2>
-          </div>
+        <MembersTable
+          members={members}
+          currentUserId={user.id}
+          isOwner={org.isOwner}
+          onRoleChange={handleRoleChange}
+          onRemove={handleRemoveMember}
+          onTransfer={handleTransferClick}
+        />
 
-          {members.length === 0 ? (
-            <div className="empty-state">No members found</div>
-          ) : (
-            <div className="tableWrapper">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Role</th>
-                    <th>Joined</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {members.map((member) => (
-                    <MemberRow
-                      key={member.id}
-                      member={member}
-                      currentUserId={user.id}
-                      isCurrentUserOwner={org.isOwner}
-                      onRoleChange={handleRoleChange}
-                      onRemove={handleRemoveMember}
-                      onTransferOwnership={openTransferModal}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-
-        {/* Pending Invitations */}
         {invitations.length > 0 && (
-          <section className="section">
-            <h2 className="text-title-3">
-              Pending Invitations ({invitations.length})
-            </h2>
-
-            <div className="tableWrapper">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Email</th>
-                    <th>Role</th>
-                    <th>Invited By</th>
-                    <th>Expires</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {invitations.map((invitation) => (
-                    <InvitationRow
-                      key={invitation.id}
-                      invitation={invitation}
-                      onRevoke={handleRevokeInvitation}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
+          <InvitationsTable
+            invitations={invitations}
+            onRevoke={handleRevokeInvitation}
+          />
         )}
 
-        {/* Modals */}
         {showInviteModal && (
           <InviteModal
             onClose={() => setShowInviteModal(false)}
@@ -265,7 +185,7 @@ export default function MembersPage({ loaderData }: Route.ComponentProps) {
           <TransferOwnershipModal
             targetMember={transferTarget}
             orgName={org.org.name}
-            onClose={closeTransferModal}
+            onClose={handleTransferClose}
             onSuccess={handleTransferSuccess}
           />
         )}
@@ -274,37 +194,97 @@ export default function MembersPage({ loaderData }: Route.ComponentProps) {
   );
 }
 
-// -----------------------------------------------------------------------------
-// Member Row Component
-// -----------------------------------------------------------------------------
+// ============================================================================
+// Members Table
+// ============================================================================
+
+interface MembersTableProps {
+  members: OrgMember[];
+  currentUserId: string;
+  isOwner: boolean;
+  onRoleChange: (member: OrgMember, newRole: string) => void;
+  onRemove: (member: OrgMember) => void;
+  onTransfer: (member: OrgMember) => void;
+}
+
+function MembersTable({
+  members,
+  currentUserId,
+  isOwner,
+  onRoleChange,
+  onRemove,
+  onTransfer,
+}: MembersTableProps) {
+  return (
+    <section className="section">
+      <div className="section-header">
+        <h2 className="text-title-3">Current Members ({members.length})</h2>
+      </div>
+
+      {members.length === 0 ? (
+        <div className="empty-state">No members found</div>
+      ) : (
+        <div className="tableWrapper">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Role</th>
+                <th>Joined</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {members.map((member) => (
+                <MemberRow
+                  key={member.id}
+                  member={member}
+                  currentUserId={currentUserId}
+                  isOwner={isOwner}
+                  onRoleChange={onRoleChange}
+                  onRemove={onRemove}
+                  onTransfer={onTransfer}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
 
 interface MemberRowProps {
   member: OrgMember;
   currentUserId: string;
-  isCurrentUserOwner: boolean;
-  onRoleChange: (member: OrgMember, role: string) => void;
+  isOwner: boolean;
+  onRoleChange: (member: OrgMember, newRole: string) => void;
   onRemove: (member: OrgMember) => void;
-  onTransferOwnership: (member: OrgMember) => void;
+  onTransfer: (member: OrgMember) => void;
 }
 
 function MemberRow({
   member,
   currentUserId,
-  isCurrentUserOwner,
+  isOwner,
   onRoleChange,
   onRemove,
-  onTransferOwnership,
+  onTransfer,
 }: MemberRowProps) {
   const isSelf = member.userId === currentUserId;
   const canEditRole = !member.isOwner && !isSelf;
   const canTransferOwnership =
-    isCurrentUserOwner && !member.isOwner && !isSelf && member.role === "admin";
+    isOwner && !member.isOwner && !isSelf && member.role === "admin";
+  const canRemove = !member.isOwner && !isSelf;
 
-  const joinedDate = new Date(member.createdAt).toLocaleDateString();
+  function getRoleBadgeClass() {
+    if (member.isOwner) return "badge badge-owner";
+    if (member.role === "admin") return "badge badge-admin";
+    return "badge";
+  }
 
   return (
     <tr>
-      {/* Name & Email */}
       <td>
         <div>
           {member.name}
@@ -313,7 +293,6 @@ function MemberRow({
         <div className="text-secondary">{member.email}</div>
       </td>
 
-      {/* Role */}
       <td>
         {canEditRole ? (
           <select
@@ -326,25 +305,22 @@ function MemberRow({
             <option value="member">Member</option>
           </select>
         ) : (
-          <RoleBadge member={member} />
+          <span className={getRoleBadgeClass()}>
+            {member.isOwner ? "Owner" : member.role}
+          </span>
         )}
       </td>
 
-      {/* Joined Date */}
-      <td>{joinedDate}</td>
+      <td>{new Date(member.createdAt).toLocaleDateString()}</td>
 
-      {/* Actions */}
       <td>
         <div className="btn-group">
           {canTransferOwnership && (
-            <button
-              className="btn-primary"
-              onClick={() => onTransferOwnership(member)}
-            >
+            <button className="btn-primary" onClick={() => onTransfer(member)}>
               Transfer Ownership
             </button>
           )}
-          {canEditRole && (
+          {canRemove && (
             <button
               className="btn btn-sm btn-danger"
               onClick={() => onRemove(member)}
@@ -358,23 +334,47 @@ function MemberRow({
   );
 }
 
-function RoleBadge({ member }: { member: OrgMember }) {
-  let badgeClass = "badge";
+// ============================================================================
+// Invitations Table
+// ============================================================================
 
-  if (member.isOwner) {
-    badgeClass += " badge-owner";
-  } else if (member.role === "admin") {
-    badgeClass += " badge-admin";
-  }
-
-  const label = member.isOwner ? "Owner" : member.role;
-
-  return <span className={badgeClass}>{label}</span>;
+interface InvitationsTableProps {
+  invitations: PendingInvitation[];
+  onRevoke: (invitation: PendingInvitation) => void;
 }
 
-// -----------------------------------------------------------------------------
-// Invitation Row Component
-// -----------------------------------------------------------------------------
+function InvitationsTable({ invitations, onRevoke }: InvitationsTableProps) {
+  return (
+    <section className="section">
+      <h2 className="text-title-3">
+        Pending Invitations ({invitations.length})
+      </h2>
+
+      <div className="tableWrapper">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>Role</th>
+              <th>Invited By</th>
+              <th>Expires</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {invitations.map((invitation) => (
+              <InvitationRow
+                key={invitation.id}
+                invitation={invitation}
+                onRevoke={onRevoke}
+              />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
 
 interface InvitationRowProps {
   invitation: PendingInvitation;
@@ -382,9 +382,9 @@ interface InvitationRowProps {
 }
 
 function InvitationRow({ invitation, onRevoke }: InvitationRowProps) {
-  const expiresDate = new Date(invitation.expiresAt).toLocaleDateString();
-  const isExpiringSoon =
-    invitation.expiresAt - Date.now() < 24 * 60 * 60 * 1000;
+  const expiresDate = new Date(invitation.expiresAt);
+  const expiresInMs = invitation.expiresAt - Date.now();
+  const expiresSoon = expiresInMs < 86400000; // 24 hours
 
   return (
     <tr>
@@ -394,8 +394,8 @@ function InvitationRow({ invitation, onRevoke }: InvitationRowProps) {
       </td>
       <td className="text-secondary">{invitation.inviterName}</td>
       <td className="text-secondary">
-        {expiresDate}
-        {isExpiringSoon && " (soon)"}
+        {expiresDate.toLocaleDateString()}
+        {expiresSoon && " (soon)"}
       </td>
       <td>
         <button
@@ -409,9 +409,9 @@ function InvitationRow({ invitation, onRevoke }: InvitationRowProps) {
   );
 }
 
-// -----------------------------------------------------------------------------
+// ============================================================================
 // Invite Modal
-// -----------------------------------------------------------------------------
+// ============================================================================
 
 interface InviteModalProps {
   onClose: () => void;
@@ -430,15 +430,15 @@ function InviteModal({ onClose, onSuccess }: InviteModalProps) {
     setIsSubmitting(true);
 
     try {
-      const response = await fetch(`${API_URL}${ENDPOINTS.org.invitations}`, {
+      const res = await fetch(`${API_URL}${ENDPOINTS.org.invitations}`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, role }),
       });
 
-      if (!response.ok) {
-        const data = (await response.json()) as { error?: string };
+      if (!res.ok) {
+        const data = (await res.json()) as { error?: string };
         throw new Error(data.error || "Failed to send invitation");
       }
 
@@ -516,9 +516,9 @@ function InviteModal({ onClose, onSuccess }: InviteModalProps) {
   );
 }
 
-// -----------------------------------------------------------------------------
+// ============================================================================
 // Transfer Ownership Modal
-// -----------------------------------------------------------------------------
+// ============================================================================
 
 interface TransferOwnershipModalProps {
   targetMember: OrgMember;
@@ -537,12 +537,12 @@ function TransferOwnershipModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isNameMatch = confirmName === orgName;
+  const nameMatches = confirmName === orgName;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    if (!isNameMatch) {
+    if (!nameMatches) {
       setError("Name does not match");
       return;
     }
@@ -551,21 +551,15 @@ function TransferOwnershipModal({
     setIsSubmitting(true);
 
     try {
-      const response = await fetch(
-        `${API_URL}${ENDPOINTS.org.transferOwnership}`,
-        {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            toUserId: targetMember.userId,
-            confirmName,
-          }),
-        }
-      );
+      const res = await fetch(`${API_URL}${ENDPOINTS.org.transferOwnership}`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ toUserId: targetMember.userId, confirmName }),
+      });
 
-      if (!response.ok) {
-        const data = (await response.json()) as { error?: string };
+      if (!res.ok) {
+        const data = (await res.json()) as { error?: string };
         throw new Error(data.error || "Failed to transfer ownership");
       }
 
@@ -617,7 +611,7 @@ function TransferOwnershipModal({
             </button>
             <button
               type="submit"
-              disabled={isSubmitting || !isNameMatch}
+              disabled={isSubmitting || !nameMatches}
               className="btn btn-danger btn-lg btn-lg-fit"
             >
               {isSubmitting ? "Transferring..." : "Transfer Ownership"}

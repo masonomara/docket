@@ -21,20 +21,17 @@ type AuthStep = "email" | "login" | "signup" | "oauth-only";
 export default function AuthPage() {
   const [searchParams] = useSearchParams();
   const invitationId = searchParams.get("invitation");
-  const redirectParam = searchParams.get("redirect") || "/dashboard";
 
-  // If there's an invitation, redirect to accept-invite after auth
+  // Build redirect URL based on whether there's an invitation
   const redirectUrl = invitationId
     ? `/accept-invite?invitation=${invitationId}`
-    : redirectParam;
+    : searchParams.get("redirect") || "/dashboard";
 
-  // Form state
+  // Auth flow state
   const [step, setStep] = useState<AuthStep>("email");
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
-
-  // UI state
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -47,75 +44,74 @@ export default function AuthPage() {
   const [isResending, setIsResending] = useState(false);
   const [hasResent, setHasResent] = useState(false);
 
-  // Load invitation details if we have an invitation ID
+  // Fetch invitation details if there's an invitation ID
   useEffect(() => {
-    if (!invitationId) {
-      return;
-    }
+    if (!invitationId) return;
 
-    const id = invitationId;
+    const id = invitationId; // Capture for closure
 
-    async function loadInvitation() {
+    async function fetchInvitation() {
       try {
-        const response = await fetch(
-          `${API_URL}${ENDPOINTS.invitations.get(id)}`,
-          { credentials: "include" }
-        );
+        const res = await fetch(`${API_URL}${ENDPOINTS.invitations.get(id)}`, {
+          credentials: "include",
+        });
 
-        if (response.ok) {
-          const data = (await response.json()) as InvitationDetails;
+        if (res.ok) {
+          const data = (await res.json()) as InvitationDetails;
           setInvitation(data);
           setEmail(data.email);
         }
       } catch {
-        // Invitation not found or error - continue without it
+        // Silently fail - invitation not found is handled in UI
       }
 
       setInvitationLoading(false);
     }
 
-    loadInvitation();
+    fetchInvitation();
   }, [invitationId]);
 
-  // Reset form when changing email
-  function handleChangeEmail() {
+  function resetToEmailStep() {
     setStep("email");
     setPassword("");
     setName("");
     setErrorMessage(null);
   }
 
-  // Check if email exists and determine next step
+  function handleGoogleSignIn() {
+    signIn.social({
+      provider: "google",
+      callbackURL: `${window.location.origin}${redirectUrl}`,
+    });
+  }
+
   async function handleEmailSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErrorMessage(null);
     setIsLoading(true);
 
     try {
-      const response = await fetch(`${API_URL}${ENDPOINTS.auth.checkEmail}`, {
+      const res = await fetch(`${API_URL}${ENDPOINTS.auth.checkEmail}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.toLowerCase().trim() }),
         credentials: "include",
       });
 
-      if (!response.ok) {
-        throw new Error("Failed to check email");
+      if (!res.ok) {
+        throw new Error();
       }
 
-      const data = (await response.json()) as {
+      const data = (await res.json()) as {
         exists: boolean;
         hasPassword: boolean;
       };
 
-      // Determine which step to show based on account status
       if (data.exists) {
-        if (data.hasPassword) {
-          setStep("login");
-        } else {
-          setStep("oauth-only");
-        }
+        // User exists - either show password login or OAuth-only screen
+        setStep(data.hasPassword ? "login" : "oauth-only");
       } else {
+        // New user - show signup form
         setStep("signup");
       }
     } catch {
@@ -125,7 +121,6 @@ export default function AuthPage() {
     }
   }
 
-  // Handle password login
   async function handleLoginSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErrorMessage(null);
@@ -145,22 +140,23 @@ export default function AuthPage() {
         }
       );
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Login failed";
-      setErrorMessage(message);
+      setErrorMessage(err instanceof Error ? err.message : "Login failed");
       setIsLoading(false);
     }
   }
 
-  // Handle new account signup
   async function handleSignupSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErrorMessage(null);
     setIsLoading(true);
 
-    const callbackURL = `${window.location.origin}${redirectUrl}`;
-
     await signUp.email(
-      { name, email, password, callbackURL },
+      {
+        name,
+        email,
+        password,
+        callbackURL: `${window.location.origin}${redirectUrl}`,
+      },
       {
         onSuccess: () => {
           setEmailSent(true);
@@ -174,100 +170,25 @@ export default function AuthPage() {
     );
   }
 
-  // Resend verification email
   async function handleResendVerification() {
     setIsResending(true);
     setHasResent(false);
 
-    const callbackURL = `${window.location.origin}${redirectUrl}`;
-    await sendVerificationEmail({ email, callbackURL });
+    await sendVerificationEmail({
+      email,
+      callbackURL: `${window.location.origin}${redirectUrl}`,
+    });
 
     setIsResending(false);
     setHasResent(true);
   }
 
-  // Redirect to Google OAuth
-  function handleGoogleSignIn() {
-    const callbackURL = `${window.location.origin}${redirectUrl}`;
-    signIn.social({ provider: "google", callbackURL });
-  }
-
-  // Go back from email sent screen
   function handleGoBackFromEmailSent() {
     setEmailSent(false);
     setHasResent(false);
   }
 
-  // --- Render helpers ---
-
-  function renderGoogleButton() {
-    return (
-      <button
-        type="button"
-        onClick={handleGoogleSignIn}
-        disabled={isLoading}
-        className="btn btn-secondary btn-lg"
-      >
-        <img src="/google-icon-button.svg" alt="" height="18" width="18" />
-        Continue with Google
-      </button>
-    );
-  }
-
-  function renderEmailField(options: { editable?: boolean }) {
-    const { editable = false } = options;
-
-    if (editable) {
-      return (
-        <div className={styles.fieldGroup}>
-          <label htmlFor="email" className={styles.label}>
-            Email
-          </label>
-          <input
-            id="email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            disabled={isLoading || !!invitation}
-            readOnly={!!invitation}
-            className={`${styles.input} ${invitation ? styles.inputDisabled : ""}`}
-            placeholder="Enter your email"
-          />
-        </div>
-      );
-    }
-
-    // Read-only email with optional change button
-    return (
-      <div className={styles.fieldGroup}>
-        <label htmlFor="email" className={styles.label}>
-          Email
-        </label>
-        <div className={styles.inputWithAction}>
-          <input
-            id="email"
-            type="email"
-            value={email}
-            readOnly
-            disabled
-            className={`${styles.input} ${styles.inputDisabled}`}
-          />
-          {!invitation && (
-            <button
-              type="button"
-              onClick={handleChangeEmail}
-              className={styles.inlineAction}
-            >
-              Change
-            </button>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // --- Loading state ---
+  // Loading state while fetching invitation
   if (invitationLoading) {
     return (
       <main className={styles.page}>
@@ -278,7 +199,7 @@ export default function AuthPage() {
     );
   }
 
-  // --- Expired invitation ---
+  // Invitation expired
   if (invitation?.isExpired) {
     return (
       <main className={styles.page}>
@@ -298,7 +219,7 @@ export default function AuthPage() {
     );
   }
 
-  // --- Already accepted invitation ---
+  // Invitation already accepted
   if (invitation?.isAccepted) {
     return (
       <main className={styles.page}>
@@ -317,7 +238,7 @@ export default function AuthPage() {
     );
   }
 
-  // --- Email verification sent ---
+  // Email verification sent screen
   if (emailSent) {
     return (
       <main className={styles.page}>
@@ -358,12 +279,8 @@ export default function AuthPage() {
     );
   }
 
-  // --- Step 1: Email entry ---
+  // Step 1: Enter email
   if (step === "email") {
-    const subtitle = invitation
-      ? `${invitation.inviterName} invited you to join ${invitation.orgName}. Sign in or create an account.`
-      : "Sign in or create an account to work with Docket.";
-
     return (
       <main className={styles.page}>
         <div className={styles.container}>
@@ -373,18 +290,31 @@ export default function AuthPage() {
           >
             Work with Docket Case Management
           </h1>
-          <p className={styles.subtitle}>{subtitle}</p>
+
+          <p className={styles.subtitle}>
+            {invitation
+              ? `${invitation.inviterName} invited you to join ${invitation.orgName}. Sign in or create an account.`
+              : "Sign in or create an account to work with Docket."}
+          </p>
 
           {errorMessage && (
             <div className="alert alert-error">{errorMessage}</div>
           )}
 
-          {renderGoogleButton()}
+          <GoogleSignInButton
+            onClick={handleGoogleSignIn}
+            disabled={isLoading}
+          />
 
           <div className={styles.divider}>or</div>
 
           <form className={styles.formGroup} onSubmit={handleEmailSubmit}>
-            {renderEmailField({ editable: true })}
+            <EmailField
+              email={email}
+              onChange={setEmail}
+              disabled={isLoading || !!invitation}
+              readOnly={!!invitation}
+            />
             <button
               type="submit"
               disabled={isLoading}
@@ -398,26 +328,31 @@ export default function AuthPage() {
     );
   }
 
-  // --- Step 2a: Password login for existing user ---
+  // Step 2a: Login with password
   if (step === "login") {
-    const subtitle = invitation
-      ? `Continue to Docket as a ${invitation.role} of ${invitation.orgName}.`
-      : "Enter your password to continue";
-
     return (
       <main className={styles.page}>
         <div className={styles.container}>
           <h1 className="text-large-title" style={{ textAlign: "center" }}>
             Welcome back
           </h1>
-          <p className={styles.subtitle}>{subtitle}</p>
+
+          <p className={styles.subtitle}>
+            {invitation
+              ? `Continue to Docket as a ${invitation.role} of ${invitation.orgName}.`
+              : "Enter your password to continue"}
+          </p>
 
           {errorMessage && (
             <div className="alert alert-error">{errorMessage}</div>
           )}
 
           <form className={styles.formGroup} onSubmit={handleLoginSubmit}>
-            {renderEmailField({ editable: false })}
+            <ReadOnlyEmailField
+              email={email}
+              showChangeButton={!invitation}
+              onChangeClick={resetToEmailStep}
+            />
 
             <div className={styles.fieldGroup}>
               <label htmlFor="password" className={styles.label}>
@@ -452,7 +387,7 @@ export default function AuthPage() {
     );
   }
 
-  // --- Step 2b: OAuth-only user (no password set) ---
+  // Step 2b: OAuth-only account (no password)
   if (step === "oauth-only") {
     return (
       <main className={styles.page}>
@@ -460,18 +395,24 @@ export default function AuthPage() {
           <h1 className="text-large-title" style={{ textAlign: "center" }}>
             Welcome back
           </h1>
+
           <p className={styles.subtitle}>
             This account uses Google sign-in. Continue with Google to access
             your account.
           </p>
 
-          <div className={styles.oauthSection}>{renderGoogleButton()}</div>
+          <div className={styles.oauthSection}>
+            <GoogleSignInButton
+              onClick={handleGoogleSignIn}
+              disabled={isLoading}
+            />
+          </div>
 
           <p className={styles.footer}>
             Not you?{" "}
             <button
               type="button"
-              onClick={handleChangeEmail}
+              onClick={resetToEmailStep}
               className={styles.linkButton}
             >
               Use a different email
@@ -482,29 +423,34 @@ export default function AuthPage() {
     );
   }
 
-  // --- Step 2c: New user signup ---
-  const signupSubtitle = invitation ? (
-    <>
-      Join <strong>{invitation.orgName}</strong> as a {invitation.role}.
-    </>
-  ) : (
-    "Sign up to get started with Docket."
-  );
-
+  // Step 3: Create account (signup)
   return (
     <main className={styles.page}>
       <div className={styles.container}>
         <h1 className="text-large-title" style={{ textAlign: "center" }}>
           Create your account
         </h1>
-        <p className={styles.subtitle}>{signupSubtitle}</p>
+
+        <p className={styles.subtitle}>
+          {invitation ? (
+            <>
+              Join <strong>{invitation.orgName}</strong> as a {invitation.role}.
+            </>
+          ) : (
+            "Sign up to get started with Docket."
+          )}
+        </p>
 
         {errorMessage && (
           <div className="alert alert-error">{errorMessage}</div>
         )}
 
         <form className={styles.formGroup} onSubmit={handleSignupSubmit}>
-          {renderEmailField({ editable: false })}
+          <ReadOnlyEmailField
+            email={email}
+            showChangeButton={!invitation}
+            onChangeClick={resetToEmailStep}
+          />
 
           <div className={styles.fieldGroup}>
             <label htmlFor="name" className={styles.label}>
@@ -550,5 +496,99 @@ export default function AuthPage() {
         </form>
       </div>
     </main>
+  );
+}
+
+// ============================================================================
+// Helper Components
+// ============================================================================
+
+interface GoogleSignInButtonProps {
+  onClick: () => void;
+  disabled: boolean;
+}
+
+function GoogleSignInButton({ onClick, disabled }: GoogleSignInButtonProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="btn btn-secondary btn-lg"
+    >
+      <img src="/google-icon-button.svg" alt="" height="18" width="18" />
+      Continue with Google
+    </button>
+  );
+}
+
+interface EmailFieldProps {
+  email: string;
+  onChange: (value: string) => void;
+  disabled: boolean;
+  readOnly: boolean;
+}
+
+function EmailField({ email, onChange, disabled, readOnly }: EmailFieldProps) {
+  const inputClassName = readOnly
+    ? `${styles.input} ${styles.inputDisabled}`
+    : styles.input;
+
+  return (
+    <div className={styles.fieldGroup}>
+      <label htmlFor="email" className={styles.label}>
+        Email
+      </label>
+      <input
+        id="email"
+        type="email"
+        value={email}
+        onChange={(e) => onChange(e.target.value)}
+        required
+        disabled={disabled}
+        readOnly={readOnly}
+        className={inputClassName}
+        placeholder="Enter your email"
+      />
+    </div>
+  );
+}
+
+interface ReadOnlyEmailFieldProps {
+  email: string;
+  showChangeButton: boolean;
+  onChangeClick: () => void;
+}
+
+function ReadOnlyEmailField({
+  email,
+  showChangeButton,
+  onChangeClick,
+}: ReadOnlyEmailFieldProps) {
+  return (
+    <div className={styles.fieldGroup}>
+      <label htmlFor="email" className={styles.label}>
+        Email
+      </label>
+      <div className={styles.inputWithAction}>
+        <input
+          id="email"
+          type="email"
+          value={email}
+          readOnly
+          disabled
+          className={`${styles.input} ${styles.inputDisabled}`}
+        />
+        {showChangeButton && (
+          <button
+            type="button"
+            onClick={onChangeClick}
+            className={styles.inlineAction}
+          >
+            Change
+          </button>
+        )}
+      </div>
+    </div>
   );
 }

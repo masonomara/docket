@@ -7,25 +7,13 @@ import { protectedLoader } from "~/lib/loader-auth";
 import { AppLayout } from "~/components/AppLayout";
 import { PageLayout } from "~/components/PageLayout";
 
-// -----------------------------------------------------------------------------
-// Types
-// -----------------------------------------------------------------------------
-
 interface DeletionPreview {
   user: { id: string; email: string } | null;
   orgsOwned: number;
   orgMemberships: number;
 }
 
-// -----------------------------------------------------------------------------
-// Loader
-// -----------------------------------------------------------------------------
-
 export const loader = protectedLoader(({ user, org }) => ({ user, org }));
-
-// -----------------------------------------------------------------------------
-// Page Component
-// -----------------------------------------------------------------------------
 
 export default function AccountSettingsPage({
   loaderData,
@@ -33,10 +21,10 @@ export default function AccountSettingsPage({
   const { user, org } = loaderData;
   const navigate = useNavigate();
 
-  // Form state
+  // Name editing state
   const [name, setName] = useState(user.name);
   const [isSaving, setIsSaving] = useState(false);
-  const nameHasChanged = name !== user.name;
+  const [error, setError] = useState<string | null>(null);
 
   // Delete modal state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -45,27 +33,22 @@ export default function AccountSettingsPage({
   const [confirmEmail, setConfirmEmail] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Feedback state
-  const [error, setError] = useState<string | null>(null);
-
-  // ---------------------------------------------------------------------------
-  // Event Handlers
-  // ---------------------------------------------------------------------------
+  const hasNameChanged = name !== user.name;
 
   async function handleSaveName() {
     setError(null);
     setIsSaving(true);
 
     try {
-      const response = await fetch(`${API_URL}${ENDPOINTS.account.base}`, {
+      const res = await fetch(`${API_URL}${ENDPOINTS.account.base}`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
       });
 
-      if (!response.ok) {
-        const data = (await response.json()) as { error?: string };
+      if (!res.ok) {
+        const data = (await res.json()) as { error?: string };
         throw new Error(data.error || "Failed to update name");
       }
 
@@ -78,26 +61,43 @@ export default function AccountSettingsPage({
     }
   }
 
+  function handleCancelNameChange() {
+    setName(user.name);
+  }
+
+  async function handleSignOut() {
+    await signOut();
+    window.location.href = "/auth";
+  }
+
   async function handleShowDeleteModal() {
     setError(null);
 
     try {
-      const response = await fetch(
+      const res = await fetch(
         `${API_URL}${ENDPOINTS.account.deletionPreview}`,
-        { credentials: "include" }
+        {
+          credentials: "include",
+        }
       );
 
-      if (!response.ok) {
-        const data = (await response.json()) as { error?: string };
+      if (!res.ok) {
+        const data = (await res.json()) as { error?: string };
         throw new Error(data.error || "Failed to load deletion preview");
       }
 
-      const preview = (await response.json()) as DeletionPreview;
+      const preview = (await res.json()) as DeletionPreview;
       setDeletionPreview(preview);
       setShowDeleteModal(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load preview");
     }
+  }
+
+  function handleCloseDeleteModal() {
+    setShowDeleteModal(false);
+    setConfirmEmail("");
+    setError(null);
   }
 
   async function handleDeleteAccount() {
@@ -110,20 +110,16 @@ export default function AccountSettingsPage({
     setIsDeleting(true);
 
     try {
-      const response = await fetch(`${API_URL}${ENDPOINTS.account.base}`, {
+      const res = await fetch(`${API_URL}${ENDPOINTS.account.base}`, {
         method: "DELETE",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ confirmEmail }),
       });
 
-      if (!response.ok) {
-        const data = (await response.json()) as {
-          error?: string;
-          message?: string;
-        };
+      if (!res.ok) {
+        const data = (await res.json()) as { error?: string; message?: string };
 
-        // Handle the special case where user is sole owner of an org
         if (data.error === "sole_owner") {
           throw new Error(
             data.message || "You must transfer ownership of your firm first"
@@ -142,135 +138,35 @@ export default function AccountSettingsPage({
     }
   }
 
-  function handleCloseDeleteModal() {
-    setShowDeleteModal(false);
-    setConfirmEmail("");
-    setError(null);
-  }
-
-  async function handleSignOut() {
-    await signOut();
-    window.location.href = "/auth";
-  }
-
-  // ---------------------------------------------------------------------------
-  // Render
-  // ---------------------------------------------------------------------------
-
   return (
     <AppLayout org={org} currentPath="/account/settings">
       <PageLayout title="Account Settings">
         {error && <div className="alert alert-error">{error}</div>}
 
-        {/* Account Details Section */}
-        <section className="section">
-          <h2 className="text-title-3">Account</h2>
+        <AccountSection
+          name={name}
+          email={user.email}
+          hasChanges={hasNameChanged}
+          isSaving={isSaving}
+          onNameChange={setName}
+          onSave={handleSaveName}
+          onCancel={handleCancelNameChange}
+        />
 
-          <div className="form-card">
-            {/* Name Field */}
-            <div className="form-group">
-              <label htmlFor="name" className="form-label">
-                Name
-              </label>
-              <input
-                id="name"
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="form-input"
-              />
-            </div>
+        <SessionSection onSignOut={handleSignOut} />
 
-            {/* Email Field (read-only) */}
-            <div className="form-group">
-              <label htmlFor="email" className="form-label">
-                Email
-              </label>
-              <input
-                id="email"
-                type="email"
-                value={user.email}
-                disabled
-                className="form-input input-disabled"
-              />
-            </div>
-          </div>
+        <DangerZoneSection onDeleteClick={handleShowDeleteModal} />
 
-          {/* Save/Cancel Buttons */}
-          {nameHasChanged && (
-            <div className="btn-group">
-              <button
-                onClick={() => setName(user.name)}
-                disabled={isSaving}
-                className="btn btn-lg btn-secondary btn-lg-fit"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveName}
-                disabled={isSaving}
-                className="btn btn-lg btn-primary btn-lg-fit"
-              >
-                {isSaving ? "Saving..." : "Save Changes"}
-              </button>
-            </div>
-          )}
-        </section>
-
-        {/* Session Section */}
-        <section className="section">
-          <h2 className="text-title-3">Session</h2>
-
-          <div className="info-card">
-            <div>
-              <h3 className="text-headline">Sign Out</h3>
-              <p className="text-secondary">
-                Sign out of your account on this device.
-              </p>
-            </div>
-
-            <button
-              onClick={handleSignOut}
-              className="btn btn-sm btn-secondary"
-            >
-              Sign Out
-            </button>
-          </div>
-        </section>
-
-        {/* Danger Zone Section */}
-        <section className="section">
-          <h2 className="text-title-3">Danger Zone</h2>
-
-          <div className="info-card">
-            <div>
-              <h3 className="text-headline">Delete Account</h3>
-              <p className="text-secondary">
-                Permanently delete your account and all associated data. This
-                action cannot be undone.
-              </p>
-            </div>
-
-            <button
-              onClick={handleShowDeleteModal}
-              className="btn btn-sm btn-danger"
-            >
-              Delete Account
-            </button>
-          </div>
-        </section>
-
-        {/* Delete Account Modal */}
         {showDeleteModal && deletionPreview && (
           <DeleteAccountModal
             userEmail={user.email}
             deletionPreview={deletionPreview}
             confirmEmail={confirmEmail}
-            onConfirmEmailChange={setConfirmEmail}
             isDeleting={isDeleting}
             error={error}
-            onDelete={handleDeleteAccount}
-            onClose={handleCloseDeleteModal}
+            onConfirmEmailChange={setConfirmEmail}
+            onConfirm={handleDeleteAccount}
+            onCancel={handleCloseDeleteModal}
           />
         )}
       </PageLayout>
@@ -278,37 +174,170 @@ export default function AccountSettingsPage({
   );
 }
 
-// -----------------------------------------------------------------------------
+// ============================================================================
+// Account Section
+// ============================================================================
+
+interface AccountSectionProps {
+  name: string;
+  email: string;
+  hasChanges: boolean;
+  isSaving: boolean;
+  onNameChange: (value: string) => void;
+  onSave: () => void;
+  onCancel: () => void;
+}
+
+function AccountSection({
+  name,
+  email,
+  hasChanges,
+  isSaving,
+  onNameChange,
+  onSave,
+  onCancel,
+}: AccountSectionProps) {
+  return (
+    <section className="section">
+      <h2 className="text-title-3">Account</h2>
+
+      <div className="form-card">
+        <div className="form-group">
+          <label htmlFor="name" className="form-label">
+            Name
+          </label>
+          <input
+            id="name"
+            type="text"
+            value={name}
+            onChange={(e) => onNameChange(e.target.value)}
+            className="form-input"
+          />
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="email" className="form-label">
+            Email
+          </label>
+          <input
+            id="email"
+            type="email"
+            value={email}
+            disabled
+            className="form-input input-disabled"
+          />
+        </div>
+      </div>
+
+      {hasChanges && (
+        <div className="btn-group">
+          <button
+            onClick={onCancel}
+            disabled={isSaving}
+            className="btn btn-lg btn-secondary btn-lg-fit"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onSave}
+            disabled={isSaving}
+            className="btn btn-lg btn-primary btn-lg-fit"
+          >
+            {isSaving ? "Saving..." : "Save Changes"}
+          </button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ============================================================================
+// Session Section
+// ============================================================================
+
+interface SessionSectionProps {
+  onSignOut: () => void;
+}
+
+function SessionSection({ onSignOut }: SessionSectionProps) {
+  return (
+    <section className="section">
+      <h2 className="text-title-3">Session</h2>
+
+      <div className="info-card">
+        <div>
+          <h3 className="text-headline">Sign Out</h3>
+          <p className="text-secondary">
+            Sign out of your account on this device.
+          </p>
+        </div>
+        <button onClick={onSignOut} className="btn btn-sm btn-secondary">
+          Sign Out
+        </button>
+      </div>
+    </section>
+  );
+}
+
+// ============================================================================
+// Danger Zone Section
+// ============================================================================
+
+interface DangerZoneSectionProps {
+  onDeleteClick: () => void;
+}
+
+function DangerZoneSection({ onDeleteClick }: DangerZoneSectionProps) {
+  return (
+    <section className="section">
+      <h2 className="text-title-3">Danger Zone</h2>
+
+      <div className="info-card">
+        <div>
+          <h3 className="text-headline">Delete Account</h3>
+          <p className="text-secondary">
+            Permanently delete your account and all associated data. This action
+            cannot be undone.
+          </p>
+        </div>
+        <button onClick={onDeleteClick} className="btn btn-sm btn-danger">
+          Delete Account
+        </button>
+      </div>
+    </section>
+  );
+}
+
+// ============================================================================
 // Delete Account Modal
-// -----------------------------------------------------------------------------
+// ============================================================================
 
 interface DeleteAccountModalProps {
   userEmail: string;
   deletionPreview: DeletionPreview;
   confirmEmail: string;
-  onConfirmEmailChange: (value: string) => void;
   isDeleting: boolean;
   error: string | null;
-  onDelete: () => void;
-  onClose: () => void;
+  onConfirmEmailChange: (value: string) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
 }
 
 function DeleteAccountModal({
   userEmail,
   deletionPreview,
   confirmEmail,
-  onConfirmEmailChange,
   isDeleting,
   error,
-  onDelete,
-  onClose,
+  onConfirmEmailChange,
+  onConfirm,
+  onCancel,
 }: DeleteAccountModalProps) {
-  const isEmailMatch = confirmEmail === userEmail;
-  const hasOrgsOwned = deletionPreview.orgsOwned > 0;
-  const hasOrgMemberships = deletionPreview.orgMemberships > 0;
+  const emailMatches = confirmEmail === userEmail;
+  const ownsOrgs = deletionPreview.orgsOwned > 0;
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={onCancel}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         <h2 className="modal-title">Delete Account</h2>
 
@@ -320,14 +349,16 @@ function DeleteAccountModal({
           <li>
             Your account (<strong>{deletionPreview.user?.email}</strong>)
           </li>
-          {hasOrgsOwned && <li>{deletionPreview.orgsOwned} firm(s) you own</li>}
-          {hasOrgMemberships && (
+          {deletionPreview.orgsOwned > 0 && (
+            <li>{deletionPreview.orgsOwned} firm(s) you own</li>
+          )}
+          {deletionPreview.orgMemberships > 0 && (
             <li>{deletionPreview.orgMemberships} firm membership(s)</li>
           )}
           <li>All your conversations and messages</li>
         </ul>
 
-        {hasOrgsOwned && (
+        {ownsOrgs && (
           <div className="alert alert-error">
             Warning: You must transfer ownership before deleting your account.
           </div>
@@ -351,14 +382,14 @@ function DeleteAccountModal({
 
         <div className="modal-actions">
           <button
-            onClick={onClose}
+            onClick={onCancel}
             className="btn btn-secondary btn-lg btn-lg-fit"
           >
             Cancel
           </button>
           <button
-            onClick={onDelete}
-            disabled={isDeleting || !isEmailMatch}
+            onClick={onConfirm}
+            disabled={isDeleting || !emailMatches}
             className="btn btn-danger btn-lg btn-lg-fit"
           >
             {isDeleting ? "Deleting..." : "Delete Account"}

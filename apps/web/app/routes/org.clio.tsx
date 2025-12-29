@@ -8,20 +8,12 @@ import { orgLoader } from "~/lib/loader-auth";
 import { AppLayout } from "~/components/AppLayout";
 import { PageLayout } from "~/components/PageLayout";
 
-// -----------------------------------------------------------------------------
-// Types
-// -----------------------------------------------------------------------------
-
 interface ClioStatus {
   connected: boolean;
   schemaLoaded: boolean;
   schemaVersion?: number;
   lastSyncedAt?: number;
 }
-
-// -----------------------------------------------------------------------------
-// Constants
-// -----------------------------------------------------------------------------
 
 const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   denied: "Authorization denied.",
@@ -30,52 +22,30 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   exchange_failed: "Authorization failed.",
 };
 
-// -----------------------------------------------------------------------------
-// Loader
-// -----------------------------------------------------------------------------
-
 export const loader = orgLoader(async ({ user, org, fetch }) => {
-  const clioResponse = await fetch(ENDPOINTS.clio.status);
+  const res = await fetch(ENDPOINTS.clio.status);
 
-  let clioStatus: ClioStatus = { connected: false, schemaLoaded: false };
-  let loadError: string | null = null;
+  const clioStatus: ClioStatus = res.ok
+    ? ((await res.json()) as ClioStatus)
+    : { connected: false, schemaLoaded: false };
 
-  if (clioResponse.ok) {
-    clioStatus = (await clioResponse.json()) as ClioStatus;
-  } else {
-    loadError = "Failed to load Clio status.";
-  }
+  const loadError = res.ok ? null : "Failed to load Clio status.";
 
   return { user, org, clioStatus, loadError };
 });
-
-// -----------------------------------------------------------------------------
-// Page Component
-// -----------------------------------------------------------------------------
 
 export default function ClioPage({ loaderData }: Route.ComponentProps) {
   const { user, org, clioStatus, loadError } = loaderData;
   const [searchParams, setSearchParams] = useSearchParams();
   const revalidator = useRevalidator();
 
-  // Loading states
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
-
-  // Modal state
   const [showDisconnectModal, setShowDisconnectModal] = useState(false);
-
-  // Feedback state
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  // Permissions
-  const isAdmin = org.role === "admin";
-
-  // ---------------------------------------------------------------------------
-  // Handle URL Parameters (OAuth callback results)
-  // ---------------------------------------------------------------------------
-
+  // Handle OAuth callback results from URL params
   useEffect(() => {
     const successParam = searchParams.get("success");
     const errorParam = searchParams.get("error");
@@ -94,11 +64,7 @@ export default function ClioPage({ loaderData }: Route.ComponentProps) {
     }
   }, [searchParams, setSearchParams]);
 
-  // ---------------------------------------------------------------------------
-  // Event Handlers
-  // ---------------------------------------------------------------------------
-
-  function handleConnect() {
+  function navigateToClioOAuth() {
     window.location.href = `${API_URL}${ENDPOINTS.clio.connect}`;
   }
 
@@ -108,13 +74,13 @@ export default function ClioPage({ loaderData }: Route.ComponentProps) {
     setIsDisconnecting(true);
 
     try {
-      const response = await fetch(`${API_URL}${ENDPOINTS.clio.disconnect}`, {
+      const res = await fetch(`${API_URL}${ENDPOINTS.clio.disconnect}`, {
         method: "POST",
         credentials: "include",
       });
 
-      if (!response.ok) {
-        const data = (await response.json()) as { error?: string };
+      if (!res.ok) {
+        const data = (await res.json()) as { error?: string };
         throw new Error(data.error || "Failed to disconnect");
       }
 
@@ -134,16 +100,13 @@ export default function ClioPage({ loaderData }: Route.ComponentProps) {
     setIsRefreshing(true);
 
     try {
-      const response = await fetch(
-        `${API_URL}${ENDPOINTS.org.clioRefreshSchema}`,
-        {
-          method: "POST",
-          credentials: "include",
-        }
-      );
+      const res = await fetch(`${API_URL}${ENDPOINTS.org.clioRefreshSchema}`, {
+        method: "POST",
+        credentials: "include",
+      });
 
-      if (!response.ok) {
-        const data = (await response.json()) as { error?: string };
+      if (!res.ok) {
+        const data = (await res.json()) as { error?: string };
         throw new Error(data.error || "Failed to sync");
       }
 
@@ -156,17 +119,7 @@ export default function ClioPage({ loaderData }: Route.ComponentProps) {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Derived Values
-  // ---------------------------------------------------------------------------
-
-  const lastSyncedText = clioStatus.lastSyncedAt
-    ? `Last synced ${new Date(clioStatus.lastSyncedAt).toLocaleDateString()}`
-    : null;
-
-  // ---------------------------------------------------------------------------
-  // Render
-  // ---------------------------------------------------------------------------
+  const isAdmin = org.role === "admin";
 
   return (
     <AppLayout org={org} currentPath="/org/clio">
@@ -175,22 +128,10 @@ export default function ClioPage({ loaderData }: Route.ComponentProps) {
         subtitle="Connect your Clio account to query matters, contacts, and calendar data."
         actions={
           <>
-            {/* Connection Status Indicator */}
-            <div className="status-indicator btn btn-sm btn-secondary">
-              <span
-                className={`status-dot ${
-                  clioStatus.connected
-                    ? "status-dot-success"
-                    : "status-dot-error"
-                }`}
-              />
-              {clioStatus.connected ? "Connected" : "Not Connected"}
-            </div>
-
-            {/* Reconnect Button (only when connected) */}
+            <ConnectionStatus isConnected={clioStatus.connected} />
             {clioStatus.connected && (
               <button
-                onClick={handleConnect}
+                onClick={navigateToClioOAuth}
                 className="btn btn-secondary btn-sm"
               >
                 <RotateCw strokeWidth={1.75} size={16} />
@@ -211,121 +152,176 @@ export default function ClioPage({ loaderData }: Route.ComponentProps) {
             </button>
           </div>
         )}
+
         {error && <div className="alert alert-error">{error}</div>}
         {success && <div className="alert alert-success">{success}</div>}
 
-        {/* Connect Section (only when not connected) */}
         {!clioStatus.connected && (
-          <section className="section">
-            <h2 className="text-title-3">Connect to Clio</h2>
-
-            <div className="info-card">
-              <div>
-                <h3 className="text-headline">What Docket does with Clio</h3>
-                <ul
-                  className="text-secondary"
-                  style={{ marginTop: ".2em", marginLeft: "1em" }}
-                >
-                  <li>Query matters, contacts, tasks, and calendar entries</li>
-                  <li>Create and update records</li>
-                  <li>Search across your firm&apos;s case data</li>
-                  <li>
-                    Access is encrypted and limited to your Clio permissions
-                  </li>
-                </ul>
-              </div>
-
-              <button
-                onClick={handleConnect}
-                className="btn btn-sm btn-primary"
-              >
-                <Plus strokeWidth={1.75} size={16} />
-                Connect to Clio
-              </button>
-            </div>
-          </section>
+          <ConnectToClioSection onConnect={navigateToClioOAuth} />
         )}
 
-        {/* Sync Section (only for admins when connected) */}
         {isAdmin && clioStatus.connected && (
-          <section className="section">
-            <h2 className="text-title-3">Sync Clio Configuration</h2>
-
-            <div className="info-card">
-              <div>
-                <h3 className="text-headline">
-                  {lastSyncedText || "Not synced yet"}
-                </h3>
-                <p className="section-description">
-                  If you&apos;ve added custom fields or changed your Clio setup,
-                  sync to update Docket. Auto-syncs hourly.
-                </p>
-              </div>
-
-              <button
-                onClick={handleSync}
-                disabled={isRefreshing}
-                className="btn btn-sm btn-secondary"
-              >
-                {isRefreshing ? "Syncing..." : "Sync Now"}
-              </button>
-            </div>
-          </section>
+          <SyncConfigSection
+            lastSyncedAt={clioStatus.lastSyncedAt}
+            isRefreshing={isRefreshing}
+            onSync={handleSync}
+          />
         )}
 
-        {/* Danger Zone (only when connected) */}
         {clioStatus.connected && (
-          <section className="section">
-            <h2 className="text-title-3">Danger Zone</h2>
-
-            <div className="info-card">
-              <div>
-                <h3 className="text-headline">Disconnect Clio</h3>
-                <p className="section-description">
-                  Revokes Docket&apos;s access. You can reconnect anytime.
-                </p>
-              </div>
-
-              <button
-                onClick={() => setShowDisconnectModal(true)}
-                className="btn btn-sm btn-danger"
-              >
-                Disconnect
-              </button>
-            </div>
-          </section>
+          <DangerZoneSection
+            onDisconnect={() => setShowDisconnectModal(true)}
+          />
         )}
       </PageLayout>
 
-      {/* Disconnect Confirmation Modal */}
       {showDisconnectModal && (
         <DisconnectModal
           isDisconnecting={isDisconnecting}
-          onDisconnect={handleDisconnect}
-          onClose={() => setShowDisconnectModal(false)}
+          onConfirm={handleDisconnect}
+          onCancel={() => setShowDisconnectModal(false)}
         />
       )}
     </AppLayout>
   );
 }
 
-// -----------------------------------------------------------------------------
+// ============================================================================
+// Helper Components
+// ============================================================================
+
+interface ConnectionStatusProps {
+  isConnected: boolean;
+}
+
+function ConnectionStatus({ isConnected }: ConnectionStatusProps) {
+  const statusDotClass = isConnected
+    ? "status-dot status-dot-success"
+    : "status-dot status-dot-error";
+  const statusText = isConnected ? "Connected" : "Not Connected";
+
+  return (
+    <div className="status-indicator btn btn-sm btn-secondary">
+      <span className={statusDotClass} />
+      {statusText}
+    </div>
+  );
+}
+
+interface ConnectToClioSectionProps {
+  onConnect: () => void;
+}
+
+function ConnectToClioSection({ onConnect }: ConnectToClioSectionProps) {
+  return (
+    <section className="section">
+      <h2 className="text-title-3">Connect to Clio</h2>
+
+      <div className="info-card">
+        <div>
+          <h3 className="text-headline">What Docket does with Clio</h3>
+          <ul
+            className="text-secondary"
+            style={{ marginTop: ".2em", marginLeft: "1em" }}
+          >
+            <li>Query matters, contacts, tasks, and calendar entries</li>
+            <li>Create and update records</li>
+            <li>Search across your firm&apos;s case data</li>
+            <li>Access is encrypted and limited to your Clio permissions</li>
+          </ul>
+        </div>
+
+        <button onClick={onConnect} className="btn btn-sm btn-primary">
+          <Plus strokeWidth={1.75} size={16} />
+          Connect to Clio
+        </button>
+      </div>
+    </section>
+  );
+}
+
+interface SyncConfigSectionProps {
+  lastSyncedAt?: number;
+  isRefreshing: boolean;
+  onSync: () => void;
+}
+
+function SyncConfigSection({
+  lastSyncedAt,
+  isRefreshing,
+  onSync,
+}: SyncConfigSectionProps) {
+  const lastSyncText = lastSyncedAt
+    ? `Last synced ${new Date(lastSyncedAt).toLocaleDateString()}`
+    : "Not synced yet";
+
+  return (
+    <section className="section">
+      <h2 className="text-title-3">Sync Clio Configuration</h2>
+
+      <div className="info-card">
+        <div>
+          <h3 className="text-headline">{lastSyncText}</h3>
+          <p className="section-description">
+            If you&apos;ve added custom fields or changed your Clio setup, sync
+            to update Docket. Auto-syncs hourly.
+          </p>
+        </div>
+
+        <button
+          onClick={onSync}
+          disabled={isRefreshing}
+          className="btn btn-sm btn-secondary"
+        >
+          {isRefreshing ? "Syncing..." : "Sync Now"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+interface DangerZoneSectionProps {
+  onDisconnect: () => void;
+}
+
+function DangerZoneSection({ onDisconnect }: DangerZoneSectionProps) {
+  return (
+    <section className="section">
+      <h2 className="text-title-3">Danger Zone</h2>
+
+      <div className="info-card">
+        <div>
+          <h3 className="text-headline">Disconnect Clio</h3>
+          <p className="section-description">
+            Revokes Docket&apos;s access. You can reconnect anytime.
+          </p>
+        </div>
+
+        <button onClick={onDisconnect} className="btn btn-sm btn-danger">
+          Disconnect
+        </button>
+      </div>
+    </section>
+  );
+}
+
+// ============================================================================
 // Disconnect Modal
-// -----------------------------------------------------------------------------
+// ============================================================================
 
 interface DisconnectModalProps {
   isDisconnecting: boolean;
-  onDisconnect: () => void;
-  onClose: () => void;
+  onConfirm: () => void;
+  onCancel: () => void;
 }
 
 function DisconnectModal({
   isDisconnecting,
-  onDisconnect,
-  onClose,
+  onConfirm,
+  onCancel,
 }: DisconnectModalProps) {
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={onCancel}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-title-3">Disconnect Clio?</h2>
 
@@ -336,14 +332,14 @@ function DisconnectModal({
 
         <div className="modal-actions">
           <button
-            onClick={onClose}
+            onClick={onCancel}
             className="btn btn-secondary btn-sm"
             disabled={isDisconnecting}
           >
             Cancel
           </button>
           <button
-            onClick={onDisconnect}
+            onClick={onConfirm}
             className="btn btn-danger btn-sm"
             disabled={isDisconnecting}
           >

@@ -11,62 +11,37 @@ import { PageLayout } from "~/components/PageLayout";
 import styles from "~/styles/org-context.module.css";
 import { Info, Plus } from "lucide-react";
 
-// -----------------------------------------------------------------------------
-// Constants
-// -----------------------------------------------------------------------------
-
 const ACCEPTED_FILE_TYPES =
   ".pdf,.docx,.xlsx,.pptx,.odt,.ods,.numbers,.md,.txt,.html,.csv,.xml";
 
-// -----------------------------------------------------------------------------
-// Loader
-// -----------------------------------------------------------------------------
-
 export const loader = orgLoader(
   async ({ user, org, fetch }) => {
-    const docsResponse = await fetch(ENDPOINTS.org.context);
+    const res = await fetch(ENDPOINTS.org.context);
 
-    let documents: OrgContextDocument[] = [];
-    let loadError: string | null = null;
+    const documents = res.ok
+      ? ((await res.json()) as OrgContextDocument[])
+      : [];
 
-    if (docsResponse.ok) {
-      documents = (await docsResponse.json()) as OrgContextDocument[];
-    } else {
-      loadError = "Failed to load documents.";
-    }
+    const loadError = res.ok ? null : "Failed to load documents.";
 
     return { user, org, documents, loadError };
   },
   { requireAdmin: true }
 );
 
-// -----------------------------------------------------------------------------
-// Page Component
-// -----------------------------------------------------------------------------
-
 export default function DocumentsPage({ loaderData }: Route.ComponentProps) {
   const { user, org, documents: initialDocuments, loadError } = loaderData;
   const revalidator = useRevalidator();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Document state (local for optimistic updates)
   const [documents, setDocuments] =
     useState<OrgContextDocument[]>(initialDocuments);
-
-  // Upload state
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isDragOver, setIsDragOver] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Feedback state
   const [error, setError] = useState<string | null>(null);
 
-  // ---------------------------------------------------------------------------
-  // File Upload
-  // ---------------------------------------------------------------------------
-
   async function uploadFile(file: File) {
-    // Validate the file before uploading
     const validation = validateFile(file);
     if (!validation.valid) {
       setError(validation.error || "Invalid file");
@@ -78,11 +53,10 @@ export default function DocumentsPage({ loaderData }: Route.ComponentProps) {
     setUploadProgress(30);
 
     try {
-      // Create form data and upload
       const formData = new FormData();
       formData.append("file", file);
 
-      const response = await fetch(`${API_URL}${ENDPOINTS.org.context}`, {
+      const res = await fetch(`${API_URL}${ENDPOINTS.org.context}`, {
         method: "POST",
         body: formData,
         credentials: "include",
@@ -90,37 +64,30 @@ export default function DocumentsPage({ loaderData }: Route.ComponentProps) {
 
       setUploadProgress(80);
 
-      if (!response.ok) {
-        const data = (await response.json()) as { error?: string };
+      if (!res.ok) {
+        const data = (await res.json()) as { error?: string };
         throw new Error(data.error || "Upload failed");
       }
 
-      // Add the new document to the list
-      const newDocument = (await response.json()) as OrgContextDocument;
-      setDocuments((prevDocuments) => [newDocument, ...prevDocuments]);
+      const newDoc = (await res.json()) as OrgContextDocument;
+      setDocuments((prev) => [newDoc, ...prev]);
       setUploadProgress(100);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setIsUploading(false);
-
-      // Reset the file input so the same file can be uploaded again
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // File Deletion
-  // ---------------------------------------------------------------------------
-
   async function handleDelete(documentId: string, filename: string) {
     const confirmed = confirm(`Delete "${filename}"?`);
     if (!confirmed) return;
 
     try {
-      const response = await fetch(
+      const res = await fetch(
         `${API_URL}${ENDPOINTS.org.contextDoc(documentId)}`,
         {
           method: "DELETE",
@@ -128,22 +95,15 @@ export default function DocumentsPage({ loaderData }: Route.ComponentProps) {
         }
       );
 
-      if (!response.ok) {
+      if (!res.ok) {
         throw new Error("Failed to delete document");
       }
 
-      // Remove the document from the list
-      setDocuments((prevDocuments) =>
-        prevDocuments.filter((doc) => doc.id !== documentId)
-      );
+      setDocuments((prev) => prev.filter((doc) => doc.id !== documentId));
     } catch {
       alert("Failed to delete document");
     }
   }
-
-  // ---------------------------------------------------------------------------
-  // Drag & Drop Handlers
-  // ---------------------------------------------------------------------------
 
   function handleDragOver(e: React.DragEvent) {
     e.preventDefault();
@@ -161,48 +121,36 @@ export default function DocumentsPage({ loaderData }: Route.ComponentProps) {
     e.preventDefault();
     setIsDragOver(false);
 
-    const droppedFile = e.dataTransfer.files[0];
-    if (!isUploading && droppedFile) {
-      uploadFile(droppedFile);
+    const file = e.dataTransfer.files[0];
+    if (!isUploading && file) {
+      uploadFile(file);
     }
   }
 
-  function handleFileInputChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const selectedFile = e.target.files?.[0];
-    if (selectedFile) {
-      uploadFile(selectedFile);
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) {
+      uploadFile(file);
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // CSS Classes
-  // ---------------------------------------------------------------------------
-
-  function getUploadAreaClass(): string {
+  function getUploadAreaClassName() {
     let className = styles.uploadArea;
-
     if (isUploading) {
       className += ` ${styles.uploading}`;
     } else if (isDragOver) {
       className += ` ${styles.dragOver}`;
     }
-
     return className;
   }
 
-  function getUploadLabelClass(): string {
+  function getUploadLabelClassName() {
     let className = styles.uploadLabel;
-
     if (isUploading) {
       className += ` ${styles.disabled}`;
     }
-
     return className;
   }
-
-  // ---------------------------------------------------------------------------
-  // Render
-  // ---------------------------------------------------------------------------
 
   return (
     <AppLayout org={org} currentPath="/org/context">
@@ -210,19 +158,7 @@ export default function DocumentsPage({ loaderData }: Route.ComponentProps) {
         title="Knowledge Base"
         subtitle="Upload internal procedures and policies for Docket to reference when answering questions."
       >
-        {/* Info Banner */}
-        <section className="section infoSection">
-          <Info
-            strokeWidth={2.25}
-            size={16}
-            style={{ marginTop: "1.5px", minHeight: "16px", minWidth: "16px" }}
-          />
-          <div>
-            <h3 className="text-headline">
-              Available to all members. Avoid uploading sensitive client data.
-            </h3>
-          </div>
-        </section>
+        <InfoBanner />
 
         {loadError && (
           <div className="alert alert-error">
@@ -235,14 +171,14 @@ export default function DocumentsPage({ loaderData }: Route.ComponentProps) {
             </button>
           </div>
         )}
+
         {error && <div className="alert alert-error">{error}</div>}
 
-        {/* Upload Section */}
         <section className="section">
           <h2 className="text-title-3">Upload Documents</h2>
 
           <div
-            className={getUploadAreaClass()}
+            className={getUploadAreaClassName()}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
@@ -251,15 +187,15 @@ export default function DocumentsPage({ loaderData }: Route.ComponentProps) {
               ref={fileInputRef}
               type="file"
               accept={ACCEPTED_FILE_TYPES}
-              onChange={handleFileInputChange}
+              onChange={handleFileChange}
               disabled={isUploading}
               id="file-input"
               className={styles.hiddenInput}
             />
 
-            <label htmlFor="file-input" className={getUploadLabelClass()}>
+            <label htmlFor="file-input" className={getUploadLabelClassName()}>
               {isUploading ? (
-                <UploadProgress progress={uploadProgress} />
+                <UploadProgressIndicator progress={uploadProgress} />
               ) : (
                 <UploadPrompt />
               )}
@@ -267,64 +203,32 @@ export default function DocumentsPage({ loaderData }: Route.ComponentProps) {
           </div>
         </section>
 
-        {/* Documents List Section */}
-        <section className="section">
-          <h2 className="text-title-3">
-            Manage Documents ({documents.length})
-          </h2>
-
-          {documents.length === 0 ? (
-            <p className="empty-state">No documents uploaded yet.</p>
-          ) : (
-            <div className="tableWrapper">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Filename</th>
-                    <th>Size</th>
-                    <th>Uploaded</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {documents.map((doc) => (
-                    <DocumentRow
-                      key={doc.id}
-                      document={doc}
-                      onDelete={handleDelete}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
+        <DocumentsTable documents={documents} onDelete={handleDelete} />
       </PageLayout>
     </AppLayout>
   );
 }
 
-// -----------------------------------------------------------------------------
-// Upload Progress Component
-// -----------------------------------------------------------------------------
+// ============================================================================
+// Helper Components
+// ============================================================================
 
-function UploadProgress({ progress }: { progress: number }) {
+function InfoBanner() {
   return (
-    <div className={styles.uploadProgress}>
-      <div className={styles.progressBar}>
-        <div
-          className={styles.progressFill}
-          style={{ width: `${progress}%` }}
-        />
+    <section className="section infoSection">
+      <Info
+        strokeWidth={2.25}
+        size={16}
+        style={{ marginTop: "1.5px", minHeight: "16px", minWidth: "16px" }}
+      />
+      <div>
+        <h3 className="text-headline">
+          Available to all members. Avoid uploading sensitive client data.
+        </h3>
       </div>
-      <span className={styles.progressText}>Processing...</span>
-    </div>
+    </section>
   );
 }
-
-// -----------------------------------------------------------------------------
-// Upload Prompt Component
-// -----------------------------------------------------------------------------
 
 function UploadPrompt() {
   return (
@@ -338,23 +242,76 @@ function UploadPrompt() {
   );
 }
 
-// -----------------------------------------------------------------------------
-// Document Row Component
-// -----------------------------------------------------------------------------
+interface UploadProgressIndicatorProps {
+  progress: number;
+}
+
+function UploadProgressIndicator({ progress }: UploadProgressIndicatorProps) {
+  return (
+    <div className={styles.uploadProgress}>
+      <div className={styles.progressBar}>
+        <div
+          className={styles.progressFill}
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+      <span className={styles.progressText}>Processing...</span>
+    </div>
+  );
+}
+
+// ============================================================================
+// Documents Table
+// ============================================================================
+
+interface DocumentsTableProps {
+  documents: OrgContextDocument[];
+  onDelete: (documentId: string, filename: string) => void;
+}
+
+function DocumentsTable({ documents, onDelete }: DocumentsTableProps) {
+  return (
+    <section className="section">
+      <h2 className="text-title-3">Manage Documents ({documents.length})</h2>
+
+      {documents.length === 0 ? (
+        <p className="empty-state">No documents uploaded yet.</p>
+      ) : (
+        <div className="tableWrapper">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Filename</th>
+                <th>Size</th>
+                <th>Uploaded</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {documents.map((doc) => (
+                <DocumentRow key={doc.id} document={doc} onDelete={onDelete} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
 
 interface DocumentRowProps {
   document: OrgContextDocument;
-  onDelete: (id: string, filename: string) => void;
+  onDelete: (documentId: string, filename: string) => void;
 }
 
 function DocumentRow({ document, onDelete }: DocumentRowProps) {
-  const uploadedDate = new Date(document.uploadedAt).toLocaleDateString();
+  const uploadDate = new Date(document.uploadedAt).toLocaleDateString();
 
   return (
     <tr>
       <td>{document.filename}</td>
       <td>{formatFileSize(document.size)}</td>
-      <td>{uploadedDate}</td>
+      <td>{uploadDate}</td>
       <td style={{ textAlign: "right" }}>
         <button
           onClick={() => onDelete(document.id, document.filename)}

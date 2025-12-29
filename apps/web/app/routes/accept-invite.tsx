@@ -11,64 +11,37 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const url = new URL(request.url);
   const invitationId = url.searchParams.get("invitation");
 
-  // Redirect to dashboard if no invitation ID provided
+  // No invitation ID - redirect to dashboard
   if (!invitationId) {
     throw redirect("/dashboard");
   }
 
   // Check if user is logged in
-  const sessionResponse = await apiFetch(
-    context,
-    ENDPOINTS.auth.session,
-    cookie
-  );
-
-  if (!sessionResponse.ok) {
+  const sessionRes = await apiFetch(context, ENDPOINTS.auth.session, cookie);
+  if (!sessionRes.ok) {
     throw redirect(`/auth?invitation=${invitationId}`);
   }
 
-  const sessionData = (await sessionResponse.json()) as SessionResponse | null;
-
-  if (!sessionData?.user) {
+  const session = (await sessionRes.json()) as SessionResponse | null;
+  if (!session?.user) {
     throw redirect(`/auth?invitation=${invitationId}`);
   }
 
   // Fetch invitation details
-  const invitationResponse = await apiFetch(
+  const invitationRes = await apiFetch(
     context,
     ENDPOINTS.invitations.get(invitationId),
     cookie
   );
-
-  let invitation: InvitationDetails | null = null;
-  if (invitationResponse.ok) {
-    invitation = (await invitationResponse.json()) as InvitationDetails;
-  }
+  const invitation = invitationRes.ok
+    ? ((await invitationRes.json()) as InvitationDetails)
+    : null;
 
   return {
-    user: sessionData.user,
+    user: session.user,
     invitation,
     invitationId,
   };
-}
-
-interface ErrorPageProps {
-  title: string;
-  message: string;
-}
-
-function ErrorPage({ title, message }: ErrorPageProps) {
-  return (
-    <main className={styles.page}>
-      <div className={styles.container}>
-        <h1 className={styles.title}>{title}</h1>
-        <p className={styles.subtitle}>{message}</p>
-        <Link to="/dashboard" className={styles.submitButton}>
-          Go to Dashboard
-        </Link>
-      </div>
-    </main>
-  );
 }
 
 export default function AcceptInvitePage({ loaderData }: Route.ComponentProps) {
@@ -78,7 +51,7 @@ export default function AcceptInvitePage({ loaderData }: Route.ComponentProps) {
   const [error, setError] = useState<string | null>(null);
   const [isAccepting, setIsAccepting] = useState(false);
 
-  // Handle case where invitation doesn't exist
+  // Handle various error states
   if (!invitation) {
     return (
       <ErrorPage
@@ -88,7 +61,6 @@ export default function AcceptInvitePage({ loaderData }: Route.ComponentProps) {
     );
   }
 
-  // Handle expired invitation
   if (invitation.isExpired) {
     return (
       <ErrorPage
@@ -98,7 +70,6 @@ export default function AcceptInvitePage({ loaderData }: Route.ComponentProps) {
     );
   }
 
-  // Handle already accepted invitation
   if (invitation.isAccepted) {
     return (
       <ErrorPage
@@ -108,7 +79,7 @@ export default function AcceptInvitePage({ loaderData }: Route.ComponentProps) {
     );
   }
 
-  // Handle email mismatch
+  // Check if the logged-in user matches the invitation email
   const userEmailLower = user.email.toLowerCase();
   const invitationEmailLower = invitation.email.toLowerCase();
 
@@ -126,7 +97,7 @@ export default function AcceptInvitePage({ loaderData }: Route.ComponentProps) {
     setError(null);
 
     try {
-      const response = await fetch(
+      const res = await fetch(
         `${API_URL}${ENDPOINTS.invitations.accept(invitationId)}`,
         {
           method: "POST",
@@ -134,16 +105,16 @@ export default function AcceptInvitePage({ loaderData }: Route.ComponentProps) {
         }
       );
 
-      if (!response.ok) {
-        const data = (await response.json()) as { error?: string };
+      if (!res.ok) {
+        const data = (await res.json()) as { error?: string };
         throw new Error(data.error || "Failed to accept invitation");
       }
 
       navigate("/dashboard");
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Failed to accept invitation";
-      setError(message);
+      setError(
+        err instanceof Error ? err.message : "Failed to accept invitation"
+      );
       setIsAccepting(false);
     }
   }
@@ -174,6 +145,29 @@ export default function AcceptInvitePage({ loaderData }: Route.ComponentProps) {
             Go to Dashboard
           </Link>
         </p>
+      </div>
+    </main>
+  );
+}
+
+// ============================================================================
+// Error Page Component
+// ============================================================================
+
+interface ErrorPageProps {
+  title: string;
+  message: string;
+}
+
+function ErrorPage({ title, message }: ErrorPageProps) {
+  return (
+    <main className={styles.page}>
+      <div className={styles.container}>
+        <h1 className={styles.title}>{title}</h1>
+        <p className={styles.subtitle}>{message}</p>
+        <Link to="/dashboard" className={styles.submitButton}>
+          Go to Dashboard
+        </Link>
       </div>
     </main>
   );
