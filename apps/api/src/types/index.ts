@@ -159,6 +159,7 @@ export interface AuditEntry {
 
 export interface PendingConfirmation {
   id: string;
+  conversationId: string;
   action: "create" | "update" | "delete";
   objectType: string;
   params: Record<string, unknown>;
@@ -194,7 +195,12 @@ export interface LLMResponse {
 // SSE Event Types (Web Chat Interface)
 // ============================================================================
 
-export interface SSEContentEvent {
+// All SSE events include optional requestId for debugging
+interface SSEBaseEvent {
+  requestId?: string;
+}
+
+export interface SSEContentEvent extends SSEBaseEvent {
   text: string;
 }
 
@@ -205,33 +211,44 @@ export type ProcessEventType =
   | "clio_call"
   | "clio_result";
 
-export interface SSEProcessEventStarted {
+export interface SSEProcessEventStarted extends SSEBaseEvent {
   type: "started";
 }
 
-export interface SSEProcessEventRagLookup {
+export interface SSEProcessEventRagLookup extends SSEBaseEvent {
   type: "rag_lookup";
   status: "started" | "complete";
   chunks?: Array<{ text: string; source: string }>;
 }
 
-export interface SSEProcessEventLlmThinking {
+export interface SSEProcessEventLlmThinking extends SSEBaseEvent {
   type: "llm_thinking";
-  status: "started";
+  status: "started" | "complete";
 }
 
-export interface SSEProcessEventClioCall {
+export interface SSEProcessEventClioCall extends SSEBaseEvent {
   type: "clio_call";
   operation: "read" | "create" | "update" | "delete";
   objectType: string;
   filters?: Record<string, unknown>;
 }
 
-export interface SSEProcessEventClioResult {
+// Clio result for read operations (count + preview)
+export interface SSEProcessEventClioResultRead extends SSEBaseEvent {
   type: "clio_result";
   count: number;
   preview: unknown[];
 }
+
+// Clio result for write operations (success)
+export interface SSEProcessEventClioResultWrite extends SSEBaseEvent {
+  type: "clio_result";
+  success: boolean;
+}
+
+export type SSEProcessEventClioResult =
+  | SSEProcessEventClioResultRead
+  | SSEProcessEventClioResultWrite;
 
 export type SSEProcessEvent =
   | SSEProcessEventStarted
@@ -240,49 +257,63 @@ export type SSEProcessEvent =
   | SSEProcessEventClioCall
   | SSEProcessEventClioResult;
 
-export interface SSEConfirmationRequiredEvent {
+export interface SSEConfirmationRequiredEvent extends SSEBaseEvent {
   confirmationId: string;
   action: "create" | "update" | "delete";
   objectType: string;
   params: Record<string, unknown>;
 }
 
-export interface SSEErrorEvent {
+export interface SSEErrorEvent extends SSEBaseEvent {
   message: string;
 }
+
+export interface SSEDoneEvent extends SSEBaseEvent {}
 
 export type SSEEvent =
   | { event: "content"; data: SSEContentEvent }
   | { event: "process"; data: SSEProcessEvent }
   | { event: "confirmation_required"; data: SSEConfirmationRequiredEvent }
   | { event: "error"; data: SSEErrorEvent }
-  | { event: "done"; data: null };
+  | { event: "done"; data: SSEDoneEvent };
+
+// Optional requestId included in all events for debugging
+const requestIdField = { requestId: z.string().optional() };
 
 export const SSEContentEventSchema = z.object({
   text: z.string(),
+  ...requestIdField,
 });
 
 export const SSEProcessEventSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("started") }),
+  z.object({ type: z.literal("started"), ...requestIdField }),
   z.object({
     type: z.literal("rag_lookup"),
     status: z.enum(["started", "complete"]),
-    chunks: z.array(z.object({ text: z.string(), source: z.string() })).optional(),
+    chunks: z
+      .array(z.object({ text: z.string(), source: z.string() }))
+      .optional(),
+    ...requestIdField,
   }),
   z.object({
     type: z.literal("llm_thinking"),
-    status: z.literal("started"),
+    status: z.enum(["started", "complete"]),
+    ...requestIdField,
   }),
   z.object({
     type: z.literal("clio_call"),
     operation: z.enum(["read", "create", "update", "delete"]),
     objectType: z.string(),
     filters: z.record(z.string(), z.unknown()).optional(),
+    ...requestIdField,
   }),
+  // Read result (count + preview) or write result (success)
   z.object({
     type: z.literal("clio_result"),
-    count: z.number(),
-    preview: z.array(z.unknown()),
+    count: z.number().optional(),
+    preview: z.array(z.unknown()).optional(),
+    success: z.boolean().optional(),
+    ...requestIdField,
   }),
 ]);
 
@@ -291,8 +322,14 @@ export const SSEConfirmationRequiredEventSchema = z.object({
   action: z.enum(["create", "update", "delete"]),
   objectType: z.string(),
   params: z.record(z.string(), z.unknown()),
+  ...requestIdField,
 });
 
 export const SSEErrorEventSchema = z.object({
   message: z.string(),
+  ...requestIdField,
+});
+
+export const SSEDoneEventSchema = z.object({
+  ...requestIdField,
 });

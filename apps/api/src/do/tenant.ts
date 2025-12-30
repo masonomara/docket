@@ -63,7 +63,8 @@ export class TenantDO extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
 
-    this.orgId = ctx.id.toString();
+    // Use ctx.id.name to get the original org ID passed to idFromName()
+    this.orgId = ctx.id.name!;
     this.log = createLogger({ orgId: this.orgId, component: "TenantDO" });
 
     // Ensure SQLite is available (required for this DO)
@@ -1475,6 +1476,7 @@ Only include modifiedRequest if intent is "modify".`;
 
     return {
       id: row.id as string,
+      conversationId,
       action: row.action as "create" | "update" | "delete",
       objectType: row.object_type as string,
       params,
@@ -1740,6 +1742,8 @@ Only include modifiedRequest if intent is "modify".`;
     await emit("process", { type: "llm_thinking", status: "started" });
 
     const llmResponse = await this.callLLM(messages, tools);
+
+    await emit("process", { type: "llm_thinking", status: "complete" });
 
     // Handle tool calls
     if (llmResponse.toolCalls && llmResponse.toolCalls.length > 0) {
@@ -2213,6 +2217,7 @@ Only include modifiedRequest if intent is "modify".`;
 
     const confirmation: PendingConfirmation = {
       id: row.id as string,
+      conversationId: row.conversation_id as string,
       action: row.action as "create" | "update" | "delete",
       objectType: row.object_type as string,
       params,
@@ -2273,12 +2278,28 @@ Only include modifiedRequest if intent is "modify".`;
         success,
       });
 
+      // Store the result in conversation history
+      await this.storeMessage(confirmation.conversationId, {
+        role: "assistant",
+        content: result,
+        userId: null,
+        status: success ? "complete" : "error",
+      });
+
       await emit("content", { text: result });
       await emit("done", {});
     } catch (error) {
-      await emit("error", {
-        message: error instanceof Error ? error.message : "Operation failed",
+      const errorMsg = error instanceof Error ? error.message : "Operation failed";
+
+      // Store error in conversation history
+      await this.storeMessage(confirmation.conversationId, {
+        role: "assistant",
+        content: `Operation failed: ${errorMsg}`,
+        userId: null,
+        status: "error",
       });
+
+      await emit("error", { message: errorMsg });
     } finally {
       await close();
     }
@@ -2306,19 +2327,36 @@ Only include modifiedRequest if intent is "modify".`;
       );
     }
 
-    // Verify ownership and delete
-    const result = this.sql.exec(
-      "DELETE FROM pending_confirmations WHERE id = ? AND user_id = ?",
-      confirmationId,
-      userId
-    );
+    // Get confirmation details before deleting (for the rejection message)
+    const row = this.sql
+      .exec(
+        `SELECT conversation_id, action, object_type FROM pending_confirmations WHERE id = ? AND user_id = ?`,
+        confirmationId,
+        userId
+      )
+      .one();
 
-    if (result.rowsWritten === 0) {
+    if (!row) {
       return Response.json(
         { error: "Confirmation not found" },
         { status: 404 }
       );
     }
+
+    // Delete the confirmation
+    this.sql.exec(
+      "DELETE FROM pending_confirmations WHERE id = ?",
+      confirmationId
+    );
+
+    // Store rejection message in conversation history
+    const action = row.action as string;
+    const objectType = row.object_type as string;
+    await this.storeMessage(row.conversation_id as string, {
+      role: "assistant",
+      content: `The ${action} ${objectType} operation was cancelled.`,
+      userId: null,
+    });
 
     return Response.json({ success: true });
   }
