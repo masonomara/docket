@@ -1,8 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import {
-  AuditEntryInputSchema,
-  type AuditEntryInput,
-} from "../types/requests";
+import { AuditEntryInputSchema, type AuditEntryInput } from "../types/requests";
 import {
   ChannelMessageSchema,
   type ChannelMessage,
@@ -295,7 +292,9 @@ export class TenantDO extends DurableObject<Env> {
    * Includes RAG context and role-specific instructions.
    */
   private buildSystemPrompt(ragContext: string, userRole: string): string {
-    const customFieldsSection = formatCustomFieldsForLLM(this.customFieldsCache);
+    const customFieldsSection = formatCustomFieldsForLLM(
+      this.customFieldsCache
+    );
 
     const roleNote =
       userRole === "admin"
@@ -728,7 +727,8 @@ Only include modifiedRequest if intent is "modify".`;
 
       const validIntents = ["approve", "reject", "modify", "unrelated"];
       const intent =
-        typeof parsed.intent === "string" && validIntents.includes(parsed.intent)
+        typeof parsed.intent === "string" &&
+        validIntents.includes(parsed.intent)
           ? parsed.intent
           : "unclear";
 
@@ -805,7 +805,9 @@ Only include modifiedRequest if intent is "modify".`;
     }
 
     // Refresh custom fields if needed
-    if (customFieldsNeedRefresh(this.schemaVersion, this.customFieldsFetchedAt)) {
+    if (
+      customFieldsNeedRefresh(this.schemaVersion, this.customFieldsFetchedAt)
+    ) {
       await this.refreshCustomFieldsWithToken(accessToken);
     }
 
@@ -910,7 +912,10 @@ Only include modifiedRequest if intent is "modify".`;
       }
 
       if (result.success) {
-        return { success: true, details: `Successfully ${action}d ${objectType}.` };
+        return {
+          success: true,
+          details: `Successfully ${action}d ${objectType}.`,
+        };
       }
 
       return {
@@ -1597,16 +1602,14 @@ Only include modifiedRequest if intent is "modify".`;
     const { readable, emit, close } = this.createSSEStream();
 
     // Start async processing in background
-    this.ctx.waitUntil(
-      this.processMessageWithStream(message, emit, close)
-    );
+    this.ctx.waitUntil(this.processMessageWithStream(message, emit, close));
 
     // Return SSE response immediately
     return new Response(readable, {
       headers: {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
+        Connection: "keep-alive",
       },
     });
   }
@@ -1649,7 +1652,10 @@ Only include modifiedRequest if intent is "modify".`;
           emit
         );
       } else {
-        response = await this.generateAssistantResponseWithStream(message, emit);
+        response = await this.generateAssistantResponseWithStream(
+          message,
+          emit
+        );
       }
 
       // Store the assistant's response
@@ -1663,7 +1669,8 @@ Only include modifiedRequest if intent is "modify".`;
       // Emit done event
       await emit("done", {});
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : "Processing failed";
+      const errorMsg =
+        error instanceof Error ? error.message : "Processing failed";
 
       // Store error message so conversation history is complete
       try {
@@ -1709,7 +1716,9 @@ Only include modifiedRequest if intent is "modify".`;
       type: "rag_lookup",
       status: "complete",
       chunks: allChunks.map((c) => ({
-        text: c.content.slice(0, 100) + (c.content.length > 100 ? "..." : ""),
+        text:
+          c.content.slice(0, TENANT_CONFIG.CHUNK_PREVIEW_LENGTH) +
+          (c.content.length > TENANT_CONFIG.CHUNK_PREVIEW_LENGTH ? "..." : ""),
         source: c.source,
       })),
     });
@@ -1739,7 +1748,11 @@ Only include modifiedRequest if intent is "modify".`;
 
     // Handle tool calls
     if (llmResponse.toolCalls && llmResponse.toolCalls.length > 0) {
-      return this.handleToolCallsWithStream(message, llmResponse.toolCalls, emit);
+      return this.handleToolCallsWithStream(
+        message,
+        llmResponse.toolCalls,
+        emit
+      );
     }
 
     // Emit content
@@ -2013,7 +2026,7 @@ Only include modifiedRequest if intent is "modify".`;
         FROM conversations c
         WHERE c.user_id = ? AND c.channel_type = 'web'
         ORDER BY c.updated_at DESC
-        LIMIT 50`,
+        LIMIT ${TENANT_CONFIG.CONVERSATIONS_LIMIT}`,
         userId
       )
       .toArray();
@@ -2160,21 +2173,18 @@ Only include modifiedRequest if intent is "modify".`;
       );
     }
 
-    // Delete in correct order (respecting foreign key relationships)
-    // 1. Delete messages first
-    this.sql.exec(
-      "DELETE FROM messages WHERE conversation_id = ?",
-      conversationId
-    );
-
-    // 2. Delete pending confirmations
-    this.sql.exec(
-      "DELETE FROM pending_confirmations WHERE conversation_id = ?",
-      conversationId
-    );
-
-    // 3. Delete conversation
-    this.sql.exec("DELETE FROM conversations WHERE id = ?", conversationId);
+    // Delete atomically (respecting foreign key relationships)
+    this.ctx.storage.transactionSync(() => {
+      this.sql.exec(
+        "DELETE FROM messages WHERE conversation_id = ?",
+        conversationId
+      );
+      this.sql.exec(
+        "DELETE FROM pending_confirmations WHERE conversation_id = ?",
+        conversationId
+      );
+      this.sql.exec("DELETE FROM conversations WHERE id = ?", conversationId);
+    });
 
     return Response.json({ success: true });
   }
@@ -2223,7 +2233,10 @@ Only include modifiedRequest if intent is "modify".`;
     // Check if expired
     if ((row.expires_at as number) < Date.now()) {
       // Clean up expired confirmation
-      this.sql.exec("DELETE FROM pending_confirmations WHERE id = ?", confirmationId);
+      this.sql.exec(
+        "DELETE FROM pending_confirmations WHERE id = ?",
+        confirmationId
+      );
       return Response.json(
         { error: "Confirmation has expired" },
         { status: 410 }
@@ -2247,7 +2260,10 @@ Only include modifiedRequest if intent is "modify".`;
     };
 
     // Delete the confirmation before executing
-    this.sql.exec("DELETE FROM pending_confirmations WHERE id = ?", confirmationId);
+    this.sql.exec(
+      "DELETE FROM pending_confirmations WHERE id = ?",
+      confirmationId
+    );
 
     // Create SSE stream for result
     const { readable, emit, close } = this.createSSEStream();
@@ -2262,7 +2278,7 @@ Only include modifiedRequest if intent is "modify".`;
       headers: {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
+        Connection: "keep-alive",
       },
     });
   }
@@ -2705,7 +2721,9 @@ Only include modifiedRequest if intent is "modify".`;
     const existingAlarm = await this.ctx.storage.getAlarm();
 
     if (!existingAlarm) {
-      await this.ctx.storage.setAlarm(Date.now() + TENANT_CONFIG.ALARM_INTERVAL_MS);
+      await this.ctx.storage.setAlarm(
+        Date.now() + TENANT_CONFIG.ALARM_INTERVAL_MS
+      );
     }
   }
 }

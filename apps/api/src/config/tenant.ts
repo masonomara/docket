@@ -15,4 +15,10 @@ export const TENANT_CONFIG = {
 
   // Conversations older than this are considered stale and may be cleaned up
   STALE_CONVERSATION_MS: 30 * DAYS,
+
+  // Max characters to show in RAG chunk previews (ProcessLog)
+  CHUNK_PREVIEW_LENGTH: 100,
+
+  // Max conversations returned in list endpoint
+  CONVERSATIONS_LIMIT: 50,
 } as const;
