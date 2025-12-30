@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useSearchParams, useRevalidator } from "react-router";
+import { useSearchParams } from "react-router";
 import type { Route } from "./+types/org.clio";
 import { ENDPOINTS } from "~/lib/api";
 import { API_URL } from "~/lib/auth-client";
@@ -22,28 +22,42 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   exchange_failed: "Authorization failed.",
 };
 
-export const loader = orgLoader(async ({ user, org, fetch }) => {
-  const res = await fetch(ENDPOINTS.clio.status);
-
-  const clioStatus: ClioStatus = res.ok
-    ? ((await res.json()) as ClioStatus)
-    : { connected: false, schemaLoaded: false };
-
-  const loadError = res.ok ? null : "Failed to load Clio status.";
-
-  return { user, org, clioStatus, loadError };
-});
+export const loader = orgLoader(({ user, org }) => ({ user, org }), {});
 
 export default function ClioPage({ loaderData }: Route.ComponentProps) {
-  const { user, org, clioStatus, loadError } = loaderData;
+  const { user, org } = loaderData;
   const [searchParams, setSearchParams] = useSearchParams();
-  const revalidator = useRevalidator();
 
+  const [clioStatus, setClioStatus] = useState<ClioStatus | null>(null);
+  const [isLoadingStatus, setIsLoadingStatus] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [showDisconnectModal, setShowDisconnectModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // Fetch Clio status client-side for faster page load
+  useEffect(() => {
+    async function fetchStatus() {
+      try {
+        const res = await fetch(`${API_URL}${ENDPOINTS.clio.status}`, {
+          credentials: "include",
+        });
+        if (res.ok) {
+          setClioStatus(await res.json());
+        } else {
+          setClioStatus({ connected: false, schemaLoaded: false });
+          setError("Failed to load Clio status.");
+        }
+      } catch {
+        setClioStatus({ connected: false, schemaLoaded: false });
+        setError("Failed to load Clio status.");
+      } finally {
+        setIsLoadingStatus(false);
+      }
+    }
+    fetchStatus();
+  }, []);
 
   // Handle OAuth callback results from URL params
   useEffect(() => {
@@ -86,7 +100,7 @@ export default function ClioPage({ loaderData }: Route.ComponentProps) {
 
       setSuccess("Clio account disconnected.");
       setShowDisconnectModal(false);
-      revalidator.revalidate();
+      setClioStatus({ connected: false, schemaLoaded: false });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to disconnect");
     } finally {
@@ -110,8 +124,15 @@ export default function ClioPage({ loaderData }: Route.ComponentProps) {
         throw new Error(data.error || "Failed to sync");
       }
 
+      // Refetch status to get updated lastSyncedAt
+      const statusRes = await fetch(`${API_URL}${ENDPOINTS.clio.status}`, {
+        credentials: "include",
+      });
+      if (statusRes.ok) {
+        setClioStatus(await statusRes.json());
+      }
+
       setSuccess("Clio configuration synced.");
-      revalidator.revalidate();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to sync");
     } finally {
@@ -128,8 +149,11 @@ export default function ClioPage({ loaderData }: Route.ComponentProps) {
         subtitle="Connect your Clio account to query matters, contacts, and calendar data."
         actions={
           <>
-            <ConnectionStatus isConnected={clioStatus.connected} />
-            {clioStatus.connected && (
+            <ConnectionStatus
+              isConnected={clioStatus?.connected ?? false}
+              isLoading={isLoadingStatus}
+            />
+            {clioStatus?.connected && (
               <button
                 onClick={navigateToClioOAuth}
                 className="btn btn-secondary btn-sm"
@@ -141,26 +165,14 @@ export default function ClioPage({ loaderData }: Route.ComponentProps) {
           </>
         }
       >
-        {loadError && (
-          <div className="alert alert-error">
-            {loadError}{" "}
-            <button
-              onClick={() => revalidator.revalidate()}
-              className="link-button"
-            >
-              Retry
-            </button>
-          </div>
-        )}
-
         {error && <div className="alert alert-error">{error}</div>}
         {success && <div className="alert alert-success">{success}</div>}
 
-        {!clioStatus.connected && (
+        {!isLoadingStatus && !clioStatus?.connected && (
           <ConnectToClioSection onConnect={navigateToClioOAuth} />
         )}
 
-        {isAdmin && clioStatus.connected && (
+        {isAdmin && clioStatus?.connected && (
           <SyncConfigSection
             lastSyncedAt={clioStatus.lastSyncedAt}
             isRefreshing={isRefreshing}
@@ -168,7 +180,7 @@ export default function ClioPage({ loaderData }: Route.ComponentProps) {
           />
         )}
 
-        {clioStatus.connected && (
+        {clioStatus?.connected && (
           <DangerZoneSection
             onDisconnect={() => setShowDisconnectModal(true)}
           />
@@ -192,9 +204,19 @@ export default function ClioPage({ loaderData }: Route.ComponentProps) {
 
 interface ConnectionStatusProps {
   isConnected: boolean;
+  isLoading?: boolean;
 }
 
-function ConnectionStatus({ isConnected }: ConnectionStatusProps) {
+function ConnectionStatus({ isConnected, isLoading }: ConnectionStatusProps) {
+  if (isLoading) {
+    return (
+      <div className="status-indicator btn btn-sm btn-secondary">
+        <span className="status-dot" />
+        Loading...
+      </div>
+    );
+  }
+
   const statusDotClass = isConnected
     ? "status-dot status-dot-success"
     : "status-dot status-dot-error";

@@ -351,25 +351,37 @@ export default {
       return handleClioCallback(request, env);
     }
 
-    // Try static routes first
-    const methodHandlers = staticRoutes[path];
-    if (methodHandlers && methodHandlers[method]) {
-      const response = await methodHandlers[method](request, env);
-      return withCors(response, request, requestId);
-    }
+    try {
+      // Try static routes first
+      const methodHandlers = staticRoutes[path];
+      if (methodHandlers && methodHandlers[method]) {
+        const response = await methodHandlers[method](request, env);
+        return withCors(response, request, requestId);
+      }
 
-    // Try dynamic routes
-    const dynamicResponse = matchDynamicRoute(path, method, request, env);
-    if (dynamicResponse) {
-      const response = await dynamicResponse;
-      return withCors(response, request, requestId);
-    }
+      // Try dynamic routes
+      const dynamicResponse = matchDynamicRoute(path, method, request, env);
+      if (dynamicResponse) {
+        const response = await dynamicResponse;
+        return withCors(response, request, requestId);
+      }
 
-    // No route matched
-    return withCors(
-      Response.json({ error: "Not found" }, { status: 404 }),
-      request,
-      requestId
-    );
+      // No route matched
+      return withCors(
+        Response.json({ error: "Not found" }, { status: 404 }),
+        request,
+        requestId
+      );
+    } catch (error) {
+      // Catch any unhandled errors and return with CORS headers
+      console.error("Unhandled error:", error);
+      const message =
+        error instanceof Error ? error.message : "Internal server error";
+      return withCors(
+        Response.json({ error: message }, { status: 500 }),
+        request,
+        requestId
+      );
+    }
   },
 };

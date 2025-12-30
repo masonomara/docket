@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useRevalidator } from "react-router";
+import { redirect, useRevalidator } from "react-router";
 import type { Route } from "./+types/dashboard";
 import { ENDPOINTS } from "~/lib/api";
 import { API_URL } from "~/lib/auth-client";
@@ -36,7 +36,13 @@ const WIZARD_STEPS = [
   { title: "Practice Areas", subtitle: "Select your areas of practice" },
 ];
 
-export const loader = protectedLoader(({ user, org }) => ({ user, org }));
+export const loader = protectedLoader(({ user, org }) => {
+  // Redirect users with an org to the chat interface
+  if (org) {
+    throw redirect("/chat");
+  }
+  return { user, org };
+});
 
 export default function Dashboard({ loaderData }: Route.ComponentProps) {
   const { user, org } = loaderData;

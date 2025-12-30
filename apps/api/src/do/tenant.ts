@@ -90,6 +90,9 @@ export class TenantDO extends DurableObject<Env> {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
 
+    // Run migrations on every request (idempotent, catches errors for existing columns)
+    await this.runMigrations();
+
     try {
       switch (url.pathname) {
         case "/process-message":
@@ -2373,7 +2376,61 @@ Only include modifiedRequest if intent is "modify".`;
     // Migration: Add status column to existing messages tables
     try {
       this.sql.exec(`ALTER TABLE messages ADD COLUMN status TEXT NOT NULL DEFAULT 'complete'`);
-    } catch { /* column already exists */ }
+    } catch (e) {
+      // Ignore "duplicate column name" errors
+      if (!(e instanceof Error && e.message.includes("duplicate column"))) {
+        console.error("Migration failed: add status column", e);
+      }
+    }
+
+    // Migration: Add user_id column to conversations
+    try {
+      console.log("Attempting to add user_id column to conversations...");
+      this.sql.exec(`ALTER TABLE conversations ADD COLUMN user_id TEXT`);
+      console.log("Successfully added user_id column to conversations");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.log(`ALTER TABLE conversations ADD user_id caught: ${msg}`);
+      if (!msg.includes("duplicate column")) {
+        console.error("Migration failed: add user_id to conversations", e);
+      }
+    }
+
+    // Migration: Add user_id column to messages
+    try {
+      this.sql.exec(`ALTER TABLE messages ADD COLUMN user_id TEXT`);
+    } catch (e) {
+      if (!(e instanceof Error && e.message.includes("duplicate column"))) {
+        console.error("Migration failed: add user_id to messages", e);
+      }
+    }
+
+    // Migration: Add title column to conversations
+    try {
+      this.sql.exec(`ALTER TABLE conversations ADD COLUMN title TEXT`);
+    } catch (e) {
+      if (!(e instanceof Error && e.message.includes("duplicate column"))) {
+        console.error("Migration failed: add title to conversations", e);
+      }
+    }
+
+    // Migration: Add user_id index to conversations
+    try {
+      this.sql.exec(`CREATE INDEX idx_conversations_user ON conversations(user_id, updated_at DESC)`);
+    } catch (e) {
+      // Ignore "already exists" errors
+      if (!(e instanceof Error && e.message.includes("already exists"))) {
+        console.error("Migration failed: create user_id index", e);
+      }
+    }
+
+    // Debug: Log current schema
+    try {
+      const schema = this.sql.exec("PRAGMA table_info(conversations)").toArray();
+      console.log("conversations schema:", JSON.stringify(schema));
+    } catch (e) {
+      console.error("Failed to get schema:", e);
+    }
   }
 
   // ============================================================

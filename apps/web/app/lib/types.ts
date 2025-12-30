@@ -83,3 +83,52 @@ export interface OrgContextDocument {
   uploadedAt: number;
   chunkCount: number;
 }
+
+// ============================================================================
+// Chat Types
+// ============================================================================
+
+export type MessageRole = "user" | "assistant" | "system";
+export type MessageStatus = "complete" | "partial" | "error" | "streaming";
+
+export interface ChatMessage {
+  id: string;
+  role: MessageRole;
+  content: string;
+  status: MessageStatus;
+  createdAt: number;
+}
+
+export interface Conversation {
+  id: string;
+  title: string;
+  updatedAt: number;
+  messageCount: number;
+}
+
+export interface ConversationDetail {
+  id: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface PendingConfirmation {
+  id: string;
+  action: "create" | "update" | "delete";
+  objectType: string;
+  params: Record<string, unknown>;
+}
+
+export type ProcessEventType =
+  | "rag_lookup"
+  | "llm_thinking"
+  | "clio_call"
+  | "clio_result"
+  | "confirmation_required";
+
+export interface ProcessEvent {
+  type: ProcessEventType;
+  status: "started" | "completed" | "error";
+  timestamp: number;
+  details?: Record<string, unknown>;
+}

@@ -1,7 +1,5 @@
 # Phase 9b: Web Chat Interface Tutorial
 
-A hands-on guide to building a real-time chat interface for Docket. This tutorial explains the **why** behind each component, not just the **how**.
-
 ## What You're Building
 
 By the end of this tutorial, you'll have:
@@ -266,7 +264,7 @@ CREATE TABLE pending_confirmations (
 
 The schema uses `CREATE TABLE IF NOT EXISTS` for idempotency — no version tracking needed during development.
 
-### 3.2 Add Streaming Message Processing
+### 3.1 Add Streaming Message Processing
 
 Modify `handleProcessMessage` to support SSE streaming:
 
@@ -295,7 +293,7 @@ Modify `handleProcessMessage` to support SSE streaming:
   - Read operations
   - Write operations need confirmation
 
-### 3.3 Add Conversation Query Endpoints
+### 3.2 Add Conversation Query Endpoints
 
 Add these handlers to the DO's fetch router:
 
@@ -408,866 +406,86 @@ private async handleDeleteConversation(
 
 ## Part 4: Building the Frontend
 
-### 4.1 Understanding React Router 7 Patterns
-
-Docket uses React Router 7 with these patterns:
-
-1. **Loaders** — Server-side data fetching before render
-2. **Actions** — Form submissions and mutations
-3. **useFetcher** — Client-side data without navigation
-
-Example from the codebase (`apps/web/app/lib/loader-auth.ts`):
-
-```typescript
-// protectedLoader wraps your loader with auth checks
-export const loader = protectedLoader(({ user, org }) => ({ user, org }));
-
-// orgLoader requires both auth AND org membership
-export const loader = orgLoader(async ({ user, org, fetch }) => {
-  const data = await fetch("/api/some-endpoint").then((r) => r.json());
-  return { user, org, data };
-});
-```
-
-### 4.2 Create the Chat Route
+### 4.1 Create the Chat Route
 
 Create `apps/web/app/routes/chat.tsx`:
 
-```tsx
-import { useState, useEffect, useRef, useCallback } from "react";
-import { useNavigate, useParams } from "react-router";
-import type { Route } from "./+types/chat";
-import { orgLoader } from "~/lib/loader-auth";
-import { AppLayout } from "~/components/AppLayout";
-import { ChatSidebar } from "~/components/ChatSidebar";
-import { ChatMessages } from "~/components/ChatMessages";
-import { ChatInput } from "~/components/ChatInput";
-import { ProcessLog } from "~/components/ProcessLog";
-import { useChat } from "~/lib/use-chat";
-import styles from "~/styles/chat.module.css";
+- Chat should be a page like Knowledge base and Clio connection are.
+- Should replace dashbaord on the sidebar for users who have an org.
 
-/**
- * Loader fetches initial data:
- * - User and org info (for auth/nav)
- * - List of conversations (for sidebar)
- * - Current conversation if URL has conversationId
- */
-export const loader = orgLoader(async ({ user, org, fetch }) => {
-  const conversationsRes = await fetch("/api/conversations");
-  const conversations = conversationsRes.ok
-    ? await conversationsRes.json()
-    : { conversations: [] };
+Structure:
 
-  return { user, org, conversations: conversations.conversations };
-});
+- Loader fetches initial data:
+  - User and org info (for auth/nav)
+  - List of conversations (for sidebar)
+  - Current conversation if URL has conversationId
+- The useChat hook manages:
+  - SSE connection
+  - Message state
+  - Process log events
+  - Pending confirmations
+- Handle new chat creation
+- Handle conversation selection from sidebar
+- Handle message send
+  - Create new conversation on first message
+  - Refresh conversations list
+  - Handle conversation deletion
+- Left column: Conversation list
+- Center column: Chat messages
+- Right column: Process log
 
-export default function Chat({ loaderData }: Route.ComponentProps) {
-  const { user, org, conversations: initialConversations } = loaderData;
-  const navigate = useNavigate();
-  const params = useParams();
-
-  const [conversations, setConversations] = useState(initialConversations);
-  const [currentConversationId, setCurrentConversationId] = useState<
-    string | null
-  >(params.conversationId || null);
-
-  // The useChat hook manages:
-  // - SSE connection
-  // - Message state
-  // - Process log events
-  // - Pending confirmations
-  const {
-    messages,
-    processLog,
-    pendingConfirmation,
-    isStreaming,
-    error,
-    sendMessage,
-    acceptConfirmation,
-    rejectConfirmation,
-    loadConversation,
-  } = useChat(currentConversationId);
-
-  // Handle new chat creation
-  function handleNewChat() {
-    const newId = crypto.randomUUID();
-    setCurrentConversationId(newId);
-    navigate(`/chat/${newId}`);
-  }
-
-  // Handle conversation selection from sidebar
-  async function handleSelectConversation(conversationId: string) {
-    setCurrentConversationId(conversationId);
-    navigate(`/chat/${conversationId}`);
-    await loadConversation(conversationId);
-  }
-
-  // Handle message send
-  async function handleSend(message: string) {
-    if (!currentConversationId) {
-      // Create new conversation on first message
-      const newId = crypto.randomUUID();
-      setCurrentConversationId(newId);
-      navigate(`/chat/${newId}`, { replace: true });
-      await sendMessage(newId, message);
-    } else {
-      await sendMessage(currentConversationId, message);
-    }
-
-    // Refresh conversations list
-    const res = await fetch("/api/conversations", { credentials: "include" });
-    if (res.ok) {
-      const data = await res.json();
-      setConversations(data.conversations);
-    }
-  }
-
-  // Handle conversation deletion
-  async function handleDeleteConversation(conversationId: string) {
-    const res = await fetch(`/api/conversations/${conversationId}`, {
-      method: "DELETE",
-      credentials: "include",
-    });
-
-    if (res.ok) {
-      setConversations((prev) => prev.filter((c) => c.id !== conversationId));
-      if (currentConversationId === conversationId) {
-        setCurrentConversationId(null);
-        navigate("/chat");
-      }
-    }
-  }
-
-  return (
-    <AppLayout org={org} currentPath="/chat">
-      <div className={styles.chatLayout}>
-        {/* Left column: Conversation list */}
-        <ChatSidebar
-          conversations={conversations}
-          currentConversationId={currentConversationId}
-          onNewChat={handleNewChat}
-          onSelectConversation={handleSelectConversation}
-          onDeleteConversation={handleDeleteConversation}
-        />
-
-        {/* Center column: Chat messages */}
-        <div className={styles.chatMain}>
-          <ChatMessages
-            messages={messages}
-            pendingConfirmation={pendingConfirmation}
-            isStreaming={isStreaming}
-            onAcceptConfirmation={acceptConfirmation}
-            onRejectConfirmation={rejectConfirmation}
-          />
-
-          <ChatInput
-            onSend={handleSend}
-            disabled={isStreaming || !!pendingConfirmation}
-          />
-
-          {error && <div className={styles.error}>{error}</div>}
-        </div>
-
-        {/* Right column: Process log */}
-        <ProcessLog events={processLog} />
-      </div>
-    </AppLayout>
-  );
-}
-```
-
-### 4.3 The useChat Hook
+### 4.2 The useChat Hook
 
 Create `apps/web/app/lib/use-chat.ts`:
 
-```typescript
-import { useState, useCallback, useRef } from "react";
-import { API_URL } from "./auth-client";
+- Custom hook for managing chat state and SSE streaming.
+  - This is the core of the chat interface. It handles:
+    1. Sending messages via POST and receiving SSE responses
+    2. Parsing SSE events and updating UI state
+    3. Managing pending Clio confirmations
+    4. Loading existing conversations
+  - Keep track of the current streaming message
+  - Sends a message and handles the SSE response stream.
+    - Add user message immediately
+    - Create placeholder for assistant response
+    - Handle SSE stream
+    - Parse SSE events from buffer
+    - Mark message as complete
+    - Mark message as error
+  - Parses SSE events from a buffer string.
+    - Check if this is the last incomplete line
+      - Empty line = end of event
+  - Handles a single SSE event, updating appropriate state.
+    - Append content to the streaming message
+    - Add to process log
+    - Store pending confirmation
+    - Stream complete
+  - Accepts a pending Clio confirmation.
+    - Handle the response stream (same as sendMessage)
+    - ... same streaming logic as sendMessage
+  - Rejects a pending Clio confirmation.
+    - Add cancellation message
+    - Loads an existing conversation's messages.
+  - Load conversation
+    - Load any pending confirmations
 
-interface Message {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  createdAt: number;
-  status: "complete" | "partial" | "streaming";
-}
+### 4.3 Chat Components
 
-interface ProcessEvent {
-  type: "rag_lookup" | "llm_thinking" | "clio_call" | "clio_result";
-  status: "started" | "completed";
-  data?: unknown;
-}
-
-interface PendingConfirmation {
-  confirmationId: string;
-  action: string;
-  objectType: string;
-  params: Record<string, unknown>;
-}
-
-interface UseChatReturn {
-  messages: Message[];
-  processLog: ProcessEvent[];
-  pendingConfirmation: PendingConfirmation | null;
-  isStreaming: boolean;
-  error: string | null;
-  sendMessage: (conversationId: string, message: string) => Promise<void>;
-  acceptConfirmation: () => Promise<void>;
-  rejectConfirmation: () => Promise<void>;
-  loadConversation: (conversationId: string) => Promise<void>;
-}
-
-/**
- * Custom hook for managing chat state and SSE streaming.
- *
- * This is the core of the chat interface. It handles:
- * 1. Sending messages via POST and receiving SSE responses
- * 2. Parsing SSE events and updating UI state
- * 3. Managing pending Clio confirmations
- * 4. Loading existing conversations
- */
-export function useChat(initialConversationId: string | null): UseChatReturn {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [processLog, setProcessLog] = useState<ProcessEvent[]>([]);
-  const [pendingConfirmation, setPendingConfirmation] =
-    useState<PendingConfirmation | null>(null);
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Keep track of the current streaming message
-  const streamingMessageRef = useRef<string>("");
-
-  /**
-   * Sends a message and handles the SSE response stream.
-   */
-  const sendMessage = useCallback(
-    async (conversationId: string, message: string) => {
-      setError(null);
-      setProcessLog([]);
-
-      // Add user message immediately
-      const userMessage: Message = {
-        id: crypto.randomUUID(),
-        role: "user",
-        content: message,
-        createdAt: Date.now(),
-        status: "complete",
-      };
-      setMessages((prev) => [...prev, userMessage]);
-
-      // Create placeholder for assistant response
-      const assistantMessageId = crypto.randomUUID();
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: assistantMessageId,
-          role: "assistant",
-          content: "",
-          createdAt: Date.now(),
-          status: "streaming",
-        },
-      ]);
-
-      setIsStreaming(true);
-      streamingMessageRef.current = "";
-
-      try {
-        const response = await fetch(`${API_URL}/api/chat`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ conversationId, message }),
-        });
-
-        if (!response.ok) {
-          throw new Error("Failed to send message");
-        }
-
-        // Handle SSE stream
-        const reader = response.body?.getReader();
-        if (!reader) throw new Error("No response body");
-
-        const decoder = new TextDecoder();
-        let buffer = "";
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-
-          // Parse SSE events from buffer
-          const events = parseSSEEvents(buffer);
-          buffer = events.remaining;
-
-          for (const event of events.parsed) {
-            handleSSEEvent(event, assistantMessageId);
-          }
-        }
-
-        // Mark message as complete
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantMessageId
-              ? {
-                  ...m,
-                  content: streamingMessageRef.current,
-                  status: "complete",
-                }
-              : m
-          )
-        );
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Unknown error");
-        // Mark message as error
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantMessageId ? { ...m, status: "partial" } : m
-          )
-        );
-      } finally {
-        setIsStreaming(false);
-      }
-    },
-    []
-  );
-
-  /**
-   * Parses SSE events from a buffer string.
-   */
-  function parseSSEEvents(buffer: string): {
-    parsed: SSEEvent[];
-    remaining: string;
-  } {
-    const events: SSEEvent[] = [];
-    const lines = buffer.split("\n");
-    let currentEvent: Partial<SSEEvent> = {};
-    let remaining = "";
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-
-      // Check if this is the last incomplete line
-      if (i === lines.length - 1 && !line.endsWith("\n")) {
-        remaining = line;
-        break;
-      }
-
-      if (line.startsWith("event: ")) {
-        currentEvent.type = line.slice(7);
-      } else if (line.startsWith("data: ")) {
-        try {
-          currentEvent.data = JSON.parse(line.slice(6));
-        } catch {
-          currentEvent.data = line.slice(6);
-        }
-      } else if (line === "") {
-        // Empty line = end of event
-        if (currentEvent.type) {
-          events.push(currentEvent as SSEEvent);
-        }
-        currentEvent = {};
-      }
-    }
-
-    return { parsed: events, remaining };
-  }
-
-  interface SSEEvent {
-    type: string;
-    data: unknown;
-  }
-
-  /**
-   * Handles a single SSE event, updating appropriate state.
-   */
-  function handleSSEEvent(event: SSEEvent, messageId: string) {
-    switch (event.type) {
-      case "content":
-        // Append content to the streaming message
-        const { text } = event.data as { text: string };
-        streamingMessageRef.current += text;
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === messageId
-              ? { ...m, content: streamingMessageRef.current }
-              : m
-          )
-        );
-        break;
-
-      case "process":
-        // Add to process log
-        const processEvent = event.data as ProcessEvent;
-        setProcessLog((prev) => [...prev, processEvent]);
-        break;
-
-      case "confirmation_required":
-        // Store pending confirmation
-        setPendingConfirmation(event.data as PendingConfirmation);
-        break;
-
-      case "error":
-        const { message } = event.data as { message: string };
-        setError(message);
-        break;
-
-      case "done":
-        // Stream complete
-        break;
-    }
-  }
-
-  /**
-   * Accepts a pending Clio confirmation.
-   */
-  const acceptConfirmation = useCallback(async () => {
-    if (!pendingConfirmation) return;
-
-    setIsStreaming(true);
-    setError(null);
-
-    try {
-      const response = await fetch(
-        `${API_URL}/api/confirmations/${pendingConfirmation.confirmationId}/accept`,
-        {
-          method: "POST",
-          credentials: "include",
-        }
-      );
-
-      if (!response.ok) throw new Error("Failed to accept confirmation");
-
-      // Handle the response stream (same as sendMessage)
-      const assistantMessageId = crypto.randomUUID();
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: assistantMessageId,
-          role: "assistant",
-          content: "",
-          createdAt: Date.now(),
-          status: "streaming",
-        },
-      ]);
-
-      streamingMessageRef.current = "";
-
-      // ... same streaming logic as sendMessage
-
-      setPendingConfirmation(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
-    } finally {
-      setIsStreaming(false);
-    }
-  }, [pendingConfirmation]);
-
-  /**
-   * Rejects a pending Clio confirmation.
-   */
-  const rejectConfirmation = useCallback(async () => {
-    if (!pendingConfirmation) return;
-
-    try {
-      const response = await fetch(
-        `${API_URL}/api/confirmations/${pendingConfirmation.confirmationId}/reject`,
-        {
-          method: "POST",
-          credentials: "include",
-        }
-      );
-
-      if (!response.ok) throw new Error("Failed to reject confirmation");
-
-      // Add cancellation message
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: "Got it, I've cancelled that operation.",
-          createdAt: Date.now(),
-          status: "complete",
-        },
-      ]);
-
-      setPendingConfirmation(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
-    }
-  }, [pendingConfirmation]);
-
-  /**
-   * Loads an existing conversation's messages.
-   */
-  const loadConversation = useCallback(async (conversationId: string) => {
-    try {
-      const response = await fetch(
-        `${API_URL}/api/conversations/${conversationId}`,
-        { credentials: "include" }
-      );
-
-      if (!response.ok) {
-        setMessages([]);
-        return;
-      }
-
-      const data = await response.json();
-      setMessages(data.messages);
-
-      // Load any pending confirmations
-      if (data.pendingConfirmations?.length > 0) {
-        const pending = data.pendingConfirmations[0];
-        setPendingConfirmation({
-          confirmationId: pending.id,
-          action: pending.action,
-          objectType: pending.objectType,
-          params: pending.params,
-        });
-      } else {
-        setPendingConfirmation(null);
-      }
-    } catch {
-      setMessages([]);
-    }
-  }, []);
-
-  return {
-    messages,
-    processLog,
-    pendingConfirmation,
-    isStreaming,
-    error,
-    sendMessage,
-    acceptConfirmation,
-    rejectConfirmation,
-    loadConversation,
-  };
-}
-```
-
-### 4.4 Chat Components
-
-Create `apps/web/app/components/ChatSidebar.tsx`:
-
-```tsx
-import { Trash2 } from "lucide-react";
-import styles from "~/styles/chat-sidebar.module.css";
-
-interface Conversation {
-  id: string;
-  title: string | null;
-  updatedAt: number;
-  messageCount: number;
-}
-
-interface ChatSidebarProps {
-  conversations: Conversation[];
-  currentConversationId: string | null;
-  onNewChat: () => void;
-  onSelectConversation: (id: string) => void;
-  onDeleteConversation: (id: string) => void;
-}
-
-export function ChatSidebar({
-  conversations,
-  currentConversationId,
-  onNewChat,
-  onSelectConversation,
-  onDeleteConversation,
-}: ChatSidebarProps) {
-  function formatDate(timestamp: number) {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diffDays = Math.floor(
-      (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24)
-    );
-
-    if (diffDays === 0) return "Today";
-    if (diffDays === 1) return "Yesterday";
-    if (diffDays < 7) return `${diffDays} days ago`;
-    return date.toLocaleDateString();
-  }
-
-  return (
-    <aside className={styles.sidebar}>
-      <button
-        className={`btn btn-primary ${styles.newChatButton}`}
-        onClick={onNewChat}
-      >
-        New Chat
-      </button>
-
-      <div className={styles.conversationList}>
-        {conversations.map((conv) => (
-          <div
-            key={conv.id}
-            className={`${styles.conversationItem} ${
-              conv.id === currentConversationId ? styles.active : ""
-            }`}
-            onClick={() => onSelectConversation(conv.id)}
-          >
-            <div className={styles.conversationInfo}>
-              <span className={styles.title}>
-                {conv.title || "New conversation"}
-              </span>
-              <span className={styles.meta}>
-                {formatDate(conv.updatedAt)} · {conv.messageCount} messages
-              </span>
-            </div>
-            <button
-              className={styles.deleteButton}
-              onClick={(e) => {
-                e.stopPropagation();
-                onDeleteConversation(conv.id);
-              }}
-              aria-label="Delete conversation"
-            >
-              <Trash2 size={14} />
-            </button>
-          </div>
-        ))}
-
-        {conversations.length === 0 && (
-          <p className={styles.emptyState}>
-            No conversations yet. Start a new chat!
-          </p>
-        )}
-      </div>
-    </aside>
-  );
-}
-```
+Create `apps/web/app/components/ChatSidebar.tsx`
 
 Create `apps/web/app/components/ChatMessages.tsx`:
 
-```tsx
-import { useRef, useEffect } from "react";
-import styles from "~/styles/chat-messages.module.css";
-
-interface Message {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  status: "complete" | "partial" | "streaming";
-}
-
-interface PendingConfirmation {
-  confirmationId: string;
-  action: string;
-  objectType: string;
-  params: Record<string, unknown>;
-}
-
-interface ChatMessagesProps {
-  messages: Message[];
-  pendingConfirmation: PendingConfirmation | null;
-  isStreaming: boolean;
-  onAcceptConfirmation: () => void;
-  onRejectConfirmation: () => void;
-}
-
-export function ChatMessages({
-  messages,
-  pendingConfirmation,
-  isStreaming,
-  onAcceptConfirmation,
-  onRejectConfirmation,
-}: ChatMessagesProps) {
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  // Auto-scroll to bottom on new messages
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, pendingConfirmation]);
-
-  return (
-    <div className={styles.messagesContainer}>
-      {messages.length === 0 && (
-        <div className={styles.emptyState}>
-          <h2>Welcome to Docket</h2>
-          <p>Ask me about your cases, tasks, or Clio data.</p>
-        </div>
-      )}
-
-      {messages.map((message) => (
-        <div
-          key={message.id}
-          className={`${styles.message} ${styles[message.role]}`}
-        >
-          <div className={styles.messageContent}>
-            {message.content}
-            {message.status === "streaming" && (
-              <span className={styles.cursor}>▋</span>
-            )}
-          </div>
-        </div>
-      ))}
-
-      {/* Confirmation card */}
-      {pendingConfirmation && (
-        <div className={styles.confirmationCard}>
-          <h3>Confirm {pendingConfirmation.action}</h3>
-          <p>
-            Docket wants to <strong>{pendingConfirmation.action}</strong> a{" "}
-            <strong>{pendingConfirmation.objectType}</strong>:
-          </p>
-          <pre className={styles.confirmationParams}>
-            {JSON.stringify(pendingConfirmation.params, null, 2)}
-          </pre>
-          <div className={styles.confirmationActions}>
-            <button
-              className="btn btn-secondary"
-              onClick={onRejectConfirmation}
-              disabled={isStreaming}
-            >
-              Cancel
-            </button>
-            <button
-              className="btn btn-primary"
-              onClick={onAcceptConfirmation}
-              disabled={isStreaming}
-            >
-              Confirm
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div ref={messagesEndRef} />
-    </div>
-  );
-}
-```
+- Auto-scroll to bottom on new messages
+- Show when bot is "typing"
 
 Create `apps/web/app/components/ChatInput.tsx`:
 
-```tsx
-import { useState, useRef, useEffect } from "react";
-import { Send } from "lucide-react";
-import styles from "~/styles/chat-input.module.css";
-
-interface ChatInputProps {
-  onSend: (message: string) => void;
-  disabled: boolean;
-}
-
-export function ChatInput({ onSend, disabled }: ChatInputProps) {
-  const [message, setMessage] = useState("");
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  // Auto-resize textarea
-  useEffect(() => {
-    const textarea = textareaRef.current;
-    if (textarea) {
-      textarea.style.height = "auto";
-      textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
-    }
-  }, [message]);
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!message.trim() || disabled) return;
-
-    onSend(message.trim());
-    setMessage("");
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent) {
-    // Submit on Enter (without Shift)
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit(e);
-    }
-  }
-
-  return (
-    <form className={styles.inputContainer} onSubmit={handleSubmit}>
-      <textarea
-        ref={textareaRef}
-        className={styles.textarea}
-        value={message}
-        onChange={(e) => setMessage(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder={disabled ? "Please wait..." : "Ask about your cases..."}
-        disabled={disabled}
-        rows={1}
-      />
-      <button
-        type="submit"
-        className={styles.sendButton}
-        disabled={disabled || !message.trim()}
-        aria-label="Send message"
-      >
-        <Send size={20} />
-      </button>
-    </form>
-  );
-}
-```
+- Auto-resize textarea
+  - Submit on Enter (without Shift)
 
 Create `apps/web/app/components/ProcessLog.tsx`:
 
-```tsx
-import { Check, Loader2 } from "lucide-react";
-import styles from "~/styles/process-log.module.css";
-
-interface ProcessEvent {
-  type: "rag_lookup" | "llm_thinking" | "clio_call" | "clio_result";
-  status: "started" | "completed";
-  data?: unknown;
-}
-
-interface ProcessLogProps {
-  events: ProcessEvent[];
-}
-
-const EVENT_LABELS: Record<string, string> = {
-  rag_lookup: "Searching knowledge base",
-  llm_thinking: "Generating response",
-  clio_call: "Querying Clio",
-  clio_result: "Processing Clio data",
-};
-
-export function ProcessLog({ events }: ProcessLogProps) {
-  if (events.length === 0) {
-    return (
-      <aside className={styles.processLog}>
-        <h3 className={styles.title}>Process Log</h3>
-        <p className={styles.emptyState}>
-          Steps will appear here as Docket processes your request.
-        </p>
-      </aside>
-    );
-  }
-
-  // Group events by type to show latest status
-  const eventsByType = new Map<string, ProcessEvent>();
-  for (const event of events) {
-    eventsByType.set(event.type, event);
-  }
-
-  return (
-    <aside className={styles.processLog}>
-      <h3 className={styles.title}>Process Log</h3>
-
-      <ul className={styles.eventList}>
-        {Array.from(eventsByType.entries()).map(([type, event]) => (
-          <li key={type} className={styles.event}>
-            {event.status === "completed" ? (
-              <Check className={styles.completedIcon} size={16} />
-            ) : (
-              <Loader2 className={styles.loadingIcon} size={16} />
-            )}
-            <span>{EVENT_LABELS[type] || type}</span>
-          </li>
-        ))}
-      </ul>
-    </aside>
-  );
-}
-```
+- Show events chronologically
 
 ---
 
@@ -1445,15 +663,3 @@ describe("Chat E2E", () => {
 - **DO alarms for cleanup** — Archive old conversations, don't let SQLite grow unbounded
 
 ---
-
-## Next Steps
-
-After completing Phase 9b:
-
-1. **Update `/dashboard` route** — Redirect to `/chat` if user has org
-2. **Add chat link to sidebar** — In `AppLayout.tsx`
-3. **Polish mobile experience** — Collapsible sidebar, swipe gestures
-4. **Add typing indicators** — Show when bot is "typing"
-5. **Implement conversation search** — Full-text search in messages
-
-Then proceed to Phase 10 (Teams Adapter) which reuses all the DO logic you just built.

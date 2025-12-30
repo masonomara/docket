@@ -168,32 +168,43 @@ export async function handleChatMessage(
     orgId: ctx.orgId,
   });
 
-  // Pass through the SSE response from the DO
-  const doResponse = await doStub.fetch(doRequest);
+  try {
+    // Pass through the SSE response from the DO
+    const doResponse = await doStub.fetch(doRequest);
 
-  // If the DO returned an error, pass it through
-  if (!doResponse.ok) {
-    const errorBody = await doResponse.text();
-    log.error("DO returned error", {
-      status: doResponse.status,
-      body: errorBody,
+    // If the DO returned an error, pass it through
+    if (!doResponse.ok) {
+      const errorBody = await doResponse.text();
+      log.error("DO returned error", {
+        status: doResponse.status,
+        body: errorBody,
+      });
+      return new Response(errorBody, {
+        status: doResponse.status,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // Return the SSE stream with appropriate headers
+    return new Response(doResponse.body, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+        "X-Request-Id": requestId,
+      },
     });
-    return new Response(errorBody, {
-      status: doResponse.status,
-      headers: { "Content-Type": "application/json" },
+  } catch (error) {
+    log.error("DO fetch failed", {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
     });
+    return Response.json(
+      { error: "Failed to process message" },
+      { status: 500 }
+    );
   }
-
-  // Return the SSE stream with appropriate headers
-  return new Response(doResponse.body, {
-    status: 200,
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-      "X-Request-Id": requestId,
-    },
-  });
 }
 
 // -----------------------------------------------------------------------------

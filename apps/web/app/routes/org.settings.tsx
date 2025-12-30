@@ -15,7 +15,7 @@ interface DeletionPreview {
   orgContextChunks: number;
 }
 
-export const loader = orgLoader(({ user, org }) => ({ user, org }));
+export const loader = orgLoader(({ user, org }) => ({ user, org }), {});
 
 export default function SettingsPage({ loaderData }: Route.ComponentProps) {
   const { user, org } = loaderData;

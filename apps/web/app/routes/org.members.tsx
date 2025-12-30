@@ -10,7 +10,7 @@ import { PageLayout } from "~/components/PageLayout";
 import { Plus } from "lucide-react";
 
 export const loader = orgLoader(
-  async ({ user, org, fetch }) => {
+  async ({ user, org, fetch }, {}) => {
     const [membersRes, invitationsRes] = await Promise.all([
       fetch(ENDPOINTS.org.members),
       fetch(ENDPOINTS.org.invitations),

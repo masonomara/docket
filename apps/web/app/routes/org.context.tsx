@@ -15,7 +15,7 @@ const ACCEPTED_FILE_TYPES =
   ".pdf,.docx,.xlsx,.pptx,.odt,.ods,.numbers,.md,.txt,.html,.csv,.xml";
 
 export const loader = orgLoader(
-  async ({ user, org, fetch }) => {
+  async ({ user, org, fetch }, {}) => {
     const res = await fetch(ENDPOINTS.org.context);
 
     const documents = res.ok

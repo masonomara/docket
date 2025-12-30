@@ -27,7 +27,11 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
   const isAdmin = org?.role === "admin";
 
   function getNavItemClass(path: string) {
-    if (currentPath === path) {
+    // Check for exact match or chat route prefix
+    const isActive =
+      currentPath === path ||
+      (path === "/chat" && currentPath.startsWith("/chat"));
+    if (isActive) {
       return `${styles.navItem} ${styles.navItemActive}`;
     }
     return styles.navItem;
@@ -93,12 +97,11 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
           <div className={styles.sectionLabel}>Work</div>
           <ul className={styles.navList}>
             <li>
-              <Link to="/dashboard" className={getNavItemClass("/dashboard")}>
-                {/* <LayoutDashboard
-                  className={styles.navIcon}
-                  strokeWidth={1.75}
-                /> */}
-                Dashboard
+              <Link
+                to={org ? "/chat" : "/dashboard"}
+                className={getNavItemClass(org ? "/chat" : "/dashboard")}
+              >
+                {org ? "Chat" : "Dashboard"}
               </Link>
             </li>
           </ul>
@@ -176,7 +179,10 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
 
       {/* Main content area */}
       <main className={styles.content}>
-        <div className={styles.contentInner}>
+        <div
+          className={styles.contentInner}
+          style={currentPath === "/chat" ? { padding: "0px" } : undefined}
+        >
           <PageLayoutContext.Provider value={{ onMenuOpen: openMenu }}>
             {children}
           </PageLayoutContext.Provider>

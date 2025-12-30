@@ -331,8 +331,7 @@ strong {
    ========================================================================== */
 
 .alert {
-  padding: 0px 16px;
-  height: 36px;
+  padding: 8.5px 16px;
   border-radius: 8px;
   font-size: 14px;
   line-height: 19px;
