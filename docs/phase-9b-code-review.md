@@ -16,48 +16,6 @@
 
 ## Issues
 
-### 3. Missing Transaction for Delete Operations
-
-**Identified by:** 🔒
-**File:** `tenant.ts:2152-2166`
-
-Multi-table deletion without transaction wrapper risks partial deletion on failure.
-
-```typescript
-// No transaction - if any fails, data is inconsistent
-this.sql.exec("DELETE FROM messages WHERE conversation_id = ?", conversationId);
-this.sql.exec(
-  "DELETE FROM pending_confirmations WHERE conversation_id = ?",
-  conversationId
-);
-this.sql.exec("DELETE FROM conversations WHERE id = ?", conversationId);
-```
-
-**Fix:** Wrap in `this.ctx.storage.transactionSync()`.
-
-### 8. Confirmation Acceptance from Wrong Conversation
-
-**Identified by:** 🔒
-**File:** `tenant.ts:2195-2203`
-
-Missing verification that confirmation's `conversation_id` belongs to a conversation the user owns. Defense-in-depth issue.
-
-### 10. Duplicate Conversation Creation Logic
-
-**Identified by:** ☯️ 🔒 🌴
-**File:** `tenant.ts:1372-1395` vs `1910-1942`
-
-Two nearly identical methods: `ensureConversationExists` and `ensureConversationExistsForWeb`. DRY violation.
-
-**Fix:** Single method with channel-specific branching.
-
-### 11. Duplicate Message Storage Functions
-
-**Identified by:** 🌴
-**File:** `tenant.ts:1400-1412` vs `1959-1977`
-
-`storeMessage` (original, no status) vs `storeMessageWithStatus`. The original is still used by Teams/Slack path, causing inconsistent records.
-
 ### 12. Inconsistent Error Response Formats
 
 **Identified by:** 🔒
@@ -78,17 +36,6 @@ RAG lookup emits started/complete, but LLM thinking only emits started. ProcessL
 **File:** `tenant.ts:1624`
 
 Emits `{ type: "started" }` which is not in the spec's event list. Scope creep (harmless but undocumented).
-
-### 15. Magic Numbers/Strings Scattered
-
-**Identified by:** 🔒 🌴
-**File:** `tenant.ts`
-
-- `100` for chunk preview truncation (line 1701)
-- `50` for conversation limit (line 2005)
-- `"web"` string literal repeated
-
-**Fix:** Move to `TENANT_CONFIG` constants.
 
 ### 16. Race Condition on Confirmation Claim
 
@@ -173,12 +120,10 @@ Conversation IDs validated at API layer but not in DO endpoints.
 
 ### Before Production
 
-2. **#3** - Transaction for deletes
-3. **#20** - Rate limiting
-4. **#21** - Request timeouts
+1. **#20** - Rate limiting
+2. **#21** - Request timeouts
 
 ### Short-term
 
-6. **#10, #11** - Code deduplication
-7. **#22** - Store confirmation results
-8. **#16** - Race condition handling
+1. **#22** - Store confirmation results
+2. **#16** - Race condition handling

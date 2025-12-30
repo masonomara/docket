@@ -95,7 +95,9 @@ function createSSEStream() {
   const encoder = new TextEncoder();
 
   const emit = async (event: string, data: unknown) => {
-    await writer.write(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+    await writer.write(
+      encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+    );
   };
 
   const close = async () => {
@@ -148,11 +150,13 @@ function createSSEStream() {
 ### 2.5 Conversation Query Endpoints
 
 **`handleGetConversations`:**
+
 - Extract `userId` from query params
 - Query: `SELECT id, title, updated_at, (SELECT COUNT(*) FROM messages WHERE conversation_id = c.id) as messageCount FROM conversations c WHERE user_id = ? AND channel_type = 'web' ORDER BY updated_at DESC LIMIT 50`
 - Return JSON response
 
 **`handleGetConversation`:**
+
 - Extract `userId` from query params, `conversationId` from path
 - Verify ownership: `WHERE id = ? AND user_id = ?`
 - Get messages: `SELECT id, role, content, created_at, status FROM messages WHERE conversation_id = ? ORDER BY created_at ASC`
@@ -160,6 +164,7 @@ function createSSEStream() {
 - Return combined JSON response
 
 **`handleDeleteConversation`:**
+
 - Verify ownership before delete
 - Delete messages first (foreign key)
 - Delete pending confirmations
@@ -169,6 +174,7 @@ function createSSEStream() {
 ### 2.6 Confirmation Endpoints
 
 **`handleAcceptConfirmation`:**
+
 - Extract `confirmationId` from path, `userId` from body
 - Look up confirmation, verify user owns it
 - Execute the confirmed Clio operation
@@ -176,6 +182,7 @@ function createSSEStream() {
 - Emit audit log
 
 **`handleRejectConfirmation`:**
+
 - Extract `confirmationId` from path, `userId` from body
 - Delete the confirmation
 - Return `{ success: true }`
@@ -198,6 +205,7 @@ Modify `ensureConversationExists` to handle web channel:
 Create `apps/api/src/handlers/chat.ts`:
 
 **`handleChatMessage`** — POST /api/chat (SSE streaming)
+
 - Parse request body: `{ conversationId: string, message: string }`
 - Validate `conversationId` is UUID format, `message` is 1-10000 chars
 - Build `ChannelMessage` from authenticated context:
@@ -216,22 +224,27 @@ Create `apps/api/src/handlers/chat.ts`:
   - `Connection: keep-alive`
 
 **`handleGetConversations`** — GET /api/conversations
+
 - Get user's conversations from DO via `/conversations?userId={userId}`
 - Return `{ conversations: [{ id, title, updatedAt, messageCount }] }`
 
 **`handleGetConversation`** — GET /api/conversations/:id
+
 - Get single conversation with messages from DO via `/conversation/{id}?userId={userId}`
 - Return `{ conversation, messages, pendingConfirmations }`
 
 **`handleDeleteConversation`** — DELETE /api/conversations/:id
+
 - Delete conversation via DO `/conversation/{id}?userId={userId}` DELETE
 - Return `{ success: true }`
 
 **`handleAcceptConfirmation`** — POST /api/confirmations/:id/accept
+
 - Forward to DO `/confirmation/{id}/accept` with `userId`
 - Return SSE stream with operation result
 
 **`handleRejectConfirmation`** — POST /api/confirmations/:id/reject
+
 - Forward to DO `/confirmation/{id}/reject` with `userId`
 - Return `{ success: true }`
 
@@ -242,9 +255,15 @@ Create a helper to fetch org settings from D1 for the ChannelMessage:
 ```typescript
 async function getOrgSettings(db: D1Database, orgId: string) {
   const org = await db
-    .prepare("SELECT jurisdictions, practice_types, firm_size FROM org WHERE id = ?")
+    .prepare(
+      "SELECT jurisdictions, practice_types, firm_size FROM org WHERE id = ?"
+    )
     .bind(orgId)
-    .first<{ jurisdictions: string; practice_types: string; firm_size: string | null }>();
+    .first<{
+      jurisdictions: string;
+      practice_types: string;
+      firm_size: string | null;
+    }>();
 
   if (!org) return null;
 
@@ -261,10 +280,12 @@ async function getOrgSettings(db: D1Database, orgId: string) {
 Update `apps/api/src/index.ts`:
 
 **Static routes:**
+
 - `"/api/chat"`: `{ POST: withMember(handleChatMessage) }`
 - `"/api/conversations"`: `{ GET: withMember(handleGetConversations) }`
 
 **Dynamic routes in `matchDynamicRoute`:**
+
 - `/api/conversations/:id` GET → `handleGetConversation`
 - `/api/conversations/:id` DELETE → `handleDeleteConversation`
 - `/api/confirmations/:id/accept` POST → `handleAcceptConfirmation`
@@ -279,11 +300,13 @@ Update `apps/api/src/index.ts`:
 The SSE event contract between server and client:
 
 **`content`** — Assistant response text chunk
+
 ```json
 { "text": "Here are your open matters..." }
 ```
 
 **`process`** — Internal processing step visibility
+
 ```json
 { "type": "rag_lookup", "status": "started" }
 { "type": "rag_lookup", "status": "complete", "chunks": [{ "text": "...", "source": "..." }] }
@@ -293,6 +316,7 @@ The SSE event contract between server and client:
 ```
 
 **`confirmation_required`** — Clio write needs approval
+
 ```json
 {
   "confirmationId": "uuid",
@@ -303,6 +327,7 @@ The SSE event contract between server and client:
 ```
 
 **`error`** — Processing error
+
 ```json
 { "message": "Clio API unavailable" }
 ```
@@ -331,11 +356,13 @@ export const ENDPOINTS = {
 Create `apps/web/app/routes/chat.tsx`:
 
 **Loader:**
+
 - Use `orgLoader` (requires org membership)
 - Fetch conversations list via `/api/conversations`
 - Return `{ user, org, conversations }`
 
 **Component:**
+
 - Three-column grid layout
 - Left: `ChatSidebar` with conversation list
 - Center: `ChatMessages` with current conversation
@@ -343,6 +370,7 @@ Create `apps/web/app/routes/chat.tsx`:
 - State: current conversation ID, messages, process events, pending confirmations
 
 **Handlers:**
+
 - `handleNewChat`: Generate UUID, navigate to `/chat/{id}`
 - `handleSelectConversation`: Fetch messages, update state
 - `handleSendMessage`: POST to `/api/chat`, parse SSE stream
@@ -362,6 +390,7 @@ Create `apps/web/app/routes/chat.$conversationId.tsx`:
 Create `apps/web/app/lib/use-chat.ts`:
 
 **State:**
+
 - `messages`: Array of `{ id, role, content, status, createdAt }`
 - `processEvents`: Array of process log entries
 - `pendingConfirmations`: Array of awaiting confirmations
@@ -369,6 +398,7 @@ Create `apps/web/app/lib/use-chat.ts`:
 - `error`: Error message if any
 
 **`sendMessage(conversationId, message)`:**
+
 - Add user message to state immediately (optimistic)
 - Create placeholder assistant message with `status: 'streaming'`
 - POST to `/api/chat` with fetch
@@ -381,21 +411,25 @@ Create `apps/web/app/lib/use-chat.ts`:
 - On stream close: Finalize state
 
 **`acceptConfirmation(confirmationId)`:**
+
 - POST to `/api/confirmations/{id}/accept`
 - Parse SSE stream same as `sendMessage`
 - Remove confirmation from pending list
 
 **`rejectConfirmation(confirmationId)`:**
+
 - POST to `/api/confirmations/{id}/reject`
 - Remove confirmation from pending list
 - Add cancellation message to chat
 
 **`loadConversation(conversationId)`:**
+
 - GET `/api/conversations/{id}`
 - Set messages, pendingConfirmations from response
 - Clear process events
 
 **SSE Parsing:**
+
 ```typescript
 async function parseSSE(
   response: Response,
@@ -432,6 +466,7 @@ async function parseSSE(
 ### 4.6 Chat Components
 
 **`ChatSidebar.tsx`:**
+
 - Props: `conversations`, `currentId`, `onSelect`, `onNew`, `onDelete`
 - "New Chat" button at top
 - Conversation list sorted by `updatedAt` DESC
@@ -440,6 +475,7 @@ async function parseSSE(
 - Delete button on hover (with confirmation)
 
 **`ChatMessages.tsx`:**
+
 - Props: `messages`, `isStreaming`, `pendingConfirmations`, `onAccept`, `onReject`
 - Auto-scroll to bottom on new messages
 - User messages aligned right, assistant aligned left
@@ -459,6 +495,7 @@ async function parseSSE(
   ```
 
 **`ChatInput.tsx`:**
+
 - Props: `onSend`, `disabled`, `placeholder`
 - Textarea with auto-resize
 - Submit on Enter (Shift+Enter for newline)
@@ -466,6 +503,7 @@ async function parseSSE(
 - Submit button with loading state
 
 **`ProcessLog.tsx`:**
+
 - Props: `events`
 - Show events chronologically
 - Each event type has distinct styling:
@@ -559,6 +597,7 @@ Create `apps/web/app/styles/chat.css`:
 Create `apps/api/test/chat.spec.ts`:
 
 **`handleChatMessage`:**
+
 - Rejects missing `conversationId`
 - Rejects missing `message`
 - Rejects message over 10000 chars
@@ -566,11 +605,13 @@ Create `apps/api/test/chat.spec.ts`:
 - Requires org membership (401 without session)
 
 **`handleGetConversations`:**
+
 - Returns empty array for user with no conversations
 - Returns conversations sorted by `updatedAt` DESC
 - Only returns user's own conversations
 
 **`handleDeleteConversation`:**
+
 - Returns 404 for non-existent conversation
 - Returns 404 for conversation owned by different user
 - Successfully deletes conversation and messages
@@ -596,7 +637,9 @@ describe("Chat E2E", () => {
     expect(response.headers.get("Content-Type")).toBe("text/event-stream");
 
     const events = await collectSSEEvents(response);
-    expect(events).toContainEqual(expect.objectContaining({ event: "process" }));
+    expect(events).toContainEqual(
+      expect.objectContaining({ event: "process" })
+    );
     expect(events).toContainEqual(expect.objectContaining({ event: "done" }));
   });
 
@@ -642,20 +685,24 @@ describe("Chat E2E", () => {
 ## Appendix: Security Considerations
 
 **Auth happens at the Worker:**
+
 - All chat endpoints use `withMember` middleware
 - DO trusts that Worker validated the session
 - Org ID comes from middleware context, not request body
 
 **User can only see their own conversations:**
+
 - All queries filter by `user_id`
 - Ownership verified before delete/view operations
 
 **Clio operations require role check:**
+
 - Members can only read
 - Admins can write with confirmation
 - DO enforces permissions, not just frontend
 
 **Input validation:**
+
 - Message length capped at 10000 chars
 - ConversationId must be valid UUID
 - All inputs validated with Zod schemas
