@@ -12,6 +12,7 @@ import type { SessionResponse, OrgMembership } from "./types";
 interface LoaderArgs {
   request: Request;
   context: unknown;
+  params: Record<string, string | undefined>;
 }
 
 /**
@@ -96,10 +97,10 @@ export function protectedLoader<T>(
  *   }, { requireAdmin: true });
  */
 export function orgLoader<T>(
-  loader: (ctx: OrgLoaderContext) => Promise<T> | T,
+  loader: (ctx: OrgLoaderContext, args: { params: Record<string, string | undefined> }) => Promise<T> | T,
   options: { requireAdmin?: boolean } = {}
 ) {
-  return async ({ request, context }: LoaderArgs): Promise<T> => {
+  return async ({ request, context, params }: LoaderArgs): Promise<T> => {
     const requestId = generateRequestId();
     const cookie = request.headers.get("cookie") || "";
 
@@ -115,7 +116,7 @@ export function orgLoader<T>(
       fetch: (path: string) => apiFetch(context, path, cookie, requestId),
     };
 
-    return loader(loaderContext);
+    return loader(loaderContext, { params });
   };
 }
 

@@ -1,13 +1,6 @@
 import { createContext, useState } from "react";
 import { Link } from "react-router";
-import {
-  LayoutDashboard,
-  Users,
-  Plug,
-  FileText,
-  CircleUser,
-  X,
-} from "lucide-react";
+import { X } from "lucide-react";
 import type { OrgMembership } from "~/lib/types";
 import styles from "~/styles/app-layout.module.css";
 
@@ -94,11 +87,12 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
           <ul className={styles.navList}>
             <li>
               <Link to="/dashboard" className={getNavItemClass("/dashboard")}>
-                {/* <LayoutDashboard
-                  className={styles.navIcon}
-                  strokeWidth={1.75}
-                /> */}
                 Dashboard
+              </Link>
+            </li>
+            <li>
+              <Link to="/chat" className={getNavItemClass("/chat")}>
+                Chat
               </Link>
             </li>
           </ul>
@@ -114,13 +108,11 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
                   to="/org/context"
                   className={getNavItemClass("/org/context")}
                 >
-                  {/* <FileText className={styles.navIcon} strokeWidth={1.75} /> */}
                   Knowledge Base
                 </Link>
               </li>
               <li>
                 <Link to="/org/clio" className={getNavItemClass("/org/clio")}>
-                  {/* <Plug className={styles.navIcon} strokeWidth={1.75} /> */}
                   Clio Connection
                 </Link>
               </li>
@@ -129,7 +121,6 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
                   to="/org/members"
                   className={getNavItemClass("/org/members")}
                 >
-                  {/* <Users className={styles.navIcon} /> */}
                   Members
                 </Link>
               </li>
@@ -146,7 +137,6 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
                 to="/account/settings"
                 className={getNavItemClass("/account/settings")}
               >
-                {/* <CircleUser className={styles.navIcon} strokeWidth={1.75} /> */}
                 User Settings
               </Link>
             </li>
