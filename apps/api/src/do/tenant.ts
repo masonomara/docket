@@ -572,7 +572,7 @@ ${customFieldsSection ? `**Firm Custom Fields:**\n${customFieldsSection}` : ""}
 - Reply 'no' to cancel
 - Or describe any changes you'd like
 
-*This request expires in 5 minutes.*`;
+*This request expires in 24 hours.*`;
   }
 
   /**
@@ -1841,7 +1841,7 @@ Only include modifiedRequest if intent is "modify".`;
 - Reply 'no' to cancel
 - Or describe any changes you'd like
 
-*This request expires in 5 minutes.*`;
+*This request expires in 24 hours.*`;
   }
 
   /**

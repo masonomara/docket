@@ -8,7 +8,7 @@ export const TENANT_CONFIG = {
   RECENT_MESSAGES_LIMIT: 15,
 
   // How long a pending confirmation (e.g., "delete this contact?") stays valid
-  CONFIRMATION_TTL_MS: 5 * MINUTES,
+  CONFIRMATION_TTL_MS: 24 * HOURS,
 
   // How often the Durable Object alarm runs for cleanup tasks
   ALARM_INTERVAL_MS: 1 * DAYS,
