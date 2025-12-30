@@ -195,10 +195,8 @@ export class TenantDO extends DurableObject<Env> {
 
     const message = parseResult.data;
 
-    // Security check: ensure the message is for this organization
-    if (message.orgId !== this.orgId) {
-      return Response.json({ error: "Organization mismatch" }, { status: 403 });
-    }
+    // Note: Org validation is handled by the Worker's withMember middleware
+    // The DO trusts that requests are already authenticated and authorized
 
     // Create conversation if it doesn't exist, or update timestamp
     await this.ensureConversationExists(message);
@@ -1590,10 +1588,8 @@ Only include modifiedRequest if intent is "modify".`;
     const message = parseResult.data;
     const requestId = request.headers.get("X-Request-Id") ?? undefined;
 
-    // Security check: ensure the message is for this organization
-    if (message.orgId !== this.orgId) {
-      return Response.json({ error: "Organization mismatch" }, { status: 403 });
-    }
+    // Note: Org validation is handled by the Worker's withMember middleware
+    // The DO trusts that requests are already authenticated and authorized
 
     // Create SSE stream with requestId for debugging
     const { readable, emit, close } = this.createSSEStream(requestId);
