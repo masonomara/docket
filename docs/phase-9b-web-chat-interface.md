@@ -35,7 +35,7 @@ The architecture:
 
 ---
 
-## Part 1: Database Migration
+## Part 1: DO Migration
 
 Web chat requires `user_id` and `title` on conversations for per-user filtering, and `status` on messages for error handling. These tables live in the DO's SQLite (not D1), so update `runMigrations()` in `apps/api/src/do/tenant.ts`.
 
@@ -60,9 +60,140 @@ The migration runs automatically when the DO is accessed—no wrangler command n
 
 ---
 
-## Part 2: API Layer
+## Part 2: DO Streaming Endpoints
 
-### 2.1 Create Chat Handler
+### 2.1 Add Routes to TenantDO
+
+Add to `TenantDO.fetch()` router:
+
+```typescript
+case "/process-message-stream":
+  return this.handleProcessMessageStream(request);
+
+case "/conversations":
+  return this.handleGetConversations(request);
+
+case `/conversation/${url.pathname.split("/")[2]}`:
+  if (request.method === "DELETE") {
+    return this.handleDeleteConversation(request, url.pathname.split("/")[2]);
+  }
+  return this.handleGetConversation(request, url.pathname.split("/")[2]);
+
+case `/confirmation/${url.pathname.split("/")[2]}/accept`:
+  return this.handleAcceptConfirmation(request, url.pathname.split("/")[2]);
+
+case `/confirmation/${url.pathname.split("/")[2]}/reject`:
+  return this.handleRejectConfirmation(request, url.pathname.split("/")[2]);
+```
+
+### 2.2 SSE Stream Helper
+
+```typescript
+function createSSEStream() {
+  const { readable, writable } = new TransformStream();
+  const writer = writable.getWriter();
+  const encoder = new TextEncoder();
+
+  const emit = async (event: string, data: unknown) => {
+    await writer.write(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+  };
+
+  const close = async () => {
+    await writer.close();
+  };
+
+  return { readable, emit, close };
+}
+```
+
+### 2.3 Streaming Message Handler
+
+**`handleProcessMessageStream`** — Returns SSE stream instead of JSON:
+
+- Parse and validate `ChannelMessage` (same as existing `handleProcessMessage`)
+- Verify org ID matches DO identity
+- Create `ReadableStream` with `TransformStream` pattern
+- Start async processing in background via `waitUntil()`
+- Return Response with SSE headers immediately
+
+**Processing Flow:**
+
+- Emit `process` event: `{ type: "started" }`
+- Ensure conversation exists, set `user_id` and `title` if new
+- Store user message with `status: 'complete'`
+- Check for pending confirmation
+- If pending: classify response and handle
+- Else: generate assistant response with streaming
+- Store assistant message
+- Emit `done` event
+- Close stream
+
+### 2.4 Streaming Response Generation
+
+**`generateAssistantResponseWithStream`:**
+
+- Emit `process` event: `{ type: "rag_lookup", status: "started" }`
+- Retrieve RAG context (KB + Org Context)
+- Emit `process` event: `{ type: "rag_lookup", status: "complete", chunks: [...] }`
+- Build system prompt
+- Emit `process` event: `{ type: "llm_thinking", status: "started" }`
+- Call LLM with tools
+- If LLM returns tool calls:
+  - Emit `process` event: `{ type: "clio_call", operation, objectType }`
+  - Handle tool call (may create confirmation)
+  - Emit `process` event: `{ type: "clio_result", ... }` or `confirmation_required`
+- Emit `content` events as response chunks
+- Return final response string
+
+### 2.5 Conversation Query Endpoints
+
+**`handleGetConversations`:**
+- Extract `userId` from query params
+- Query: `SELECT id, title, updated_at, (SELECT COUNT(*) FROM messages WHERE conversation_id = c.id) as messageCount FROM conversations c WHERE user_id = ? AND channel_type = 'web' ORDER BY updated_at DESC LIMIT 50`
+- Return JSON response
+
+**`handleGetConversation`:**
+- Extract `userId` from query params, `conversationId` from path
+- Verify ownership: `WHERE id = ? AND user_id = ?`
+- Get messages: `SELECT id, role, content, created_at, status FROM messages WHERE conversation_id = ? ORDER BY created_at ASC`
+- Get pending confirmations: `SELECT * FROM pending_confirmations WHERE conversation_id = ? AND user_id = ? AND expires_at > ?`
+- Return combined JSON response
+
+**`handleDeleteConversation`:**
+- Verify ownership before delete
+- Delete messages first (foreign key)
+- Delete pending confirmations
+- Delete conversation
+- Return success
+
+### 2.6 Confirmation Endpoints
+
+**`handleAcceptConfirmation`:**
+- Extract `confirmationId` from path, `userId` from body
+- Look up confirmation, verify user owns it
+- Execute the confirmed Clio operation
+- Return SSE stream with result
+- Emit audit log
+
+**`handleRejectConfirmation`:**
+- Extract `confirmationId` from path, `userId` from body
+- Delete the confirmation
+- Return `{ success: true }`
+
+### 2.7 Update Conversation Creation
+
+Modify `ensureConversationExists` to handle web channel:
+
+- On INSERT, if `channel === 'web'`:
+  - Set `user_id` from message
+  - Set `title` from first message (truncated to 50 chars + ellipsis if longer)
+- On UPDATE, update `updated_at` timestamp
+
+---
+
+## Part 3: API Layer
+
+### 3.1 Create Chat Handler
 
 Create `apps/api/src/handlers/chat.ts`:
 
@@ -104,7 +235,7 @@ Create `apps/api/src/handlers/chat.ts`:
 - Forward to DO `/confirmation/{id}/reject` with `userId`
 - Return `{ success: true }`
 
-### 2.2 Helper: Get Org Settings
+### 3.2 Helper: Get Org Settings
 
 Create a helper to fetch org settings from D1 for the ChannelMessage:
 
@@ -125,7 +256,7 @@ async function getOrgSettings(db: D1Database, orgId: string) {
 }
 ```
 
-### 2.3 Register Routes
+### 3.3 Register Routes
 
 Update `apps/api/src/index.ts`:
 
@@ -141,142 +272,11 @@ Update `apps/api/src/index.ts`:
 
 ---
 
-## Part 3: Durable Object Streaming
+## Part 4: Frontend
 
-### 3.1 Add Streaming Message Endpoint
+### 4.1 SSE Event Types
 
-Add to `TenantDO.fetch()` router:
-
-```typescript
-case "/process-message-stream":
-  return this.handleProcessMessageStream(request);
-
-case "/conversations":
-  return this.handleGetConversations(request);
-
-case `/conversation/${url.pathname.split("/")[2]}`:
-  if (request.method === "DELETE") {
-    return this.handleDeleteConversation(request, url.pathname.split("/")[2]);
-  }
-  return this.handleGetConversation(request, url.pathname.split("/")[2]);
-
-case `/confirmation/${url.pathname.split("/")[2]}/accept`:
-  return this.handleAcceptConfirmation(request, url.pathname.split("/")[2]);
-
-case `/confirmation/${url.pathname.split("/")[2]}/reject`:
-  return this.handleRejectConfirmation(request, url.pathname.split("/")[2]);
-```
-
-### 3.2 Streaming Message Handler
-
-**`handleProcessMessageStream`** — Returns SSE stream instead of JSON:
-
-- Parse and validate `ChannelMessage` (same as existing `handleProcessMessage`)
-- Verify org ID matches DO identity
-- Create `ReadableStream` with `TransformStream` pattern
-- Start async processing in background via `waitUntil()`
-- Return Response with SSE headers immediately
-
-**SSE Event Emitter:**
-
-```typescript
-function createSSEStream() {
-  const { readable, writable } = new TransformStream();
-  const writer = writable.getWriter();
-  const encoder = new TextEncoder();
-
-  const emit = async (event: string, data: unknown) => {
-    await writer.write(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
-  };
-
-  const close = async () => {
-    await writer.close();
-  };
-
-  return { readable, emit, close };
-}
-```
-
-**Processing Flow:**
-
-- Emit `process` event: `{ type: "started" }`
-- Ensure conversation exists, set `user_id` and `title` if new
-- Store user message with `status: 'complete'`
-- Check for pending confirmation
-- If pending: classify response and handle
-- Else: generate assistant response with streaming
-- Store assistant message
-- Emit `done` event
-- Close stream
-
-### 3.3 Streaming Response Generation
-
-Modify `generateAssistantResponse` to accept an emit function:
-
-**`generateAssistantResponseWithStream`:**
-
-- Emit `process` event: `{ type: "rag_lookup", status: "started" }`
-- Retrieve RAG context (KB + Org Context)
-- Emit `process` event: `{ type: "rag_lookup", status: "complete", chunks: [...] }`
-- Build system prompt
-- Emit `process` event: `{ type: "llm_thinking", status: "started" }`
-- Call LLM with tools
-- If LLM returns tool calls:
-  - Emit `process` event: `{ type: "clio_call", operation, objectType }`
-  - Handle tool call (may create confirmation)
-  - Emit `process` event: `{ type: "clio_result", ... }` or `confirmation_required`
-- Emit `content` events as response chunks
-- Return final response string
-
-### 3.4 Conversation Query Endpoints
-
-**`handleGetConversations`:**
-- Extract `userId` from query params
-- Query: `SELECT id, title, updated_at, (SELECT COUNT(*) FROM messages WHERE conversation_id = c.id) as messageCount FROM conversations c WHERE user_id = ? AND channel_type = 'web' ORDER BY updated_at DESC LIMIT 50`
-- Return JSON response
-
-**`handleGetConversation`:**
-- Extract `userId` from query params, `conversationId` from path
-- Verify ownership: `WHERE id = ? AND user_id = ?`
-- Get messages: `SELECT id, role, content, created_at, status FROM messages WHERE conversation_id = ? ORDER BY created_at ASC`
-- Get pending confirmations: `SELECT * FROM pending_confirmations WHERE conversation_id = ? AND user_id = ? AND expires_at > ?`
-- Return combined JSON response
-
-**`handleDeleteConversation`:**
-- Verify ownership before delete
-- Delete messages first (foreign key)
-- Delete pending confirmations
-- Delete conversation
-- Return success
-
-### 3.5 Confirmation Endpoints
-
-**`handleAcceptConfirmation`:**
-- Extract `confirmationId` from path, `userId` from body
-- Look up confirmation, verify user owns it
-- Execute the confirmed Clio operation
-- Return SSE stream with result
-- Emit audit log
-
-**`handleRejectConfirmation`:**
-- Extract `confirmationId` from path, `userId` from body
-- Delete the confirmation
-- Return `{ success: true }`
-
-### 3.6 Update Conversation Creation
-
-Modify `ensureConversationExists` to handle web channel:
-
-- On INSERT, if `channel === 'web'`:
-  - Set `user_id` from message
-  - Set `title` from first message (truncated to 50 chars + ellipsis if longer)
-- On UPDATE, update `updated_at` timestamp
-
----
-
-## Part 4: SSE Event Types
-
-Define the SSE event contract between server and client:
+The SSE event contract between server and client:
 
 **`content`** — Assistant response text chunk
 ```json
@@ -309,11 +309,24 @@ Define the SSE event contract between server and client:
 
 **`done`** — Stream complete (no data)
 
----
+### 4.2 Update API Endpoints
 
-## Part 5: Frontend
+Add to `apps/web/app/lib/api.ts`:
 
-### 5.1 Create Chat Route
+```typescript
+export const ENDPOINTS = {
+  // ... existing
+  chat: {
+    send: "/api/chat",
+    conversations: "/api/conversations",
+    conversation: (id: string) => `/api/conversations/${id}`,
+    acceptConfirmation: (id: string) => `/api/confirmations/${id}/accept`,
+    rejectConfirmation: (id: string) => `/api/confirmations/${id}/reject`,
+  },
+} as const;
+```
+
+### 4.3 Create Chat Route
 
 Create `apps/web/app/routes/chat.tsx`:
 
@@ -337,14 +350,14 @@ Create `apps/web/app/routes/chat.tsx`:
 - `handleRejectConfirmation`: POST to `/api/confirmations/{id}/reject`
 - `handleDeleteConversation`: DELETE `/api/conversations/{id}`, refresh list
 
-### 5.2 Create Chat Route with ID
+### 4.4 Create Chat Route with ID
 
 Create `apps/web/app/routes/chat.$conversationId.tsx`:
 
 - Same as `chat.tsx` but loads specific conversation on mount
 - Fetch conversation messages in loader if `conversationId` provided
 
-### 5.3 useChat Hook
+### 4.5 useChat Hook
 
 Create `apps/web/app/lib/use-chat.ts`:
 
@@ -416,7 +429,7 @@ async function parseSSE(
 }
 ```
 
-### 5.4 Chat Components
+### 4.6 Chat Components
 
 **`ChatSidebar.tsx`:**
 - Props: `conversations`, `currentId`, `onSelect`, `onNew`, `onDelete`
@@ -462,7 +475,7 @@ async function parseSSE(
   - `clio_result`: "Found {count} results"
   - `confirmation_required`: "Awaiting confirmation..."
 
-### 5.5 Update Sidebar Navigation
+### 4.7 Update Sidebar Navigation
 
 Modify `apps/web/app/components/AppLayout.tsx`:
 
@@ -470,26 +483,9 @@ Modify `apps/web/app/components/AppLayout.tsx`:
 - Chat link goes to `/chat`
 - Keep other org links (Clio, Knowledge Base, etc.)
 
-### 5.6 Update API Endpoints
-
-Add to `apps/web/app/lib/api.ts`:
-
-```typescript
-export const ENDPOINTS = {
-  // ... existing
-  chat: {
-    send: "/api/chat",
-    conversations: "/api/conversations",
-    conversation: (id: string) => `/api/conversations/${id}`,
-    acceptConfirmation: (id: string) => `/api/confirmations/${id}/accept`,
-    rejectConfirmation: (id: string) => `/api/confirmations/${id}/reject`,
-  },
-} as const;
-```
-
 ---
 
-## Part 6: Styling
+## Part 5: Styling
 
 Use existing CSS classes from the project. Add minimal new styles for chat-specific layout.
 
@@ -556,9 +552,9 @@ Create `apps/web/app/styles/chat.css`:
 
 ---
 
-## Part 7: Testing
+## Part 6: Testing
 
-### 7.1 Unit Tests
+### 6.1 Unit Tests
 
 Create `apps/api/test/chat.spec.ts`:
 
@@ -579,7 +575,7 @@ Create `apps/api/test/chat.spec.ts`:
 - Returns 404 for conversation owned by different user
 - Successfully deletes conversation and messages
 
-### 7.2 Integration Tests
+### 6.2 Integration Tests
 
 ```typescript
 describe("Chat E2E", () => {
@@ -623,7 +619,7 @@ describe("Chat E2E", () => {
 });
 ```
 
-### 7.3 Manual Testing Checklist
+### 6.3 Manual Testing Checklist
 
 - [ ] New conversation creates UUID and navigates to `/chat/{id}`
 - [ ] First message creates conversation record with title
@@ -643,7 +639,7 @@ describe("Chat E2E", () => {
 
 ---
 
-## Part 8: Security Considerations
+## Appendix: Security Considerations
 
 **Auth happens at the Worker:**
 - All chat endpoints use `withMember` middleware
@@ -663,20 +659,3 @@ describe("Chat E2E", () => {
 - Message length capped at 10000 chars
 - ConversationId must be valid UUID
 - All inputs validated with Zod schemas
-
----
-
-## Part 9: Implementation Order
-
-1. **DO Migration** — Add v2 migration to `runMigrations()` in `tenant.ts`
-2. **DO Streaming** — Add `handleProcessMessageStream` and SSE helpers
-3. **DO Conversation Endpoints** — Add query/delete handlers
-4. **DO Confirmation Endpoints** — Add accept/reject handlers
-5. **API Handlers** — Create `chat.ts` with all handlers
-6. **API Routes** — Register routes in `index.ts`
-7. **Frontend Types** — Add types for SSE events and chat state
-8. **useChat Hook** — Implement SSE parsing and state management
-9. **Chat Components** — Build sidebar, messages, input, process log
-10. **Chat Route** — Wire everything together
-11. **Styling** — Add chat-specific CSS
-12. **Testing** — Unit tests, integration tests, manual verification

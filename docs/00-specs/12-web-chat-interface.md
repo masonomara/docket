@@ -27,7 +27,7 @@ Confirmations:
 
 - Stored in DO SQLite `pending_confirmations`
 - Clio writes (create, update, delete) require confirmation; reads do not
-- No timeout; load pending confirmations with conversation history on return
+- 24-hour timeout; load pending confirmations with conversation history on return
 - Process multiple confirmations sequentially
 - Columns should include: `id`, `conversationId`, `action`, `objectType`, `params`, `status`, `createdAt`
 
