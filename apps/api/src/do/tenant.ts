@@ -1373,6 +1373,7 @@ Only include modifiedRequest if intent is "modify".`;
 
   /**
    * Creates a new conversation or updates the timestamp of an existing one.
+   * For web channel, also sets user_id and generates title from first message.
    */
   private async ensureConversationExists(
     message: ChannelMessage
@@ -1388,33 +1389,24 @@ Only include modifiedRequest if intent is "modify".`;
 
     // If no rows were updated, create a new conversation
     if (updateResult.rowsWritten === 0) {
+      // For web channel, set user_id and generate title from first message
+      const isWebChannel = message.channel === "web";
+      const title = isWebChannel
+        ? this.generateConversationTitle(message.message)
+        : null;
+      const userId = isWebChannel ? message.userId : null;
+
       this.sql.exec(
-        `INSERT INTO conversations (id, channel_type, scope, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO conversations (id, channel_type, scope, user_id, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
         message.conversationId,
         message.channel,
         message.conversationScope,
+        userId,
+        title,
         now,
         now
       );
     }
-  }
-
-  /**
-   * Stores a message in the conversation.
-   */
-  private async storeMessage(
-    conversationId: string,
-    msg: { role: string; content: string; userId: string | null }
-  ): Promise<void> {
-    this.sql.exec(
-      `INSERT INTO messages (id, conversation_id, role, content, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-      crypto.randomUUID(),
-      conversationId,
-      msg.role,
-      msg.content,
-      msg.userId,
-      Date.now()
-    );
   }
 
   /**
@@ -1626,11 +1618,11 @@ Only include modifiedRequest if intent is "modify".`;
       // Emit start event
       await emit("process", { type: "started" });
 
-      // Ensure conversation exists (sets user_id and title for web channel)
-      await this.ensureConversationExistsForWeb(message);
+      // Ensure conversation exists
+      await this.ensureConversationExists(message);
 
       // Store the user's message
-      await this.storeMessageWithStatus(message.conversationId, {
+      await this.storeMessage(message.conversationId, {
         role: "user",
         content: message.message,
         userId: message.userId,
@@ -1659,7 +1651,7 @@ Only include modifiedRequest if intent is "modify".`;
       }
 
       // Store the assistant's response
-      await this.storeMessageWithStatus(message.conversationId, {
+      await this.storeMessage(message.conversationId, {
         role: "assistant",
         content: response,
         userId: null,
@@ -1674,7 +1666,7 @@ Only include modifiedRequest if intent is "modify".`;
 
       // Store error message so conversation history is complete
       try {
-        await this.storeMessageWithStatus(message.conversationId, {
+        await this.storeMessage(message.conversationId, {
           role: "assistant",
           content: `I encountered an error: ${errorMsg}`,
           userId: null,
@@ -1929,43 +1921,6 @@ Only include modifiedRequest if intent is "modify".`;
   }
 
   /**
-   * Creates conversation with user_id and title for web channel.
-   */
-  private async ensureConversationExistsForWeb(
-    message: ChannelMessage
-  ): Promise<void> {
-    const now = Date.now();
-
-    // Try to update existing conversation's timestamp
-    const updateResult = this.sql.exec(
-      "UPDATE conversations SET updated_at = ? WHERE id = ?",
-      now,
-      message.conversationId
-    );
-
-    // If no rows were updated, create a new conversation
-    if (updateResult.rowsWritten === 0) {
-      // For web channel, set user_id and generate title from first message
-      const isWebChannel = message.channel === "web";
-      const title = isWebChannel
-        ? this.generateConversationTitle(message.message)
-        : null;
-      const userId = isWebChannel ? message.userId : null;
-
-      this.sql.exec(
-        `INSERT INTO conversations (id, channel_type, scope, user_id, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        message.conversationId,
-        message.channel,
-        message.conversationScope,
-        userId,
-        title,
-        now,
-        now
-      );
-    }
-  }
-
-  /**
    * Generates a conversation title from the first message.
    * Truncates to 50 chars with ellipsis if longer.
    */
@@ -1978,15 +1933,15 @@ Only include modifiedRequest if intent is "modify".`;
   }
 
   /**
-   * Stores a message with status column support.
+   * Stores a message in the conversation.
    */
-  private async storeMessageWithStatus(
+  private async storeMessage(
     conversationId: string,
     msg: {
       role: string;
       content: string;
       userId: string | null;
-      status: "complete" | "partial" | "error";
+      status?: "complete" | "partial" | "error";
     }
   ): Promise<void> {
     this.sql.exec(
@@ -1996,7 +1951,7 @@ Only include modifiedRequest if intent is "modify".`;
       msg.role,
       msg.content,
       msg.userId,
-      msg.status,
+      msg.status ?? "complete",
       Date.now()
     );
   }
