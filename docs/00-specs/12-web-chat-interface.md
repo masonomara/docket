@@ -56,12 +56,13 @@ Conversations:
 
 Process Log:
 
-- Example internal steps:
-  - `rag_lookup` — `{ chunks: [{ text, source }] }`
-  - `llm_thinking` — `{ content: string }`
+- Process event types:
+  - `started` — Emitted when message processing begins
+  - `rag_lookup` — `{ status, chunks?: [{ text, source }] }`
+  - `llm_thinking` — `{ status }`
   - `clio_call` — `{ operation, objectType, filters? }`
-  - `clio_result` — `{ count, preview }`
-  - `confirmation_required` — `{ action, objectType, params }`
+  - `clio_result` — `{ count, preview }` (read) or `{ success }` (write)
+  - `confirmation_required` — `{ confirmationId, action, objectType, params }`
 
 Confirmations:
 
@@ -118,10 +119,12 @@ Flow:
 Event types:
 
 - `content` — `{ text: "Here are your open matters..." }`
-- `process` — `{ type: "rag_lookup" | "llm_thinking" | "clio_call", ... }`
+- `process` — `{ type: "started" | "rag_lookup" | "llm_thinking" | "clio_call" | "clio_result", ... }`
 - `confirmation_required` — `{ confirmationId, action, objectType, params }`
 - `error` — `{ message: "Clio API unavailable" }`
-- `done`
+- `done` — `{}`
+
+All events include optional `requestId` for debugging.
 
 ## Authentication
 
