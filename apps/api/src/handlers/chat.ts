@@ -5,9 +5,9 @@ import { createLogger, generateRequestId } from "../lib/logger";
 import type { Env } from "../types/env";
 import type { FirmSize, OrgRole } from "../types";
 
-// -----------------------------------------------------------------------------
-// Request Schemas
-// -----------------------------------------------------------------------------
+// =============================================================================
+// Request Validation
+// =============================================================================
 
 const ChatMessageRequestSchema = z.object({
   conversationId: z.string().uuid("conversationId must be a valid UUID"),
@@ -17,12 +17,22 @@ const ChatMessageRequestSchema = z.object({
     .max(10000, "Message too long"),
 });
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Helper Functions
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 /**
- * Get org settings from D1 for building the ChannelMessage.
+ * Get the TenantDO instance for an organization.
+ * The DO is identified by orgId, so each org has its own isolated state.
+ */
+function getTenantDO(env: Env, orgId: string) {
+  const doId = env.TENANT.idFromName(orgId);
+  return env.TENANT.get(doId);
+}
+
+/**
+ * Fetch org settings from D1 (jurisdictions, practice types, firm size).
+ * These are used to customize RAG context retrieval.
  */
 async function getOrgSettings(
   db: D1Database,
@@ -32,7 +42,7 @@ async function getOrgSettings(
   practiceTypes: string[];
   firmSize: FirmSize | null;
 } | null> {
-  const org = await db
+  const row = await db
     .prepare(
       "SELECT jurisdictions, practice_types, firm_size FROM org WHERE id = ?"
     )
@@ -43,47 +53,42 @@ async function getOrgSettings(
       firm_size: string | null;
     }>();
 
-  if (!org) {
+  if (!row) {
     return null;
   }
 
+  // Parse JSON arrays, defaulting to empty arrays on parse failure
+  function parseJsonArray(value: string | null): string[] {
+    if (!value) return [];
+    try {
+      return JSON.parse(value);
+    } catch {
+      return [];
+    }
+  }
+
   return {
-    jurisdictions: safeParseJsonArray(org.jurisdictions),
-    practiceTypes: safeParseJsonArray(org.practice_types),
-    firmSize: org.firm_size as FirmSize | null,
+    jurisdictions: parseJsonArray(row.jurisdictions),
+    practiceTypes: parseJsonArray(row.practice_types),
+    firmSize: row.firm_size as FirmSize | null,
   };
 }
 
 /**
- * Safely parse a JSON string, returning an empty array on failure.
+ * Parse JSON body from request, returning null on failure.
  */
-function safeParseJsonArray(jsonString: string | null): string[] {
-  if (!jsonString) {
-    return [];
-  }
+async function parseJsonBody(request: Request): Promise<unknown | null> {
   try {
-    return JSON.parse(jsonString);
+    return await request.json();
   } catch {
-    return [];
+    return null;
   }
 }
 
-/**
- * Get the Durable Object stub for an organization.
- */
-function getOrgDurableObject(env: Env, orgId: string) {
-  const doId = env.TENANT.idFromName(orgId);
-  return env.TENANT.get(doId);
-}
+// =============================================================================
+// Chat Message Handler (POST /api/chat)
+// =============================================================================
 
-// -----------------------------------------------------------------------------
-// Chat Handlers
-// -----------------------------------------------------------------------------
-
-/**
- * POST /api/chat
- * Handles chat messages with SSE streaming response.
- */
 export async function handleChatMessage(
   request: Request,
   env: Env,
@@ -92,14 +97,13 @@ export async function handleChatMessage(
   const requestId = generateRequestId();
   const log = createLogger({ requestId, handler: "chat" });
 
-  // Parse and validate request body
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
+  // Parse request body
+  const body = await parseJsonBody(request);
+  if (body === null) {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
+  // Validate request schema
   const parseResult = ChatMessageRequestSchema.safeParse(body);
   if (!parseResult.success) {
     return Response.json(
@@ -110,7 +114,7 @@ export async function handleChatMessage(
 
   const { conversationId, message } = parseResult.data;
 
-  // Get user's role from org membership
+  // Verify user is still a member of the organization
   const membership = await getOrgMembership(env.DB, ctx.user.id, ctx.orgId);
   if (!membership) {
     log.warn("User not a member of org", {
@@ -123,8 +127,6 @@ export async function handleChatMessage(
     );
   }
 
-  const userRole: OrgRole = membership.role;
-
   // Get org settings for RAG context
   const orgSettings = await getOrgSettings(env.DB, ctx.orgId);
   if (!orgSettings) {
@@ -132,12 +134,12 @@ export async function handleChatMessage(
     return Response.json({ error: "Organization not found" }, { status: 404 });
   }
 
-  // Build the ChannelMessage for the DO
+  // Build the channel message payload for the DO
   const channelMessage = {
     channel: "web" as const,
     orgId: ctx.orgId,
     userId: ctx.user.id,
-    userRole,
+    userRole: membership.role as OrgRole,
     conversationId,
     conversationScope: "personal" as const,
     message,
@@ -152,20 +154,20 @@ export async function handleChatMessage(
     orgId: ctx.orgId,
   });
 
-  // Forward to DO's streaming endpoint
-  const stub = getOrgDurableObject(env, ctx.orgId);
-  const doRequest = new Request("https://do/process-message-stream", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Request-Id": requestId,
-    },
-    body: JSON.stringify(channelMessage),
-  });
+  // Forward to TenantDO for processing (returns SSE stream)
+  const tenantDO = getTenantDO(env, ctx.orgId);
+  const doResponse = await tenantDO.fetch(
+    new Request("https://do/process-message-stream", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Request-Id": requestId,
+      },
+      body: JSON.stringify(channelMessage),
+    })
+  );
 
-  const doResponse = await stub.fetch(doRequest);
-
-  // If DO returns an error, return structured error response
+  // Handle DO errors
   if (!doResponse.ok) {
     const errorBody = await doResponse.text();
     log.error("DO streaming failed", {
@@ -173,13 +175,15 @@ export async function handleChatMessage(
       error: errorBody,
     });
 
-    // Try to extract error message from DO response
+    // Try to extract error message from JSON response
     let errorMessage = "Failed to process message";
     try {
       const parsed = JSON.parse(errorBody);
-      if (parsed.error) errorMessage = parsed.error;
+      if (parsed.error) {
+        errorMessage = parsed.error;
+      }
     } catch {
-      // Use default message if DO didn't return JSON
+      // Use default error message
     }
 
     return Response.json(
@@ -188,7 +192,7 @@ export async function handleChatMessage(
     );
   }
 
-  // Return SSE stream from DO
+  // Return the SSE stream from the DO
   return new Response(doResponse.body, {
     status: 200,
     headers: {
@@ -199,22 +203,23 @@ export async function handleChatMessage(
   });
 }
 
-/**
- * GET /api/conversations
- * Returns the user's conversation list.
- */
+// =============================================================================
+// Conversation List Handler (GET /api/conversations)
+// =============================================================================
+
 export async function handleGetConversations(
   _request: Request,
   env: Env,
   ctx: MemberContext
 ): Promise<Response> {
-  const stub = getOrgDurableObject(env, ctx.orgId);
-  const doRequest = new Request(
-    `https://do/conversations?userId=${encodeURIComponent(ctx.user.id)}`,
-    { method: "GET" }
-  );
+  const tenantDO = getTenantDO(env, ctx.orgId);
 
-  const doResponse = await stub.fetch(doRequest);
+  const doResponse = await tenantDO.fetch(
+    new Request(
+      `https://do/conversations?userId=${encodeURIComponent(ctx.user.id)}`,
+      { method: "GET" }
+    )
+  );
 
   if (!doResponse.ok) {
     return Response.json(
@@ -229,23 +234,24 @@ export async function handleGetConversations(
   });
 }
 
-/**
- * GET /api/conversations/:id
- * Returns a single conversation with messages and pending confirmations.
- */
+// =============================================================================
+// Single Conversation Handler (GET /api/conversations/:id)
+// =============================================================================
+
 export async function handleGetConversation(
   _request: Request,
   env: Env,
   ctx: MemberContext,
   conversationId: string
 ): Promise<Response> {
-  const stub = getOrgDurableObject(env, ctx.orgId);
-  const doRequest = new Request(
-    `https://do/conversation/${conversationId}?userId=${encodeURIComponent(ctx.user.id)}`,
-    { method: "GET" }
-  );
+  const tenantDO = getTenantDO(env, ctx.orgId);
 
-  const doResponse = await stub.fetch(doRequest);
+  const doResponse = await tenantDO.fetch(
+    new Request(
+      `https://do/conversation/${conversationId}?userId=${encodeURIComponent(ctx.user.id)}`,
+      { method: "GET" }
+    )
+  );
 
   if (!doResponse.ok) {
     const status = doResponse.status === 404 ? 404 : doResponse.status;
@@ -258,23 +264,24 @@ export async function handleGetConversation(
   });
 }
 
-/**
- * DELETE /api/conversations/:id
- * Deletes a conversation.
- */
+// =============================================================================
+// Delete Conversation Handler (DELETE /api/conversations/:id)
+// =============================================================================
+
 export async function handleDeleteConversation(
   _request: Request,
   env: Env,
   ctx: MemberContext,
   conversationId: string
 ): Promise<Response> {
-  const stub = getOrgDurableObject(env, ctx.orgId);
-  const doRequest = new Request(
-    `https://do/conversation/${conversationId}?userId=${encodeURIComponent(ctx.user.id)}`,
-    { method: "DELETE" }
-  );
+  const tenantDO = getTenantDO(env, ctx.orgId);
 
-  const doResponse = await stub.fetch(doRequest);
+  const doResponse = await tenantDO.fetch(
+    new Request(
+      `https://do/conversation/${conversationId}?userId=${encodeURIComponent(ctx.user.id)}`,
+      { method: "DELETE" }
+    )
+  );
 
   if (!doResponse.ok) {
     const status = doResponse.status === 404 ? 404 : doResponse.status;
@@ -284,11 +291,10 @@ export async function handleDeleteConversation(
   return Response.json({ success: true });
 }
 
-/**
- * POST /api/confirmations/:id/accept
- * Accepts a pending confirmation and executes the Clio operation.
- * Only admins can accept confirmations (CUD operations require admin role).
- */
+// =============================================================================
+// Accept Confirmation Handler (POST /api/confirmations/:id/accept)
+// =============================================================================
+
 export async function handleAcceptConfirmation(
   _request: Request,
   env: Env,
@@ -297,7 +303,7 @@ export async function handleAcceptConfirmation(
 ): Promise<Response> {
   const requestId = generateRequestId();
 
-  // Re-verify admin role at execution time (user may have been demoted since creation)
+  // Only admins can execute Clio write operations
   const membership = await getOrgMembership(env.DB, ctx.user.id, ctx.orgId);
   if (membership?.role !== "admin") {
     return Response.json(
@@ -306,20 +312,18 @@ export async function handleAcceptConfirmation(
     );
   }
 
-  const stub = getOrgDurableObject(env, ctx.orgId);
-  const doRequest = new Request(
-    `https://do/confirmation/${confirmationId}/accept`,
-    {
+  const tenantDO = getTenantDO(env, ctx.orgId);
+
+  const doResponse = await tenantDO.fetch(
+    new Request(`https://do/confirmation/${confirmationId}/accept`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "X-Request-Id": requestId,
       },
       body: JSON.stringify({ userId: ctx.user.id }),
-    }
+    })
   );
-
-  const doResponse = await stub.fetch(doRequest);
 
   if (!doResponse.ok) {
     const status = doResponse.status === 404 ? 404 : doResponse.status;
@@ -329,7 +333,7 @@ export async function handleAcceptConfirmation(
     );
   }
 
-  // Return SSE stream with operation result
+  // Return the SSE stream from the DO
   return new Response(doResponse.body, {
     status: 200,
     headers: {
@@ -340,27 +344,25 @@ export async function handleAcceptConfirmation(
   });
 }
 
-/**
- * POST /api/confirmations/:id/reject
- * Rejects a pending confirmation.
- */
+// =============================================================================
+// Reject Confirmation Handler (POST /api/confirmations/:id/reject)
+// =============================================================================
+
 export async function handleRejectConfirmation(
   _request: Request,
   env: Env,
   ctx: MemberContext,
   confirmationId: string
 ): Promise<Response> {
-  const stub = getOrgDurableObject(env, ctx.orgId);
-  const doRequest = new Request(
-    `https://do/confirmation/${confirmationId}/reject`,
-    {
+  const tenantDO = getTenantDO(env, ctx.orgId);
+
+  const doResponse = await tenantDO.fetch(
+    new Request(`https://do/confirmation/${confirmationId}/reject`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId: ctx.user.id }),
-    }
+    })
   );
-
-  const doResponse = await stub.fetch(doRequest);
 
   if (!doResponse.ok) {
     const status = doResponse.status === 404 ? 404 : doResponse.status;

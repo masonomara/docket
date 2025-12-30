@@ -1,15 +1,12 @@
 import { z } from "zod";
 
-// ============================================================================
-// Role and Type Definitions
-// ============================================================================
+// =============================================================================
+// Core Enums & Primitives
+// =============================================================================
 
 export type OrgRole = "admin" | "member";
-
 export type ChannelType = "teams" | "slack" | "mcp" | "chatgpt" | "web";
-
 export type FirmSize = "solo" | "small" | "mid" | "large";
-
 export type ConversationScope =
   | "personal"
   | "groupChat"
@@ -18,9 +15,9 @@ export type ConversationScope =
   | "channel"
   | "api";
 
-// ============================================================================
+// =============================================================================
 // Organization Types
-// ============================================================================
+// =============================================================================
 
 export interface Organization {
   id: string;
@@ -44,14 +41,16 @@ export interface OrgMembership {
   createdAt: number;
 }
 
-// Database row format (snake_case, numeric booleans)
-// Use orgMemberRowToEntity() to convert to OrgMembership.
+/**
+ * Database row format for org_member table (snake_case).
+ * Use orgMemberRowToEntity() to convert to OrgMembership.
+ */
 export interface OrgMemberRow {
   id: string;
   user_id: string;
   org_id: string;
   role: OrgRole;
-  is_owner: number; // SQLite stores booleans as 0/1
+  is_owner: number; // SQLite boolean (0 or 1)
   created_at: number;
 }
 
@@ -66,10 +65,6 @@ export function orgMemberRowToEntity(row: OrgMemberRow): OrgMembership {
   };
 }
 
-// ============================================================================
-// Invitation Types
-// ============================================================================
-
 export interface Invitation {
   id: string;
   email: string;
@@ -81,9 +76,9 @@ export interface Invitation {
   acceptedAt: number | null;
 }
 
-// ============================================================================
-// Channel Types
-// ============================================================================
+// =============================================================================
+// Channel & Messaging Types
+// =============================================================================
 
 export interface ChannelLink {
   channelType: ChannelType;
@@ -97,6 +92,10 @@ export interface ChannelMetadata {
   slackChannelId?: string;
 }
 
+/**
+ * Message payload from any channel (Teams, Slack, web, etc.)
+ * This is the unified format that gets passed to the TenantDO for processing.
+ */
 export interface ChannelMessage {
   channel: ChannelType;
   orgId: string;
@@ -138,9 +137,9 @@ export const ChannelMessageSchema = z.object({
     .optional(),
 });
 
-// ============================================================================
+// =============================================================================
 // Audit Types
-// ============================================================================
+// =============================================================================
 
 export interface AuditEntry {
   id: string;
@@ -153,10 +152,14 @@ export interface AuditEntry {
   createdAt: string;
 }
 
-// ============================================================================
-// Conversation Types
-// ============================================================================
+// =============================================================================
+// Confirmation Types (for Clio write operations)
+// =============================================================================
 
+/**
+ * When the LLM wants to create/update/delete something in Clio,
+ * we store a pending confirmation that the user must approve.
+ */
 export interface PendingConfirmation {
   id: string;
   conversationId: string;
@@ -166,9 +169,9 @@ export interface PendingConfirmation {
   expiresAt: number;
 }
 
-// ============================================================================
+// =============================================================================
 // LLM Types
-// ============================================================================
+// =============================================================================
 
 export interface LLMMessage {
   role: "user" | "assistant" | "system";
@@ -191,18 +194,31 @@ export interface LLMResponse {
   toolCalls?: ToolCall[];
 }
 
-// ============================================================================
-// SSE Event Types (Web Chat Interface)
-// ============================================================================
+// =============================================================================
+// SSE (Server-Sent Events) Types
+// =============================================================================
+//
+// These types define the streaming events sent from the API to the web client.
+// Each event type has a corresponding Zod schema for validation.
 
-// All SSE events include optional requestId for debugging
 interface SSEBaseEvent {
   requestId?: string;
 }
 
+// --- Content Event ---
+// Sent when the assistant has text content to display
+
 export interface SSEContentEvent extends SSEBaseEvent {
   text: string;
 }
+
+export const SSEContentEventSchema = z.object({
+  text: z.string(),
+  requestId: z.string().optional(),
+});
+
+// --- Process Events ---
+// Sent to show progress through the processing pipeline
 
 export type ProcessEventType =
   | "started"
@@ -233,14 +249,12 @@ export interface SSEProcessEventClioCall extends SSEBaseEvent {
   filters?: Record<string, unknown>;
 }
 
-// Clio result for read operations (count + preview)
 export interface SSEProcessEventClioResultRead extends SSEBaseEvent {
   type: "clio_result";
   count: number;
   preview: unknown[];
 }
 
-// Clio result for write operations (success)
 export interface SSEProcessEventClioResultWrite extends SSEBaseEvent {
   type: "clio_result";
   success: boolean;
@@ -257,6 +271,43 @@ export type SSEProcessEvent =
   | SSEProcessEventClioCall
   | SSEProcessEventClioResult;
 
+export const SSEProcessEventSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("started"),
+    requestId: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal("rag_lookup"),
+    status: z.enum(["started", "complete"]),
+    chunks: z
+      .array(z.object({ text: z.string(), source: z.string() }))
+      .optional(),
+    requestId: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal("llm_thinking"),
+    status: z.enum(["started", "complete"]),
+    requestId: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal("clio_call"),
+    operation: z.enum(["read", "create", "update", "delete"]),
+    objectType: z.string(),
+    filters: z.record(z.string(), z.unknown()).optional(),
+    requestId: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal("clio_result"),
+    count: z.number().optional(),
+    preview: z.array(z.unknown()).optional(),
+    success: z.boolean().optional(),
+    requestId: z.string().optional(),
+  }),
+]);
+
+// --- Confirmation Required Event ---
+// Sent when a write operation needs user approval
+
 export interface SSEConfirmationRequiredEvent extends SSEBaseEvent {
   confirmationId: string;
   action: "create" | "update" | "delete";
@@ -264,11 +315,34 @@ export interface SSEConfirmationRequiredEvent extends SSEBaseEvent {
   params: Record<string, unknown>;
 }
 
+export const SSEConfirmationRequiredEventSchema = z.object({
+  confirmationId: z.string(),
+  action: z.enum(["create", "update", "delete"]),
+  objectType: z.string(),
+  params: z.record(z.string(), z.unknown()),
+  requestId: z.string().optional(),
+});
+
+// --- Error Event ---
+
 export interface SSEErrorEvent extends SSEBaseEvent {
   message: string;
 }
 
+export const SSEErrorEventSchema = z.object({
+  message: z.string(),
+  requestId: z.string().optional(),
+});
+
+// --- Done Event ---
+
 export interface SSEDoneEvent extends SSEBaseEvent {}
+
+export const SSEDoneEventSchema = z.object({
+  requestId: z.string().optional(),
+});
+
+// --- Union of All SSE Events ---
 
 export type SSEEvent =
   | { event: "content"; data: SSEContentEvent }
@@ -276,60 +350,3 @@ export type SSEEvent =
   | { event: "confirmation_required"; data: SSEConfirmationRequiredEvent }
   | { event: "error"; data: SSEErrorEvent }
   | { event: "done"; data: SSEDoneEvent };
-
-// Optional requestId included in all events for debugging
-const requestIdField = { requestId: z.string().optional() };
-
-export const SSEContentEventSchema = z.object({
-  text: z.string(),
-  ...requestIdField,
-});
-
-export const SSEProcessEventSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("started"), ...requestIdField }),
-  z.object({
-    type: z.literal("rag_lookup"),
-    status: z.enum(["started", "complete"]),
-    chunks: z
-      .array(z.object({ text: z.string(), source: z.string() }))
-      .optional(),
-    ...requestIdField,
-  }),
-  z.object({
-    type: z.literal("llm_thinking"),
-    status: z.enum(["started", "complete"]),
-    ...requestIdField,
-  }),
-  z.object({
-    type: z.literal("clio_call"),
-    operation: z.enum(["read", "create", "update", "delete"]),
-    objectType: z.string(),
-    filters: z.record(z.string(), z.unknown()).optional(),
-    ...requestIdField,
-  }),
-  // Read result (count + preview) or write result (success)
-  z.object({
-    type: z.literal("clio_result"),
-    count: z.number().optional(),
-    preview: z.array(z.unknown()).optional(),
-    success: z.boolean().optional(),
-    ...requestIdField,
-  }),
-]);
-
-export const SSEConfirmationRequiredEventSchema = z.object({
-  confirmationId: z.string(),
-  action: z.enum(["create", "update", "delete"]),
-  objectType: z.string(),
-  params: z.record(z.string(), z.unknown()),
-  ...requestIdField,
-});
-
-export const SSEErrorEventSchema = z.object({
-  message: z.string(),
-  ...requestIdField,
-});
-
-export const SSEDoneEventSchema = z.object({
-  ...requestIdField,
-});
