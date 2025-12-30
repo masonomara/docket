@@ -1663,10 +1663,21 @@ Only include modifiedRequest if intent is "modify".`;
       // Emit done event
       await emit("done", {});
     } catch (error) {
-      // Emit error event
-      await emit("error", {
-        message: error instanceof Error ? error.message : "Processing failed",
-      });
+      const errorMsg = error instanceof Error ? error.message : "Processing failed";
+
+      // Store error message so conversation history is complete
+      try {
+        await this.storeMessageWithStatus(message.conversationId, {
+          role: "assistant",
+          content: `I encountered an error: ${errorMsg}`,
+          userId: null,
+          status: "error",
+        });
+      } catch {
+        // Conversation may not exist yet if error occurred early - skip storing
+      }
+
+      await emit("error", { message: errorMsg });
     } finally {
       await close();
     }
@@ -1805,7 +1816,7 @@ Only include modifiedRequest if intent is "modify".`;
     }
 
     // Write operations require confirmation
-    await this.createPendingConfirmation(
+    const confirmationId = await this.createPendingConfirmation(
       message.conversationId,
       message.userId,
       args.operation,
@@ -1813,9 +1824,9 @@ Only include modifiedRequest if intent is "modify".`;
       args.data || {}
     );
 
-    // Emit confirmation required event
+    // Emit confirmation required event with the stored ID
     await emit("confirmation_required", {
-      confirmationId: crypto.randomUUID(), // Will be the actual ID from createPendingConfirmation
+      confirmationId,
       action: args.operation,
       objectType: args.objectType,
       params: args.data || {},

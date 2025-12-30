@@ -262,6 +262,7 @@ export async function handleDeleteConversation(
 /**
  * POST /api/confirmations/:id/accept
  * Accepts a pending confirmation and executes the Clio operation.
+ * Only admins can accept confirmations (CUD operations require admin role).
  */
 export async function handleAcceptConfirmation(
   _request: Request,
@@ -269,6 +270,15 @@ export async function handleAcceptConfirmation(
   ctx: MemberContext,
   confirmationId: string
 ): Promise<Response> {
+  // Re-verify admin role at execution time (user may have been demoted since creation)
+  const membership = await getOrgMembership(env.DB, ctx.user.id, ctx.orgId);
+  if (membership?.role !== "admin") {
+    return Response.json(
+      { error: "Admin role required to execute Clio operations" },
+      { status: 403 }
+    );
+  }
+
   const stub = getOrgDurableObject(env, ctx.orgId);
   const doRequest = new Request(
     `https://do/confirmation/${confirmationId}/accept`,
