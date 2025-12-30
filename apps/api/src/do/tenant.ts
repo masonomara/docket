@@ -1538,8 +1538,9 @@ Only include modifiedRequest if intent is "modify".`;
 
   /**
    * Creates an SSE stream with emit and close helpers.
+   * If requestId is provided, it's included in every event for debugging.
    */
-  private createSSEStream(): {
+  private createSSEStream(requestId?: string): {
     readable: ReadableStream;
     emit: (event: string, data: unknown) => Promise<void>;
     close: () => Promise<void>;
@@ -1549,8 +1550,9 @@ Only include modifiedRequest if intent is "modify".`;
     const encoder = new TextEncoder();
 
     const emit = async (event: string, data: unknown) => {
+      const payload = requestId ? { ...(data as object), requestId } : data;
       await writer.write(
-        encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+        encoder.encode(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`)
       );
     };
 
@@ -1584,14 +1586,15 @@ Only include modifiedRequest if intent is "modify".`;
     }
 
     const message = parseResult.data;
+    const requestId = request.headers.get("X-Request-Id") ?? undefined;
 
     // Security check: ensure the message is for this organization
     if (message.orgId !== this.orgId) {
       return Response.json({ error: "Organization mismatch" }, { status: 403 });
     }
 
-    // Create SSE stream
-    const { readable, emit, close } = this.createSSEStream();
+    // Create SSE stream with requestId for debugging
+    const { readable, emit, close } = this.createSSEStream(requestId);
 
     // Start async processing in background
     this.ctx.waitUntil(this.processMessageWithStream(message, emit, close));
@@ -2156,6 +2159,8 @@ Only include modifiedRequest if intent is "modify".`;
       return Response.json({ error: "Method not allowed" }, { status: 405 });
     }
 
+    const requestId = request.headers.get("X-Request-Id") ?? undefined;
+
     // Extract userId from body
     const body = (await request.json()) as { userId?: string };
     const userId = body.userId;
@@ -2220,8 +2225,8 @@ Only include modifiedRequest if intent is "modify".`;
       confirmationId
     );
 
-    // Create SSE stream for result
-    const { readable, emit, close } = this.createSSEStream();
+    // Create SSE stream for result with requestId for debugging
+    const { readable, emit, close } = this.createSSEStream(requestId);
 
     // Start async processing in background
     this.ctx.waitUntil(

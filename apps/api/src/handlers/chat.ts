@@ -11,7 +11,10 @@ import type { FirmSize, OrgRole } from "../types";
 
 const ChatMessageRequestSchema = z.object({
   conversationId: z.string().uuid("conversationId must be a valid UUID"),
-  message: z.string().min(1, "Message is required").max(10000, "Message too long"),
+  message: z
+    .string()
+    .min(1, "Message is required")
+    .max(10000, "Message too long"),
 });
 
 // -----------------------------------------------------------------------------
@@ -30,9 +33,15 @@ async function getOrgSettings(
   firmSize: FirmSize | null;
 } | null> {
   const org = await db
-    .prepare("SELECT jurisdictions, practice_types, firm_size FROM org WHERE id = ?")
+    .prepare(
+      "SELECT jurisdictions, practice_types, firm_size FROM org WHERE id = ?"
+    )
     .bind(orgId)
-    .first<{ jurisdictions: string; practice_types: string; firm_size: string | null }>();
+    .first<{
+      jurisdictions: string;
+      practice_types: string;
+      firm_size: string | null;
+    }>();
 
   if (!org) {
     return null;
@@ -104,8 +113,14 @@ export async function handleChatMessage(
   // Get user's role from org membership
   const membership = await getOrgMembership(env.DB, ctx.user.id, ctx.orgId);
   if (!membership) {
-    log.warn("User not a member of org", { userId: ctx.user.id, orgId: ctx.orgId });
-    return Response.json({ error: "Not a member of organization" }, { status: 403 });
+    log.warn("User not a member of org", {
+      userId: ctx.user.id,
+      orgId: ctx.orgId,
+    });
+    return Response.json(
+      { error: "Not a member of organization" },
+      { status: 403 }
+    );
   }
 
   const userRole: OrgRole = membership.role;
@@ -141,20 +156,36 @@ export async function handleChatMessage(
   const stub = getOrgDurableObject(env, ctx.orgId);
   const doRequest = new Request("https://do/process-message-stream", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "X-Request-Id": requestId,
+    },
     body: JSON.stringify(channelMessage),
   });
 
   const doResponse = await stub.fetch(doRequest);
 
-  // If DO returns an error, pass it through
+  // If DO returns an error, return structured error response
   if (!doResponse.ok) {
     const errorBody = await doResponse.text();
-    log.error("DO streaming failed", { status: doResponse.status, error: errorBody });
-    return new Response(errorBody, {
+    log.error("DO streaming failed", {
       status: doResponse.status,
-      headers: { "Content-Type": "application/json" },
+      error: errorBody,
     });
+
+    // Try to extract error message from DO response
+    let errorMessage = "Failed to process message";
+    try {
+      const parsed = JSON.parse(errorBody);
+      if (parsed.error) errorMessage = parsed.error;
+    } catch {
+      // Use default message if DO didn't return JSON
+    }
+
+    return Response.json(
+      { error: errorMessage },
+      { status: doResponse.status }
+    );
   }
 
   // Return SSE stream from DO
@@ -218,10 +249,7 @@ export async function handleGetConversation(
 
   if (!doResponse.ok) {
     const status = doResponse.status === 404 ? 404 : doResponse.status;
-    return Response.json(
-      { error: "Conversation not found" },
-      { status }
-    );
+    return Response.json({ error: "Conversation not found" }, { status });
   }
 
   return new Response(doResponse.body, {
@@ -250,10 +278,7 @@ export async function handleDeleteConversation(
 
   if (!doResponse.ok) {
     const status = doResponse.status === 404 ? 404 : doResponse.status;
-    return Response.json(
-      { error: "Conversation not found" },
-      { status }
-    );
+    return Response.json({ error: "Conversation not found" }, { status });
   }
 
   return Response.json({ success: true });
@@ -270,6 +295,8 @@ export async function handleAcceptConfirmation(
   ctx: MemberContext,
   confirmationId: string
 ): Promise<Response> {
+  const requestId = generateRequestId();
+
   // Re-verify admin role at execution time (user may have been demoted since creation)
   const membership = await getOrgMembership(env.DB, ctx.user.id, ctx.orgId);
   if (membership?.role !== "admin") {
@@ -284,7 +311,10 @@ export async function handleAcceptConfirmation(
     `https://do/confirmation/${confirmationId}/accept`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Request-Id": requestId,
+      },
       body: JSON.stringify({ userId: ctx.user.id }),
     }
   );
