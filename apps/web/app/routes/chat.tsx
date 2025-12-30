@@ -4,42 +4,29 @@ import type { Route } from "./+types/chat";
 import { ENDPOINTS } from "~/lib/api";
 import { API_URL } from "~/lib/auth-client";
 import { orgLoader } from "~/lib/loader-auth";
-// Styles will be wired up in Part 5
+import {
+  useChat,
+  type Message,
+  type ProcessEvent,
+  type PendingConfirmation,
+} from "~/lib/use-chat";
 import _styles from "~/styles/chat.module.css";
 
 // =============================================================================
 // Types (exported for use by chat.$conversationId.tsx)
 // =============================================================================
 
+export type {
+  Message,
+  ProcessEvent,
+  PendingConfirmation,
+} from "~/lib/use-chat";
+
 export interface Conversation {
   id: string;
   title: string | null;
   updatedAt: number;
   messageCount: number;
-}
-
-export interface Message {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  status: "complete" | "streaming" | "error";
-  createdAt: number;
-}
-
-export interface ProcessEvent {
-  id: string;
-  type: string;
-  status?: string;
-  data?: Record<string, unknown>;
-  timestamp: number;
-}
-
-export interface PendingConfirmation {
-  id: string;
-  action: string;
-  objectType: string;
-  params: Record<string, unknown>;
-  expiresAt: number;
 }
 
 export interface ChatLoaderData {
@@ -66,71 +53,48 @@ export const loader = orgLoader(async ({ user, org, fetch }, _args) => {
 });
 
 // =============================================================================
-// SSE Parser (exported for use by chat.$conversationId.tsx)
-// =============================================================================
-
-export async function parseSSE(
-  response: Response,
-  onEvent: (event: string, data: unknown) => void
-): Promise<void> {
-  const reader = response.body!.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() || "";
-
-    let currentEvent = "";
-    for (const line of lines) {
-      if (line.startsWith("event: ")) {
-        currentEvent = line.slice(7);
-      } else if (line.startsWith("data: ") && currentEvent) {
-        try {
-          const data = JSON.parse(line.slice(6));
-          onEvent(currentEvent, data);
-        } catch {
-          // Skip malformed JSON
-        }
-        currentEvent = "";
-      }
-    }
-  }
-}
-
-// =============================================================================
 // Component
 // =============================================================================
 
-export default function Chat({ loaderData }: Route.ComponentProps) {
+interface ChatProps {
+  loaderData: Route.ComponentProps["loaderData"] & ChatLoaderData;
+}
+
+export default function Chat({ loaderData }: ChatProps) {
   const {
-    user,
-    org,
     conversations: initialConversations,
     conversationId: initialConversationId,
     initialMessages,
     initialPendingConfirmations,
-  } = loaderData as Route.ComponentProps["loaderData"] & ChatLoaderData;
+  } = loaderData;
+
   const navigate = useNavigate();
   const revalidator = useRevalidator();
 
-  // State - initialize with any data from loader
+  // Chat state via hook
+  const {
+    messages,
+    processEvents,
+    pendingConfirmations,
+    isStreaming,
+    error,
+    sendMessage,
+    acceptConfirmation,
+    rejectConfirmation,
+    loadConversation,
+    clearError,
+    setMessages,
+  } = useChat({
+    initialMessages,
+    initialPendingConfirmations,
+  });
+
+  // Local UI state
   const [conversations, setConversations] =
     useState<Conversation[]>(initialConversations);
   const [currentConversationId, setCurrentConversationId] = useState<
     string | null
   >(initialConversationId || null);
-  const [messages, setMessages] = useState<Message[]>(initialMessages || []);
-  const [processEvents, setProcessEvents] = useState<ProcessEvent[]>([]);
-  const [pendingConfirmations, setPendingConfirmations] = useState<
-    PendingConfirmation[]
-  >(initialPendingConfirmations || []);
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -148,41 +112,17 @@ export default function Chat({ loaderData }: Route.ComponentProps) {
     const newId = crypto.randomUUID();
     setCurrentConversationId(newId);
     setMessages([]);
-    setProcessEvents([]);
-    setPendingConfirmations([]);
-    setError(null);
+    clearError();
     navigate(`/chat/${newId}`);
-  }, [navigate]);
+  }, [navigate, setMessages, clearError]);
 
   const handleSelectConversation = useCallback(
     async (conversationId: string) => {
       setCurrentConversationId(conversationId);
-      setProcessEvents([]);
-      setError(null);
-
-      try {
-        const response = await fetch(
-          `${API_URL}${ENDPOINTS.chat.conversation(conversationId)}`,
-          { credentials: "include" }
-        );
-
-        if (!response.ok) {
-          throw new Error("Failed to load conversation");
-        }
-
-        const data = (await response.json()) as {
-          messages: Message[];
-          pendingConfirmations: PendingConfirmation[];
-        };
-
-        setMessages(data.messages);
-        setPendingConfirmations(data.pendingConfirmations || []);
-        navigate(`/chat/${conversationId}`);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load");
-      }
+      await loadConversation(conversationId);
+      navigate(`/chat/${conversationId}`);
     },
-    [navigate]
+    [navigate, loadConversation]
   );
 
   const handleSendMessage = useCallback(
@@ -196,244 +136,10 @@ export default function Chat({ loaderData }: Route.ComponentProps) {
         navigate(`/chat/${conversationId}`, { replace: true });
       }
 
-      // Add user message optimistically
-      const userMessage: Message = {
-        id: crypto.randomUUID(),
-        role: "user",
-        content: text,
-        status: "complete",
-        createdAt: Date.now(),
-      };
-
-      // Add placeholder assistant message
-      const assistantMessage: Message = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: "",
-        status: "streaming",
-        createdAt: Date.now(),
-      };
-
-      setMessages((prev) => [...prev, userMessage, assistantMessage]);
-      setProcessEvents([]);
-      setIsStreaming(true);
-      setError(null);
-
-      try {
-        const response = await fetch(`${API_URL}${ENDPOINTS.chat.send}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ conversationId, message: text }),
-        });
-
-        if (!response.ok) {
-          throw new Error("Failed to send message");
-        }
-
-        await parseSSE(response, (event, data) => {
-          const eventData = data as Record<string, unknown>;
-
-          switch (event) {
-            case "content":
-              setMessages((prev) => {
-                const updated = [...prev];
-                const lastIdx = updated.length - 1;
-                if (updated[lastIdx]?.status === "streaming") {
-                  updated[lastIdx] = {
-                    ...updated[lastIdx],
-                    content:
-                      updated[lastIdx].content + (eventData.text as string),
-                  };
-                }
-                return updated;
-              });
-              break;
-
-            case "process":
-              setProcessEvents((prev) => [
-                ...prev,
-                {
-                  id: crypto.randomUUID(),
-                  type: eventData.type as string,
-                  status: eventData.status as string | undefined,
-                  data: eventData,
-                  timestamp: Date.now(),
-                },
-              ]);
-              break;
-
-            case "confirmation_required":
-              setPendingConfirmations((prev) => [
-                ...prev,
-                {
-                  id: eventData.confirmationId as string,
-                  action: eventData.action as string,
-                  objectType: eventData.objectType as string,
-                  params: eventData.params as Record<string, unknown>,
-                  expiresAt: Date.now() + 5 * 60 * 1000,
-                },
-              ]);
-              break;
-
-            case "error":
-              setError(eventData.message as string);
-              setMessages((prev) => {
-                const updated = [...prev];
-                const lastIdx = updated.length - 1;
-                if (updated[lastIdx]?.status === "streaming") {
-                  updated[lastIdx] = {
-                    ...updated[lastIdx],
-                    status: "error",
-                    content:
-                      updated[lastIdx].content || (eventData.message as string),
-                  };
-                }
-                return updated;
-              });
-              break;
-
-            case "done":
-              setMessages((prev) => {
-                const updated = [...prev];
-                const lastIdx = updated.length - 1;
-                if (updated[lastIdx]?.status === "streaming") {
-                  updated[lastIdx] = {
-                    ...updated[lastIdx],
-                    status: "complete",
-                  };
-                }
-                return updated;
-              });
-              break;
-          }
-        });
-
-        // Refresh conversation list
-        revalidator.revalidate();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to send");
-        setMessages((prev) => {
-          const updated = [...prev];
-          const lastIdx = updated.length - 1;
-          if (updated[lastIdx]?.status === "streaming") {
-            updated[lastIdx] = { ...updated[lastIdx], status: "error" };
-          }
-          return updated;
-        });
-      } finally {
-        setIsStreaming(false);
-      }
+      await sendMessage(conversationId, text);
+      revalidator.revalidate();
     },
-    [currentConversationId, isStreaming, navigate, revalidator]
-  );
-
-  const handleAcceptConfirmation = useCallback(
-    async (confirmationId: string) => {
-      setIsStreaming(true);
-
-      try {
-        const response = await fetch(
-          `${API_URL}${ENDPOINTS.chat.acceptConfirmation(confirmationId)}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-          }
-        );
-
-        if (!response.ok) {
-          throw new Error("Failed to accept confirmation");
-        }
-
-        // Add placeholder for result
-        const resultMessage: Message = {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: "",
-          status: "streaming",
-          createdAt: Date.now(),
-        };
-        setMessages((prev) => [...prev, resultMessage]);
-
-        await parseSSE(response, (event, data) => {
-          const eventData = data as Record<string, unknown>;
-
-          if (event === "content") {
-            setMessages((prev) => {
-              const updated = [...prev];
-              const lastIdx = updated.length - 1;
-              if (updated[lastIdx]?.status === "streaming") {
-                updated[lastIdx] = {
-                  ...updated[lastIdx],
-                  content:
-                    updated[lastIdx].content + (eventData.text as string),
-                };
-              }
-              return updated;
-            });
-          } else if (event === "done") {
-            setMessages((prev) => {
-              const updated = [...prev];
-              const lastIdx = updated.length - 1;
-              if (updated[lastIdx]?.status === "streaming") {
-                updated[lastIdx] = { ...updated[lastIdx], status: "complete" };
-              }
-              return updated;
-            });
-          }
-        });
-
-        // Remove the confirmation
-        setPendingConfirmations((prev) =>
-          prev.filter((c) => c.id !== confirmationId)
-        );
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to confirm");
-      } finally {
-        setIsStreaming(false);
-      }
-    },
-    []
-  );
-
-  const handleRejectConfirmation = useCallback(
-    async (confirmationId: string) => {
-      try {
-        const response = await fetch(
-          `${API_URL}${ENDPOINTS.chat.rejectConfirmation(confirmationId)}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-          }
-        );
-
-        if (!response.ok) {
-          throw new Error("Failed to reject confirmation");
-        }
-
-        // Remove the confirmation
-        setPendingConfirmations((prev) =>
-          prev.filter((c) => c.id !== confirmationId)
-        );
-
-        // Add cancellation message
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            role: "assistant",
-            content: "Operation cancelled.",
-            status: "complete",
-            createdAt: Date.now(),
-          },
-        ]);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to cancel");
-      }
-    },
-    []
+    [currentConversationId, isStreaming, navigate, revalidator, sendMessage]
   );
 
   const handleDeleteConversation = useCallback(
@@ -453,10 +159,8 @@ export default function Chat({ loaderData }: Route.ComponentProps) {
           throw new Error("Failed to delete conversation");
         }
 
-        // Update local state
         setConversations((prev) => prev.filter((c) => c.id !== conversationId));
 
-        // Clear current conversation if deleted
         if (currentConversationId === conversationId) {
           setCurrentConversationId(null);
           setMessages([]);
@@ -464,11 +168,11 @@ export default function Chat({ loaderData }: Route.ComponentProps) {
         }
 
         revalidator.revalidate();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to delete");
+      } catch {
+        // Error handling could be improved
       }
     },
-    [currentConversationId, navigate, revalidator]
+    [currentConversationId, navigate, revalidator, setMessages]
   );
 
   // =============================================================================
@@ -479,7 +183,6 @@ export default function Chat({ loaderData }: Route.ComponentProps) {
 
   return (
     <div className="chat-layout">
-      {/* Sidebar */}
       <ChatSidebar
         conversations={conversations}
         currentId={currentConversationId}
@@ -488,14 +191,13 @@ export default function Chat({ loaderData }: Route.ComponentProps) {
         onDelete={handleDeleteConversation}
       />
 
-      {/* Main chat area */}
       <div className="chat-main">
         <ChatMessages
           messages={messages}
           isStreaming={isStreaming}
           pendingConfirmations={pendingConfirmations}
-          onAccept={handleAcceptConfirmation}
-          onReject={handleRejectConfirmation}
+          onAccept={acceptConfirmation}
+          onReject={rejectConfirmation}
           messagesEndRef={messagesEndRef}
         />
 
@@ -510,7 +212,6 @@ export default function Chat({ loaderData }: Route.ComponentProps) {
         />
       </div>
 
-      {/* Process log */}
       <ProcessLog events={processEvents} />
     </div>
   );
@@ -603,12 +304,11 @@ interface ChatMessagesProps {
   pendingConfirmations: PendingConfirmation[];
   onAccept: (id: string) => void;
   onReject: (id: string) => void;
-  messagesEndRef: React.RefObject<HTMLDivElement>;
+  messagesEndRef: React.RefObject<HTMLDivElement | null>;
 }
 
 function ChatMessages({
   messages,
-  isStreaming,
   pendingConfirmations,
   onAccept,
   onReject,
@@ -703,7 +403,6 @@ function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
     }
   }
 
-  // Auto-resize textarea
   useEffect(() => {
     const textarea = textareaRef.current;
     if (textarea) {
