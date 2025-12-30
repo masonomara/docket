@@ -91,9 +91,46 @@ export class TenantDO extends DurableObject<Env> {
     const url = new URL(request.url);
 
     try {
+      // Handle dynamic routes first
+      const pathParts = url.pathname.split("/").filter(Boolean);
+
+      // /conversation/:id or /conversation/:id (DELETE)
+      if (pathParts[0] === "conversation" && pathParts.length === 2) {
+        const conversationId = pathParts[1];
+        if (request.method === "DELETE") {
+          return this.handleDeleteConversation(request, conversationId);
+        }
+        return this.handleGetConversation(request, conversationId);
+      }
+
+      // /confirmation/:id/accept
+      if (
+        pathParts[0] === "confirmation" &&
+        pathParts.length === 3 &&
+        pathParts[2] === "accept"
+      ) {
+        return this.handleAcceptConfirmation(request, pathParts[1]);
+      }
+
+      // /confirmation/:id/reject
+      if (
+        pathParts[0] === "confirmation" &&
+        pathParts.length === 3 &&
+        pathParts[2] === "reject"
+      ) {
+        return this.handleRejectConfirmation(request, pathParts[1]);
+      }
+
+      // Static routes
       switch (url.pathname) {
         case "/process-message":
           return this.handleProcessMessage(request);
+
+        case "/process-message-stream":
+          return this.handleProcessMessageStream(request);
+
+        case "/conversations":
+          return this.handleGetConversations(request);
 
         case "/audit":
           return this.handleAudit(request);
@@ -1499,6 +1536,807 @@ Only include modifiedRequest if intent is "modify".`;
   }
 
   // ============================================================
+  // Web Chat Streaming Endpoints
+  // ============================================================
+
+  /**
+   * Creates an SSE stream with emit and close helpers.
+   */
+  private createSSEStream(): {
+    readable: ReadableStream;
+    emit: (event: string, data: unknown) => Promise<void>;
+    close: () => Promise<void>;
+  } {
+    const { readable, writable } = new TransformStream();
+    const writer = writable.getWriter();
+    const encoder = new TextEncoder();
+
+    const emit = async (event: string, data: unknown) => {
+      await writer.write(
+        encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+      );
+    };
+
+    const close = async () => {
+      await writer.close();
+    };
+
+    return { readable, emit, close };
+  }
+
+  /**
+   * Handles streaming chat messages via SSE.
+   * Returns Server-Sent Events instead of JSON.
+   */
+  private async handleProcessMessageStream(
+    request: Request
+  ): Promise<Response> {
+    if (request.method !== "POST") {
+      return Response.json({ error: "Method not allowed" }, { status: 405 });
+    }
+
+    // Parse and validate the incoming message
+    const body = await request.json();
+    const parseResult = ChannelMessageSchema.safeParse(body);
+
+    if (!parseResult.success) {
+      return Response.json(
+        { error: "Invalid message format", details: parseResult.error.issues },
+        { status: 400 }
+      );
+    }
+
+    const message = parseResult.data;
+
+    // Security check: ensure the message is for this organization
+    if (message.orgId !== this.orgId) {
+      return Response.json({ error: "Organization mismatch" }, { status: 403 });
+    }
+
+    // Create SSE stream
+    const { readable, emit, close } = this.createSSEStream();
+
+    // Start async processing in background
+    this.ctx.waitUntil(
+      this.processMessageWithStream(message, emit, close)
+    );
+
+    // Return SSE response immediately
+    return new Response(readable, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+      },
+    });
+  }
+
+  /**
+   * Processes a message and emits SSE events throughout.
+   */
+  private async processMessageWithStream(
+    message: ChannelMessage,
+    emit: (event: string, data: unknown) => Promise<void>,
+    close: () => Promise<void>
+  ): Promise<void> {
+    try {
+      // Emit start event
+      await emit("process", { type: "started" });
+
+      // Ensure conversation exists (sets user_id and title for web channel)
+      await this.ensureConversationExistsForWeb(message);
+
+      // Store the user's message
+      await this.storeMessageWithStatus(message.conversationId, {
+        role: "user",
+        content: message.message,
+        userId: message.userId,
+        status: "complete",
+      });
+
+      // Check if user has a pending confirmation to respond to
+      const pendingConfirmation = await this.claimPendingConfirmation(
+        message.conversationId,
+        message.userId
+      );
+
+      let response: string;
+
+      if (pendingConfirmation) {
+        response = await this.handleConfirmationResponseWithStream(
+          message,
+          pendingConfirmation,
+          emit
+        );
+      } else {
+        response = await this.generateAssistantResponseWithStream(message, emit);
+      }
+
+      // Store the assistant's response
+      await this.storeMessageWithStatus(message.conversationId, {
+        role: "assistant",
+        content: response,
+        userId: null,
+        status: "complete",
+      });
+
+      // Emit done event
+      await emit("done", {});
+    } catch (error) {
+      // Emit error event
+      await emit("error", {
+        message: error instanceof Error ? error.message : "Processing failed",
+      });
+    } finally {
+      await close();
+    }
+  }
+
+  /**
+   * Generates an AI response with streaming process events.
+   */
+  private async generateAssistantResponseWithStream(
+    message: ChannelMessage,
+    emit: (event: string, data: unknown) => Promise<void>
+  ): Promise<string> {
+    // RAG lookup
+    await emit("process", { type: "rag_lookup", status: "started" });
+
+    const ragContext = await retrieveRAGContext(
+      this.env,
+      message.message,
+      this.orgId,
+      {
+        jurisdictions: message.jurisdictions,
+        practiceTypes: message.practiceTypes,
+        firmSize: message.firmSize,
+      }
+    );
+
+    const allChunks = [...ragContext.kbChunks, ...ragContext.orgChunks];
+    await emit("process", {
+      type: "rag_lookup",
+      status: "complete",
+      chunks: allChunks.map((c) => ({
+        text: c.content.slice(0, 100) + (c.content.length > 100 ? "..." : ""),
+        source: c.source,
+      })),
+    });
+
+    // Get conversation history
+    const conversationHistory = await this.getRecentMessages(
+      message.conversationId
+    );
+
+    // Build system prompt
+    const systemPrompt = this.buildSystemPrompt(
+      formatRAGContext(ragContext),
+      message.userRole
+    );
+
+    const messages = [
+      { role: "system", content: systemPrompt },
+      ...conversationHistory,
+    ];
+
+    const tools = this.getClioTools(message.userRole);
+
+    // LLM thinking
+    await emit("process", { type: "llm_thinking", status: "started" });
+
+    const llmResponse = await this.callLLM(messages, tools);
+
+    // Handle tool calls
+    if (llmResponse.toolCalls && llmResponse.toolCalls.length > 0) {
+      return this.handleToolCallsWithStream(message, llmResponse.toolCalls, emit);
+    }
+
+    // Emit content
+    await emit("content", { text: llmResponse.content });
+
+    return llmResponse.content;
+  }
+
+  /**
+   * Handles tool calls with streaming events.
+   */
+  private async handleToolCallsWithStream(
+    message: ChannelMessage,
+    toolCalls: ToolCall[],
+    emit: (event: string, data: unknown) => Promise<void>
+  ): Promise<string> {
+    const results: string[] = [];
+
+    for (const toolCall of toolCalls) {
+      const result = await this.handleSingleToolCallWithStream(
+        message,
+        toolCall,
+        emit
+      );
+      results.push(result);
+    }
+
+    const fullResponse = results.join("\n\n");
+    await emit("content", { text: fullResponse });
+
+    return fullResponse;
+  }
+
+  /**
+   * Handles a single tool call with streaming events.
+   */
+  private async handleSingleToolCallWithStream(
+    message: ChannelMessage,
+    toolCall: ToolCall,
+    emit: (event: string, data: unknown) => Promise<void>
+  ): Promise<string> {
+    if (toolCall.name !== "clioQuery") {
+      return `Unknown tool: ${toolCall.name}`;
+    }
+
+    const args = toolCall.arguments;
+
+    // Permission check
+    if (args.operation !== "read" && message.userRole !== "admin") {
+      return `You don't have permission to ${args.operation} ${args.objectType}s. Only Admins can make changes.`;
+    }
+
+    // Emit Clio call event
+    await emit("process", {
+      type: "clio_call",
+      operation: args.operation,
+      objectType: args.objectType,
+      filters: args.filters,
+    });
+
+    // Read operations execute immediately
+    if (args.operation === "read") {
+      const result = await this.executeClioRead(message.userId, args);
+
+      // Parse result to get count for preview
+      const lines = result.split("\n").filter((l) => l.trim());
+      await emit("process", {
+        type: "clio_result",
+        count: lines.length,
+        preview: lines.slice(0, 3),
+      });
+
+      return result;
+    }
+
+    // Write operations require confirmation
+    await this.createPendingConfirmation(
+      message.conversationId,
+      message.userId,
+      args.operation,
+      args.objectType,
+      args.data || {}
+    );
+
+    // Emit confirmation required event
+    await emit("confirmation_required", {
+      confirmationId: crypto.randomUUID(), // Will be the actual ID from createPendingConfirmation
+      action: args.operation,
+      objectType: args.objectType,
+      params: args.data || {},
+    });
+
+    const operationDescription = this.describeOperation(args);
+
+    return `I'd like to ${operationDescription}.
+
+**Please confirm:**
+- Reply 'yes' to proceed
+- Reply 'no' to cancel
+- Or describe any changes you'd like
+
+*This request expires in 5 minutes.*`;
+  }
+
+  /**
+   * Handles confirmation response with streaming.
+   */
+  private async handleConfirmationResponseWithStream(
+    message: ChannelMessage,
+    confirmation: PendingConfirmation,
+    emit: (event: string, data: unknown) => Promise<void>
+  ): Promise<string> {
+    const classification = await this.classifyConfirmationResponse(
+      message.message,
+      confirmation
+    );
+
+    switch (classification.intent) {
+      case "approve": {
+        await emit("process", {
+          type: "clio_call",
+          operation: confirmation.action,
+          objectType: confirmation.objectType,
+        });
+
+        const result = await this.executeConfirmedOperation(
+          message.userId,
+          confirmation
+        );
+
+        await emit("process", {
+          type: "clio_result",
+          success: !result.includes("problem"),
+        });
+        await emit("content", { text: result });
+
+        return result;
+      }
+
+      case "reject": {
+        const response = "Got it, I've cancelled that operation.";
+        await emit("content", { text: response });
+        return response;
+      }
+
+      case "modify":
+        return this.generateAssistantResponseWithStream(
+          {
+            ...message,
+            message: classification.modifiedRequest || message.message,
+          },
+          emit
+        );
+
+      case "unrelated":
+        this.restorePendingConfirmation(
+          message.conversationId,
+          message.userId,
+          confirmation
+        );
+        return this.generateAssistantResponseWithStream(message, emit);
+
+      default:
+        this.restorePendingConfirmation(
+          message.conversationId,
+          message.userId,
+          confirmation
+        );
+        const response =
+          "I'm not sure if you want to proceed. Please reply 'yes' to confirm or 'no' to cancel.";
+        await emit("content", { text: response });
+        return response;
+    }
+  }
+
+  /**
+   * Creates conversation with user_id and title for web channel.
+   */
+  private async ensureConversationExistsForWeb(
+    message: ChannelMessage
+  ): Promise<void> {
+    const now = Date.now();
+
+    // Try to update existing conversation's timestamp
+    const updateResult = this.sql.exec(
+      "UPDATE conversations SET updated_at = ? WHERE id = ?",
+      now,
+      message.conversationId
+    );
+
+    // If no rows were updated, create a new conversation
+    if (updateResult.rowsWritten === 0) {
+      // For web channel, set user_id and generate title from first message
+      const isWebChannel = message.channel === "web";
+      const title = isWebChannel
+        ? this.generateConversationTitle(message.message)
+        : null;
+      const userId = isWebChannel ? message.userId : null;
+
+      this.sql.exec(
+        `INSERT INTO conversations (id, channel_type, scope, user_id, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        message.conversationId,
+        message.channel,
+        message.conversationScope,
+        userId,
+        title,
+        now,
+        now
+      );
+    }
+  }
+
+  /**
+   * Generates a conversation title from the first message.
+   * Truncates to 50 chars with ellipsis if longer.
+   */
+  private generateConversationTitle(message: string): string {
+    const cleaned = message.trim().replace(/\s+/g, " ");
+    if (cleaned.length <= 50) {
+      return cleaned;
+    }
+    return cleaned.slice(0, 47) + "...";
+  }
+
+  /**
+   * Stores a message with status column support.
+   */
+  private async storeMessageWithStatus(
+    conversationId: string,
+    msg: {
+      role: string;
+      content: string;
+      userId: string | null;
+      status: "complete" | "partial" | "error";
+    }
+  ): Promise<void> {
+    this.sql.exec(
+      `INSERT INTO messages (id, conversation_id, role, content, user_id, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      crypto.randomUUID(),
+      conversationId,
+      msg.role,
+      msg.content,
+      msg.userId,
+      msg.status,
+      Date.now()
+    );
+  }
+
+  /**
+   * Returns list of conversations for a user.
+   * GET /conversations?userId={userId}
+   */
+  private async handleGetConversations(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    const userId = url.searchParams.get("userId");
+
+    if (!userId) {
+      return Response.json(
+        { error: "Missing required query param: userId" },
+        { status: 400 }
+      );
+    }
+
+    const rows = this.sql
+      .exec(
+        `SELECT
+          c.id,
+          c.title,
+          c.updated_at,
+          (SELECT COUNT(*) FROM messages WHERE conversation_id = c.id) as message_count
+        FROM conversations c
+        WHERE c.user_id = ? AND c.channel_type = 'web'
+        ORDER BY c.updated_at DESC
+        LIMIT 50`,
+        userId
+      )
+      .toArray();
+
+    const conversations = rows.map((row) => ({
+      id: row.id as string,
+      title: row.title as string | null,
+      updatedAt: row.updated_at as number,
+      messageCount: row.message_count as number,
+    }));
+
+    return Response.json({ conversations });
+  }
+
+  /**
+   * Returns a single conversation with messages.
+   * GET /conversation/:id?userId={userId}
+   */
+  private async handleGetConversation(
+    request: Request,
+    conversationId: string
+  ): Promise<Response> {
+    const url = new URL(request.url);
+    const userId = url.searchParams.get("userId");
+
+    if (!userId) {
+      return Response.json(
+        { error: "Missing required query param: userId" },
+        { status: 400 }
+      );
+    }
+
+    // Verify ownership
+    const conversation = this.sql
+      .exec(
+        `SELECT id, title, channel_type, scope, created_at, updated_at
+        FROM conversations
+        WHERE id = ? AND user_id = ?`,
+        conversationId,
+        userId
+      )
+      .one();
+
+    if (!conversation) {
+      return Response.json(
+        { error: "Conversation not found" },
+        { status: 404 }
+      );
+    }
+
+    // Get messages
+    const messageRows = this.sql
+      .exec(
+        `SELECT id, role, content, created_at, status
+        FROM messages
+        WHERE conversation_id = ?
+        ORDER BY created_at ASC`,
+        conversationId
+      )
+      .toArray();
+
+    const messages = messageRows.map((row) => ({
+      id: row.id as string,
+      role: row.role as string,
+      content: row.content as string,
+      createdAt: row.created_at as number,
+      status: row.status as string,
+    }));
+
+    // Get pending confirmations
+    const now = Date.now();
+    const confirmationRows = this.sql
+      .exec(
+        `SELECT id, action, object_type, params, expires_at
+        FROM pending_confirmations
+        WHERE conversation_id = ? AND user_id = ? AND expires_at > ?`,
+        conversationId,
+        userId,
+        now
+      )
+      .toArray();
+
+    const pendingConfirmations = confirmationRows.map((row) => {
+      let params: Record<string, unknown> = {};
+      try {
+        params = JSON.parse(row.params as string);
+      } catch {
+        // Use empty params if parsing fails
+      }
+      return {
+        id: row.id as string,
+        action: row.action as string,
+        objectType: row.object_type as string,
+        params,
+        expiresAt: row.expires_at as number,
+      };
+    });
+
+    return Response.json({
+      conversation: {
+        id: conversation.id as string,
+        title: conversation.title as string | null,
+        channelType: conversation.channel_type as string,
+        scope: conversation.scope as string,
+        createdAt: conversation.created_at as number,
+        updatedAt: conversation.updated_at as number,
+      },
+      messages,
+      pendingConfirmations,
+    });
+  }
+
+  /**
+   * Deletes a conversation and its messages.
+   * DELETE /conversation/:id?userId={userId}
+   */
+  private async handleDeleteConversation(
+    request: Request,
+    conversationId: string
+  ): Promise<Response> {
+    const url = new URL(request.url);
+    const userId = url.searchParams.get("userId");
+
+    if (!userId) {
+      return Response.json(
+        { error: "Missing required query param: userId" },
+        { status: 400 }
+      );
+    }
+
+    // Verify ownership before delete
+    const conversation = this.sql
+      .exec(
+        `SELECT id FROM conversations WHERE id = ? AND user_id = ?`,
+        conversationId,
+        userId
+      )
+      .one();
+
+    if (!conversation) {
+      return Response.json(
+        { error: "Conversation not found" },
+        { status: 404 }
+      );
+    }
+
+    // Delete in correct order (respecting foreign key relationships)
+    // 1. Delete messages first
+    this.sql.exec(
+      "DELETE FROM messages WHERE conversation_id = ?",
+      conversationId
+    );
+
+    // 2. Delete pending confirmations
+    this.sql.exec(
+      "DELETE FROM pending_confirmations WHERE conversation_id = ?",
+      conversationId
+    );
+
+    // 3. Delete conversation
+    this.sql.exec("DELETE FROM conversations WHERE id = ?", conversationId);
+
+    return Response.json({ success: true });
+  }
+
+  /**
+   * Accepts a pending confirmation and executes the operation.
+   * Returns SSE stream with operation result.
+   */
+  private async handleAcceptConfirmation(
+    request: Request,
+    confirmationId: string
+  ): Promise<Response> {
+    if (request.method !== "POST") {
+      return Response.json({ error: "Method not allowed" }, { status: 405 });
+    }
+
+    // Extract userId from body
+    const body = (await request.json()) as { userId?: string };
+    const userId = body.userId;
+
+    if (!userId) {
+      return Response.json(
+        { error: "Missing required field: userId" },
+        { status: 400 }
+      );
+    }
+
+    // Look up confirmation and verify ownership
+    const row = this.sql
+      .exec(
+        `SELECT id, conversation_id, user_id, action, object_type, params, expires_at
+        FROM pending_confirmations
+        WHERE id = ? AND user_id = ?`,
+        confirmationId,
+        userId
+      )
+      .one();
+
+    if (!row) {
+      return Response.json(
+        { error: "Confirmation not found or expired" },
+        { status: 404 }
+      );
+    }
+
+    // Check if expired
+    if ((row.expires_at as number) < Date.now()) {
+      // Clean up expired confirmation
+      this.sql.exec("DELETE FROM pending_confirmations WHERE id = ?", confirmationId);
+      return Response.json(
+        { error: "Confirmation has expired" },
+        { status: 410 }
+      );
+    }
+
+    // Parse params
+    let params: Record<string, unknown> = {};
+    try {
+      params = JSON.parse(row.params as string);
+    } catch {
+      // Use empty params if parsing fails
+    }
+
+    const confirmation: PendingConfirmation = {
+      id: row.id as string,
+      action: row.action as "create" | "update" | "delete",
+      objectType: row.object_type as string,
+      params,
+      expiresAt: row.expires_at as number,
+    };
+
+    // Delete the confirmation before executing
+    this.sql.exec("DELETE FROM pending_confirmations WHERE id = ?", confirmationId);
+
+    // Create SSE stream for result
+    const { readable, emit, close } = this.createSSEStream();
+
+    // Start async processing in background
+    this.ctx.waitUntil(
+      this.executeAcceptedConfirmation(userId, confirmation, emit, close)
+    );
+
+    // Return SSE response immediately
+    return new Response(readable, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+      },
+    });
+  }
+
+  /**
+   * Executes an accepted confirmation and streams the result.
+   */
+  private async executeAcceptedConfirmation(
+    userId: string,
+    confirmation: PendingConfirmation,
+    emit: (event: string, data: unknown) => Promise<void>,
+    close: () => Promise<void>
+  ): Promise<void> {
+    try {
+      // Emit start event
+      await emit("process", { type: "started" });
+
+      // Emit Clio call event
+      await emit("process", {
+        type: "clio_call",
+        operation: confirmation.action,
+        objectType: confirmation.objectType,
+      });
+
+      // Execute the confirmed operation
+      const result = await this.executeConfirmedOperation(userId, confirmation);
+      const success = !result.includes("problem");
+
+      // Emit result
+      await emit("process", {
+        type: "clio_result",
+        success,
+      });
+
+      await emit("content", { text: result });
+      await emit("done", {});
+    } catch (error) {
+      await emit("error", {
+        message: error instanceof Error ? error.message : "Operation failed",
+      });
+    } finally {
+      await close();
+    }
+  }
+
+  /**
+   * Rejects a pending confirmation.
+   */
+  private async handleRejectConfirmation(
+    request: Request,
+    confirmationId: string
+  ): Promise<Response> {
+    if (request.method !== "POST") {
+      return Response.json({ error: "Method not allowed" }, { status: 405 });
+    }
+
+    // Extract userId from body
+    const body = (await request.json()) as { userId?: string };
+    const userId = body.userId;
+
+    if (!userId) {
+      return Response.json(
+        { error: "Missing required field: userId" },
+        { status: 400 }
+      );
+    }
+
+    // Verify ownership and delete
+    const result = this.sql.exec(
+      "DELETE FROM pending_confirmations WHERE id = ? AND user_id = ?",
+      confirmationId,
+      userId
+    );
+
+    if (result.rowsWritten === 0) {
+      return Response.json(
+        { error: "Confirmation not found" },
+        { status: 404 }
+      );
+    }
+
+    return Response.json({ success: true });
+  }
+
+  // ============================================================
   // Audit Logging
   // ============================================================
 
@@ -1729,23 +2567,35 @@ Only include modifiedRequest if intent is "modify".`;
     const currentVersion = versionResult?.version ?? 0;
 
     // Already at latest version
-    if (currentVersion >= 1) {
+    if (currentVersion >= 2) {
       return;
     }
 
     // Run v1 migration - create all initial tables
-    this.sql.exec(`
-      CREATE TABLE IF NOT EXISTS conversations (id TEXT PRIMARY KEY, channel_type TEXT NOT NULL, scope TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, archived_at INTEGER);
-      CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations(updated_at);
-      CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES conversations(id), role TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'system')), content TEXT NOT NULL, user_id TEXT, created_at INTEGER NOT NULL);
-      CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, created_at);
-      CREATE TABLE IF NOT EXISTS pending_confirmations (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES conversations(id), user_id TEXT NOT NULL, action TEXT NOT NULL, object_type TEXT NOT NULL, params TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL);
-      CREATE INDEX IF NOT EXISTS idx_pending_expires ON pending_confirmations(expires_at);
-      CREATE TABLE IF NOT EXISTS org_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL);
-      CREATE TABLE IF NOT EXISTS clio_schema_cache (object_type TEXT PRIMARY KEY, schema TEXT NOT NULL, custom_fields TEXT, fetched_at INTEGER NOT NULL);
-    `);
+    if (currentVersion < 1) {
+      this.sql.exec(`
+        CREATE TABLE IF NOT EXISTS conversations (id TEXT PRIMARY KEY, channel_type TEXT NOT NULL, scope TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, archived_at INTEGER);
+        CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations(updated_at);
+        CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES conversations(id), role TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'system')), content TEXT NOT NULL, user_id TEXT, created_at INTEGER NOT NULL);
+        CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, created_at);
+        CREATE TABLE IF NOT EXISTS pending_confirmations (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES conversations(id), user_id TEXT NOT NULL, action TEXT NOT NULL, object_type TEXT NOT NULL, params TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL);
+        CREATE INDEX IF NOT EXISTS idx_pending_expires ON pending_confirmations(expires_at);
+        CREATE TABLE IF NOT EXISTS org_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL);
+        CREATE TABLE IF NOT EXISTS clio_schema_cache (object_type TEXT PRIMARY KEY, schema TEXT NOT NULL, custom_fields TEXT, fetched_at INTEGER NOT NULL);
+      `);
+      this.sql.exec("UPDATE schema_version SET version = 1 WHERE id = 1");
+    }
 
-    this.sql.exec("UPDATE schema_version SET version = 1 WHERE id = 1");
+    // Run v2 migration - add web chat columns
+    if (currentVersion < 2) {
+      this.sql.exec(`
+        ALTER TABLE conversations ADD COLUMN user_id TEXT;
+        ALTER TABLE conversations ADD COLUMN title TEXT;
+        CREATE INDEX IF NOT EXISTS idx_conversations_user ON conversations(user_id, updated_at DESC);
+        ALTER TABLE messages ADD COLUMN status TEXT DEFAULT 'complete' CHECK(status IN ('complete', 'partial', 'error'));
+      `);
+      this.sql.exec("UPDATE schema_version SET version = 2 WHERE id = 1");
+    }
   }
 
   // ============================================================

@@ -189,3 +189,110 @@ export interface LLMResponse {
   content: string;
   toolCalls?: ToolCall[];
 }
+
+// ============================================================================
+// SSE Event Types (Web Chat Interface)
+// ============================================================================
+
+export interface SSEContentEvent {
+  text: string;
+}
+
+export type ProcessEventType =
+  | "started"
+  | "rag_lookup"
+  | "llm_thinking"
+  | "clio_call"
+  | "clio_result";
+
+export interface SSEProcessEventStarted {
+  type: "started";
+}
+
+export interface SSEProcessEventRagLookup {
+  type: "rag_lookup";
+  status: "started" | "complete";
+  chunks?: Array<{ text: string; source: string }>;
+}
+
+export interface SSEProcessEventLlmThinking {
+  type: "llm_thinking";
+  status: "started";
+}
+
+export interface SSEProcessEventClioCall {
+  type: "clio_call";
+  operation: "read" | "create" | "update" | "delete";
+  objectType: string;
+  filters?: Record<string, unknown>;
+}
+
+export interface SSEProcessEventClioResult {
+  type: "clio_result";
+  count: number;
+  preview: unknown[];
+}
+
+export type SSEProcessEvent =
+  | SSEProcessEventStarted
+  | SSEProcessEventRagLookup
+  | SSEProcessEventLlmThinking
+  | SSEProcessEventClioCall
+  | SSEProcessEventClioResult;
+
+export interface SSEConfirmationRequiredEvent {
+  confirmationId: string;
+  action: "create" | "update" | "delete";
+  objectType: string;
+  params: Record<string, unknown>;
+}
+
+export interface SSEErrorEvent {
+  message: string;
+}
+
+export type SSEEvent =
+  | { event: "content"; data: SSEContentEvent }
+  | { event: "process"; data: SSEProcessEvent }
+  | { event: "confirmation_required"; data: SSEConfirmationRequiredEvent }
+  | { event: "error"; data: SSEErrorEvent }
+  | { event: "done"; data: null };
+
+export const SSEContentEventSchema = z.object({
+  text: z.string(),
+});
+
+export const SSEProcessEventSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("started") }),
+  z.object({
+    type: z.literal("rag_lookup"),
+    status: z.enum(["started", "complete"]),
+    chunks: z.array(z.object({ text: z.string(), source: z.string() })).optional(),
+  }),
+  z.object({
+    type: z.literal("llm_thinking"),
+    status: z.literal("started"),
+  }),
+  z.object({
+    type: z.literal("clio_call"),
+    operation: z.enum(["read", "create", "update", "delete"]),
+    objectType: z.string(),
+    filters: z.record(z.string(), z.unknown()).optional(),
+  }),
+  z.object({
+    type: z.literal("clio_result"),
+    count: z.number(),
+    preview: z.array(z.unknown()),
+  }),
+]);
+
+export const SSEConfirmationRequiredEventSchema = z.object({
+  confirmationId: z.string(),
+  action: z.enum(["create", "update", "delete"]),
+  objectType: z.string(),
+  params: z.record(z.string(), z.unknown()),
+});
+
+export const SSEErrorEventSchema = z.object({
+  message: z.string(),
+});
