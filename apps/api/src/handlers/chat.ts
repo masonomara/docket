@@ -4,6 +4,7 @@ import { getOrgMembership } from "../services/org-membership";
 import { createLogger, generateRequestId } from "../lib/logger";
 import type { Env } from "../types/env";
 import type { FirmSize, OrgRole } from "../types";
+import { errors, errorResponse } from "../lib/errors";
 
 // =============================================================================
 // Request Validation
@@ -97,41 +98,31 @@ export async function handleChatMessage(
   const requestId = generateRequestId();
   const log = createLogger({ requestId, handler: "chat" });
 
-  // Parse request body
   const body = await parseJsonBody(request);
   if (body === null) {
-    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    return errors.invalidJson();
   }
 
-  // Validate request schema
   const parseResult = ChatMessageRequestSchema.safeParse(body);
   if (!parseResult.success) {
-    return Response.json(
-      { error: "Invalid request", details: parseResult.error.issues },
-      { status: 400 }
-    );
+    return errors.invalidRequest(parseResult.error.issues);
   }
 
   const { conversationId, message } = parseResult.data;
 
-  // Verify user is still a member of the organization
   const membership = await getOrgMembership(env.DB, ctx.user.id, ctx.orgId);
   if (!membership) {
     log.warn("User not a member of org", {
       userId: ctx.user.id,
       orgId: ctx.orgId,
     });
-    return Response.json(
-      { error: "Not a member of organization" },
-      { status: 403 }
-    );
+    return errors.notMember();
   }
 
-  // Get org settings for RAG context
   const orgSettings = await getOrgSettings(env.DB, ctx.orgId);
   if (!orgSettings) {
     log.warn("Organization not found", { orgId: ctx.orgId });
-    return Response.json({ error: "Organization not found" }, { status: 404 });
+    return errors.notFound("Organization");
   }
 
   // Build the channel message payload for the DO
@@ -167,7 +158,6 @@ export async function handleChatMessage(
     })
   );
 
-  // Handle DO errors
   if (!doResponse.ok) {
     const errorBody = await doResponse.text();
     log.error("DO streaming failed", {
@@ -175,7 +165,6 @@ export async function handleChatMessage(
       error: errorBody,
     });
 
-    // Try to extract error message from JSON response
     let errorMessage = "Failed to process message";
     try {
       const parsed = JSON.parse(errorBody);
@@ -186,10 +175,7 @@ export async function handleChatMessage(
       // Use default error message
     }
 
-    return Response.json(
-      { error: errorMessage },
-      { status: doResponse.status }
-    );
+    return errorResponse(doResponse.status, errorMessage, "INTERNAL_ERROR");
   }
 
   // Return the SSE stream from the DO
@@ -222,10 +208,7 @@ export async function handleGetConversations(
   );
 
   if (!doResponse.ok) {
-    return Response.json(
-      { error: "Failed to fetch conversations" },
-      { status: doResponse.status }
-    );
+    return errorResponse(doResponse.status, "Failed to fetch conversations", "INTERNAL_ERROR");
   }
 
   return new Response(doResponse.body, {
@@ -255,7 +238,7 @@ export async function handleGetConversation(
 
   if (!doResponse.ok) {
     const status = doResponse.status === 404 ? 404 : doResponse.status;
-    return Response.json({ error: "Conversation not found" }, { status });
+    return errorResponse(status, "Conversation not found", "CONVERSATION_NOT_FOUND");
   }
 
   return new Response(doResponse.body, {
@@ -285,7 +268,7 @@ export async function handleDeleteConversation(
 
   if (!doResponse.ok) {
     const status = doResponse.status === 404 ? 404 : doResponse.status;
-    return Response.json({ error: "Conversation not found" }, { status });
+    return errorResponse(status, "Conversation not found", "CONVERSATION_NOT_FOUND");
   }
 
   return Response.json({ success: true });
@@ -303,13 +286,9 @@ export async function handleAcceptConfirmation(
 ): Promise<Response> {
   const requestId = generateRequestId();
 
-  // Only admins can execute Clio write operations
   const membership = await getOrgMembership(env.DB, ctx.user.id, ctx.orgId);
   if (membership?.role !== "admin") {
-    return Response.json(
-      { error: "Admin role required to execute Clio operations" },
-      { status: 403 }
-    );
+    return errors.adminRequired();
   }
 
   const tenantDO = getTenantDO(env, ctx.orgId);
@@ -327,10 +306,7 @@ export async function handleAcceptConfirmation(
 
   if (!doResponse.ok) {
     const status = doResponse.status === 404 ? 404 : doResponse.status;
-    return Response.json(
-      { error: "Confirmation not found or expired" },
-      { status }
-    );
+    return errorResponse(status, "Confirmation not found or expired", "CONFIRMATION_NOT_FOUND");
   }
 
   // Return the SSE stream from the DO
@@ -366,10 +342,7 @@ export async function handleRejectConfirmation(
 
   if (!doResponse.ok) {
     const status = doResponse.status === 404 ? 404 : doResponse.status;
-    return Response.json(
-      { error: "Confirmation not found or expired" },
-      { status }
-    );
+    return errorResponse(status, "Confirmation not found or expired", "CONFIRMATION_NOT_FOUND");
   }
 
   return Response.json({ success: true });

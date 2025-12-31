@@ -1,6 +1,7 @@
 import type { AuthContext } from "../lib/session";
 import type { Env } from "../types/env";
 import { getDataDeletionPreview, deleteUserData } from "../services/gdpr";
+import { errors, errorResponse } from "../lib/errors";
 
 // -----------------------------------------------------------------------------
 // Account Handlers
@@ -28,31 +29,25 @@ export async function handleUpdateAccount(
   env: Env,
   ctx: AuthContext
 ): Promise<Response> {
-  // Parse request body
   let body: { name?: string };
   try {
     body = await request.json();
   } catch {
-    return Response.json({ error: "Invalid request body" }, { status: 400 });
+    return errors.invalidJson();
   }
 
-  // Validate that there's something to update
   if (body.name === undefined) {
-    return Response.json({ error: "No fields to update" }, { status: 400 });
+    return errorResponse(400, "No fields to update", "INVALID_REQUEST");
   }
 
-  // Validate the name field
   const trimmedName = body.name.trim();
 
   if (trimmedName.length === 0) {
-    return Response.json({ error: "Name cannot be empty" }, { status: 400 });
+    return errorResponse(400, "Name cannot be empty", "INVALID_FIELD");
   }
 
   if (trimmedName.length > 100) {
-    return Response.json(
-      { error: "Name must be 100 characters or less" },
-      { status: 400 }
-    );
+    return errorResponse(400, "Name must be 100 characters or less", "INVALID_FIELD");
   }
 
   // Update the user record
@@ -72,17 +67,15 @@ export async function handleDeleteAccount(
   env: Env,
   ctx: AuthContext
 ): Promise<Response> {
-  // Parse request body
   let body: { confirmEmail?: string };
   try {
     body = await request.json();
   } catch {
-    return Response.json({ error: "Invalid request body" }, { status: 400 });
+    return errors.invalidJson();
   }
 
-  // Verify email confirmation
   if (!body.confirmEmail || body.confirmEmail !== ctx.user.email) {
-    return Response.json({ error: "Email does not match" }, { status: 400 });
+    return errorResponse(400, "Email does not match", "EMAIL_MISMATCH");
   }
 
   // Attempt to delete all user data
@@ -94,16 +87,10 @@ export async function handleDeleteAccount(
     env.TENANT
   );
 
-  // Handle sole owner case - user must transfer ownership first
   if ("type" in result && result.type === "sole_owner") {
-    return Response.json(
-      {
-        error: "sole_owner",
-        message: result.message,
-        orgIds: result.orgIds,
-      },
-      { status: 400 }
-    );
+    return errorResponse(400, result.message, "SOLE_OWNER", {
+      orgIds: result.orgIds,
+    });
   }
 
   return Response.json(result);

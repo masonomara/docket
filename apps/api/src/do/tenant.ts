@@ -27,6 +27,10 @@ import {
   type ClioTokens,
 } from "../services/clio-oauth";
 import {
+  parseClassificationJSON,
+  isConfirmationExpired,
+} from "../lib/confirmation";
+import {
   executeClioCall,
   buildReadQuery,
   buildCreateBody,
@@ -599,7 +603,7 @@ ${customFieldsInfo ? `**Firm Custom Fields:**\n${customFieldsInfo}` : ""}
         {
           messages,
           tools: tools?.length ? tools : undefined,
-          max_tokens: 2000,
+          max_tokens: TENANT_CONFIG.LLM.CHAT_MAX_TOKENS,
         }
       );
 
@@ -1087,7 +1091,7 @@ Only include modifiedRequest if intent is "modify".`;
     try {
       const response = await (this.env.AI.run as Function)(
         "@cf/meta/llama-3.1-8b-instruct",
-        { prompt, max_tokens: 100 }
+        { prompt, max_tokens: TENANT_CONFIG.LLM.CLASSIFICATION_MAX_TOKENS }
       );
 
       const text =
@@ -1097,56 +1101,7 @@ Only include modifiedRequest if intent is "modify".`;
         return { intent: "unclear" };
       }
 
-      return this.parseClassificationJSON(text);
-    } catch {
-      return { intent: "unclear" };
-    }
-  }
-
-  private parseClassificationJSON(text: string): {
-    intent: string;
-    modifiedRequest?: string;
-  } {
-    // Find JSON object in response
-    const startIndex = text.indexOf("{");
-    if (startIndex === -1) {
-      return { intent: "unclear" };
-    }
-
-    // Find matching closing brace
-    let depth = 0;
-    let endIndex = -1;
-
-    for (let i = startIndex; i < text.length; i++) {
-      if (text[i] === "{") depth++;
-      if (text[i] === "}") depth--;
-      if (depth === 0) {
-        endIndex = i;
-        break;
-      }
-    }
-
-    if (endIndex === -1) {
-      return { intent: "unclear" };
-    }
-
-    try {
-      const jsonString = text.slice(startIndex, endIndex + 1);
-      const parsed = JSON.parse(jsonString) as Record<string, unknown>;
-
-      const validIntents = ["approve", "reject", "modify", "unrelated"];
-      const intent =
-        typeof parsed.intent === "string" &&
-        validIntents.includes(parsed.intent)
-          ? parsed.intent
-          : "unclear";
-
-      const modifiedRequest =
-        intent === "modify" && typeof parsed.modifiedRequest === "string"
-          ? parsed.modifiedRequest
-          : undefined;
-
-      return { intent, modifiedRequest };
+      return parseClassificationJSON(text);
     } catch {
       return { intent: "unclear" };
     }
@@ -2129,7 +2084,7 @@ Only include modifiedRequest if intent is "modify".`;
     const row = rows[0];
 
     // Check if expired
-    if ((row.expires_at as number) < Date.now()) {
+    if (isConfirmationExpired(row.expires_at as number)) {
       this.sql.exec(
         "DELETE FROM pending_confirmations WHERE id = ?",
         confirmationId

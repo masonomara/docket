@@ -54,19 +54,27 @@ type DeleteOrgResult =
   | DeleteOrgPartialSuccess
   | DeleteOrgError;
 
-/**
- * Counts records in a table for a given org.
- */
+const ALLOWED_TABLES = new Set([
+  "org_members",
+  "invitations",
+  "workspace_bindings",
+  "api_keys",
+  "subscriptions",
+  "org_context_chunks",
+]);
+
 async function countRecords(
   db: D1Database,
   table: string,
   orgId: string
 ): Promise<number> {
+  if (!ALLOWED_TABLES.has(table)) {
+    throw new Error(`Invalid table name: ${table}`);
+  }
   const result = await db
     .prepare(`SELECT COUNT(*) as count FROM ${table} WHERE org_id = ?`)
     .bind(orgId)
     .first<{ count: number }>();
-
   return result?.count ?? 0;
 }
 

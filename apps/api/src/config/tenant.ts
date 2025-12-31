@@ -21,4 +21,10 @@ export const TENANT_CONFIG = {
 
   // Max conversations returned in list endpoint
   CONVERSATIONS_LIMIT: 50,
+
+  // LLM token limits
+  LLM: {
+    CHAT_MAX_TOKENS: 2000,
+    CLASSIFICATION_MAX_TOKENS: 100,
+  },
 } as const;

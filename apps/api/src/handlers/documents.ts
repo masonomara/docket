@@ -7,6 +7,7 @@ import {
   deleteOrgContext,
   getOrgContextDocument,
 } from "../services/org-context";
+import { errors, errorResponse } from "../lib/errors";
 
 /**
  * GET /org/documents
@@ -37,18 +38,16 @@ export async function handleUploadDocument(
     userId: ctx.user.id,
   });
 
-  // Parse the multipart form data
   let formData: FormData;
   try {
     formData = await request.formData();
   } catch {
-    return Response.json({ error: "Invalid form data" }, { status: 400 });
+    return errorResponse(400, "Invalid form data", "INVALID_REQUEST");
   }
 
-  // Validate file presence
   const file = formData.get("file");
   if (!(file instanceof File)) {
-    return Response.json({ error: "No file provided" }, { status: 400 });
+    return errors.missingField("File");
   }
 
   log.info("Upload started", { filename: file.name, size: file.size });
@@ -67,8 +66,7 @@ export async function handleUploadDocument(
 
   if (!result.success) {
     log.error("Upload failed", { error: result.error });
-    const errorMessage = result.error || "Upload failed";
-    return Response.json({ error: errorMessage }, { status: 400 });
+    return errorResponse(400, result.error || "Upload failed", "INVALID_REQUEST");
   }
 
   log.info("Upload complete", {
@@ -91,17 +89,14 @@ export async function handleDeleteDocument(
   ctx: AdminContext,
   documentId: string
 ): Promise<Response> {
-  // Check if document exists
   const existingDocument = await getOrgContextDocument(env, ctx.orgId, documentId);
   if (!existingDocument) {
-    return Response.json({ error: "Document not found" }, { status: 404 });
+    return errors.notFound("Document");
   }
 
-  // Delete the document
   const result = await deleteOrgContext(env, ctx.orgId, documentId);
   if (!result.success) {
-    const errorMessage = result.error || "Delete failed";
-    return Response.json({ error: errorMessage }, { status: 500 });
+    return errors.internal(result.error || "Delete failed");
   }
 
   return Response.json({ success: true });

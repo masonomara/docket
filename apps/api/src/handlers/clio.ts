@@ -9,6 +9,7 @@ import {
 } from "../services/clio-oauth";
 import { createLogger, generateRequestId } from "../lib/logger";
 import type { Env } from "../types/env";
+import { errorResponse } from "../lib/errors";
 
 // -----------------------------------------------------------------------------
 // Helper Functions
@@ -258,7 +259,7 @@ export async function handleClioDisconnect(
 
   if (!response.ok) {
     log.error("Failed to disconnect Clio");
-    return Response.json({ error: "Failed to disconnect" }, { status: response.status });
+    return errorResponse(response.status, "Failed to disconnect", "INTERNAL_ERROR");
   }
 
   log.info("Clio disconnected successfully", { orgId: ctx.orgId });

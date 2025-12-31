@@ -426,9 +426,6 @@ export default {
     // Internal: Seed KB (protected by secret)
     if (path === "/internal/seed-kb" && method === "POST") {
       const secret = request.headers.get("X-Seed-Secret");
-      console.log("SEED_SECRET exists:", !!env.SEED_SECRET);
-      console.log("Header secret length:", secret?.length);
-      console.log("Env secret length:", env.SEED_SECRET?.length);
       if (!env.SEED_SECRET || secret !== env.SEED_SECRET) {
         return Response.json({ error: "Unauthorized" }, { status: 401 });
       }
