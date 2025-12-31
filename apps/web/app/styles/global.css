@@ -83,7 +83,7 @@ strong {
 }
 
 :focus-visible {
-  outline: #2053b9 auto 0.5px;
+  outline: var(--text-primary) auto 0.5px;
 }
 
 /* ==========================================================================
@@ -331,7 +331,7 @@ strong {
    ========================================================================== */
 
 .alert {
-  padding: 0px 16px;
+  padding: 8.5px 16px;
   height: 36px;
   border-radius: 8px;
   font-size: 14px;

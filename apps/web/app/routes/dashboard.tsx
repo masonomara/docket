@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useRevalidator } from "react-router";
+import { redirect, useRevalidator } from "react-router";
 import type { Route } from "./+types/dashboard";
 import { ENDPOINTS } from "~/lib/api";
 import { API_URL } from "~/lib/auth-client";
@@ -12,6 +12,7 @@ import {
   US_STATES,
   PRACTICE_AREAS,
 } from "~/lib/org-constants";
+import { Plus } from "lucide-react";
 
 interface FormData {
   orgType: string;
@@ -36,10 +37,16 @@ const WIZARD_STEPS = [
   { title: "Practice Areas", subtitle: "Select your areas of practice" },
 ];
 
-export const loader = protectedLoader(({ user, org }) => ({ user, org }));
+export const loader = protectedLoader(({ org }) => {
+  // Redirect to chat if user has an org
+  if (org !== null) {
+    throw redirect("/chat");
+  }
+  return { org };
+});
 
 export default function Dashboard({ loaderData }: Route.ComponentProps) {
-  const { user, org } = loaderData;
+  const { org } = loaderData;
   const revalidator = useRevalidator();
 
   const [showModal, setShowModal] = useState(false);
@@ -140,7 +147,10 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
 
   return (
     <AppLayout org={org} currentPath="/dashboard">
-      <PageLayout title="Dashboard" subtitle={`Welcome back, ${user.name}`}>
+      <PageLayout
+        title="Get Started"
+        subtitle="Create or join a firm or clinic to start using Docket"
+      >
         {org === null && <GetStartedSection onCreateFirm={openModal} />}
       </PageLayout>
 
@@ -175,18 +185,16 @@ interface GetStartedSectionProps {
 function GetStartedSection({ onCreateFirm }: GetStartedSectionProps) {
   return (
     <section className="section">
-      <h2 className="text-title-3">Get Started</h2>
-
       <div className="info-card">
         <div>
-          <h3 className="text-headline">Your firm</h3>
+          <h3 className="text-headline">Create your organization</h3>
           <p className="text-secondary">
-            You&apos;re not part of a firm yet. Create one to start using
-            Docket, or wait for an invitation.
+            Set up your firm or clinic to start using Docket Bot.
           </p>
         </div>
         <button onClick={onCreateFirm} className="btn btn-sm btn-primary">
-          Create firm
+          <Plus strokeWidth={1.75} size={16} />
+          Create organization
         </button>
       </div>
     </section>

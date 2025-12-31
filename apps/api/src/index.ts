@@ -39,6 +39,7 @@ import {
   handleUploadDocument,
   handleDeleteDocument,
 } from "./handlers/documents";
+import { seedKB } from "./services/kb-loader";
 import {
   handleChatMessage,
   handleGetConversations,
@@ -420,6 +421,29 @@ export default {
     // Clio OAuth callback (no CORS - browser redirect)
     if (path === "/clio/callback") {
       return handleClioCallback(request, env);
+    }
+
+    // Internal: Seed KB (protected by secret)
+    if (path === "/internal/seed-kb" && method === "POST") {
+      const secret = request.headers.get("X-Seed-Secret");
+      console.log("SEED_SECRET exists:", !!env.SEED_SECRET);
+      console.log("Header secret length:", secret?.length);
+      console.log("Env secret length:", env.SEED_SECRET?.length);
+      if (!env.SEED_SECRET || secret !== env.SEED_SECRET) {
+        return Response.json({ error: "Unauthorized" }, { status: 401 });
+      }
+
+      try {
+        const result = await seedKB(env);
+        return Response.json({
+          success: true,
+          message: "KB seeded successfully",
+          ...result,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return Response.json({ error: message }, { status: 500 });
+      }
     }
 
     // Try static routes first

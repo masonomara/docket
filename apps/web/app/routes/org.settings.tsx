@@ -408,13 +408,19 @@ function DeleteFirmModal({
         </div>
 
         <ul className="text-secondary text-callout">
-          <li>
-            <strong>{deletionPreview.org?.name}</strong>
+          <strong>{deletionPreview.org?.name}</strong>
+          <li style={{ marginLeft: "1em" }}>
+            {deletionPreview.members} member(s)
           </li>
-          <li>{deletionPreview.members} member(s)</li>
-          <li>{deletionPreview.invitations} pending invitation(s)</li>
-          <li>{deletionPreview.orgContextChunks} document(s)</li>
-          <li>All conversations, Clio connections, and audit logs</li>
+          <li style={{ marginLeft: "1em" }}>
+            {deletionPreview.invitations} pending invitation(s)
+          </li>
+          <li style={{ marginLeft: "1em" }}>
+            {deletionPreview.orgContextChunks} document(s)
+          </li>
+          <li style={{ marginLeft: "1em" }}>
+            All conversations, Clio connections, and audit logs
+          </li>
         </ul>
 
         <div className="form-group">

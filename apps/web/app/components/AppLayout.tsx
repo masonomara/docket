@@ -2,14 +2,10 @@ import { createContext, useState } from "react";
 import { Link } from "react-router";
 import {
   Bot,
-  Cable,
-  Layout,
+  Landmark,
   Plug,
-  PlugZap,
   Scale,
   Settings2,
-  SquarePen,
-  Unplug,
   Users,
   X,
 } from "lucide-react";
@@ -97,22 +93,25 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
         <nav className={styles.section}>
           <div className={styles.sectionLabel}>Work</div>
           <ul className={styles.navList}>
-            <li>
-              <Link to="/dashboard" className={getNavItemClass("/dashboard")}>
-                <Layout
-                  size={16}
-                  strokeWidth={1.75}
-                  className={styles.navIcon}
-                />
-                Dashboard
-              </Link>
-            </li>
-            <li>
-              <Link to="/chat" className={getNavItemClass("/chat")}>
-                <Bot size={16} strokeWidth={1.75} className={styles.navIcon} />
-                Docket Bot
-              </Link>
-            </li>
+            {org === null ? (
+              <li>
+                <Link to="/dashboard" className={getNavItemClass("/dashboard")}>
+                  <Landmark
+                    size={16}
+                    strokeWidth={1.75}
+                    className={styles.navIcon}
+                  />
+                  Get Started
+                </Link>
+              </li>
+            ) : (
+              <li>
+                <Link to="/chat" className={getNavItemClass("/chat")}>
+                  <Bot size={16} strokeWidth={1.75} className={styles.navIcon} />
+                  Docket Bot
+                </Link>
+              </li>
+            )}
           </ul>
         </nav>
 
