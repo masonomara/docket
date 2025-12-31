@@ -1,14 +1,6 @@
 import { createContext, useState } from "react";
 import { Link } from "react-router";
-import {
-  Bot,
-  Landmark,
-  Plug,
-  Scale,
-  Settings2,
-  Users,
-  X,
-} from "lucide-react";
+import { Bot, Landmark, Plug, Scale, Settings2, Users, X } from "lucide-react";
 import type { OrgMembership } from "~/lib/types";
 import styles from "~/styles/app-layout.module.css";
 
@@ -107,8 +99,12 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
             ) : (
               <li>
                 <Link to="/chat" className={getNavItemClass("/chat")}>
-                  <Bot size={16} strokeWidth={1.75} className={styles.navIcon} />
-                  Docket Bot
+                  <Bot
+                    size={16}
+                    strokeWidth={1.75}
+                    className={styles.navIcon}
+                  />
+                  Docketbot
                 </Link>
               </li>
             )}

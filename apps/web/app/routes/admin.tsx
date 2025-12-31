@@ -189,7 +189,7 @@ function GetStartedSection({ onCreateFirm }: GetStartedSectionProps) {
         <div>
           <h3 className="text-headline">Create your organization</h3>
           <p className="text-secondary">
-            Set up your firm or clinic to start using Docket Bot.
+            Set up your firm or clinic to start using Docketbot.
           </p>
         </div>
         <button onClick={onCreateFirm} className="btn btn-sm btn-primary">

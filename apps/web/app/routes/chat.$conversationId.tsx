@@ -10,6 +10,7 @@ import {
   type PendingConfirmation,
 } from "~/lib/use-chat";
 import styles from "~/styles/chat.module.css";
+import { ArrowUp } from "lucide-react";
 
 // =============================================================================
 // Loader - fetches the specific conversation's messages
@@ -41,7 +42,11 @@ export const loader = orgLoader(async ({ fetch }, { params }) => {
 // =============================================================================
 
 export default function ChatConversation({ loaderData }: Route.ComponentProps) {
-  const { conversationId, messages: initialMessages, pendingConfirmations: initialPendingConfirmations } = loaderData;
+  const {
+    conversationId,
+    messages: initialMessages,
+    pendingConfirmations: initialPendingConfirmations,
+  } = loaderData;
   const params = useParams();
   const revalidator = useRevalidator();
 
@@ -79,7 +84,13 @@ export default function ChatConversation({ loaderData }: Route.ComponentProps) {
       await sendMessage(convId, text);
       revalidator.revalidate();
     },
-    [conversationId, params.conversationId, isStreaming, revalidator, sendMessage]
+    [
+      conversationId,
+      params.conversationId,
+      isStreaming,
+      revalidator,
+      sendMessage,
+    ]
   );
 
   const isInputDisabled = isStreaming || pendingConfirmations.length > 0;
@@ -101,9 +112,7 @@ export default function ChatConversation({ loaderData }: Route.ComponentProps) {
         <ChatInput
           onSend={handleSendMessage}
           disabled={isInputDisabled}
-          placeholder={
-            isInputDisabled ? "Waiting for response..." : "Type a message..."
-          }
+          placeholder={"Type a message..."}
         />
       </div>
 
@@ -232,24 +241,40 @@ function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
   }, [value]);
 
   return (
-    <div className={styles.chatInputArea}>
-      <textarea
-        ref={textareaRef}
-        className={styles.chatInput}
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder={placeholder}
-        disabled={disabled}
-        rows={1}
-      />
-      <button
-        className={`btn btn-primary ${styles.chatInputSubmit}`}
-        onClick={handleSubmit}
-        disabled={disabled || !value.trim()}
-      >
-        Send
-      </button>
+    <div className={styles.chatInputAreaWrapper}>
+      <div className={styles.chatInputArea}>
+        <div className={styles.chatInputWrapper}>
+          <textarea
+            ref={textareaRef}
+            className={`text-body ${styles.chatInput}`}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={placeholder}
+            disabled={disabled}
+            rows={1}
+          />
+          <div className={styles.textAreaWrapperBottomRow}>
+            <span
+              className="text-subhead text-tertiary"
+              style={{ marginTop: "3px" }}
+            >
+              Docketbot 1.0
+            </span>
+
+            <button
+              className={`${styles.chatInputSubmit}`}
+              onClick={handleSubmit}
+              disabled={disabled || !value.trim()}
+            >
+              <ArrowUp strokeWidth={2.25} color="white" size={16} />
+            </button>
+          </div>
+        </div>
+      </div>
+      <p className={`text-caption text-tertiary ${styles.chatNote}`}>
+        Docketbot is AI and can make mistakes. Check important information.
+      </p>
     </div>
   );
 }
@@ -320,14 +345,20 @@ function EventDetails({ event }: { event: ProcessEvent }) {
         {event.chunks.map((chunk, i) => (
           <div key={i} className={styles.chunkPreview}>
             <div className={styles.chunkSource}>{chunk.source}</div>
-            <div className={styles.chunkText}>{chunk.preview || chunk.text}</div>
+            <div className={styles.chunkText}>
+              {chunk.preview || chunk.text}
+            </div>
           </div>
         ))}
       </div>
     );
   }
 
-  if (event.type === "clio_result" && event.preview?.items && event.preview.items.length > 0) {
+  if (
+    event.type === "clio_result" &&
+    event.preview?.items &&
+    event.preview.items.length > 0
+  ) {
     return (
       <div className={styles.processLogEventDetails}>
         {event.preview.items.map((item, i) => (
@@ -356,12 +387,14 @@ function getEventLabel(event: ProcessEvent): string {
       return `Found ${total} relevant chunks`;
     case "llm_thinking":
       if (event.status === "started") return "Thinking";
-      if (event.hasToolCalls) return `Planning ${event.toolCallCount} tool call${event.toolCallCount === 1 ? "" : "s"}`;
+      if (event.hasToolCalls)
+        return `Planning ${event.toolCallCount} tool call${event.toolCallCount === 1 ? "" : "s"}`;
       return "Response ready";
     case "clio_call":
       return `Querying ${event.objectType}`;
     case "clio_result":
-      if (event.success !== undefined) return event.success ? "Success" : "Failed";
+      if (event.success !== undefined)
+        return event.success ? "Success" : "Failed";
       return `Found ${event.count || 0} results`;
     default:
       return event.type;
