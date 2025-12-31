@@ -40,6 +40,15 @@ import { sanitizeAuditParams } from "../lib/sanitize";
 import { TENANT_CONFIG } from "../config/tenant";
 
 // =============================================================================
+// Timing Helper
+// =============================================================================
+
+function createTimer() {
+  const start = Date.now();
+  return { elapsed: () => Date.now() - start };
+}
+
+// =============================================================================
 // TenantDO - Per-Organization Durable Object
 // =============================================================================
 //
@@ -73,7 +82,8 @@ export class TenantDO extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
 
-    this.orgId = ctx.id.name!;
+    // Use DO ID string as org identifier (idFromName derives deterministic ID from orgId)
+    this.orgId = ctx.id.toString();
     this.log = createLogger({ orgId: this.orgId, component: "TenantDO" });
 
     if (!ctx.storage.sql) {
@@ -189,11 +199,6 @@ export class TenantDO extends DurableObject<Env> {
 
     const message = parseResult.data;
 
-    // Verify org ID matches
-    if (message.orgId !== this.orgId) {
-      return Response.json({ error: "Organization mismatch" }, { status: 403 });
-    }
-
     // Store user message and process
     await this.ensureConversationExists(message);
 
@@ -247,16 +252,16 @@ export class TenantDO extends DurableObject<Env> {
     const message = parseResult.data;
     const requestId = request.headers.get("X-Request-Id") ?? undefined;
 
-    // Verify org ID matches
-    if (message.orgId !== this.orgId) {
-      return Response.json({ error: "Organization mismatch" }, { status: 403 });
-    }
-
     // Create SSE stream and start processing in background
     const stream = this.createSSEStream(requestId);
 
     this.ctx.waitUntil(
-      this.processMessageWithStream(message, stream.emit, stream.close)
+      this.processMessageWithStream(
+        message,
+        stream.emit,
+        stream.close,
+        requestId
+      )
     );
 
     return new Response(stream.readable, {
@@ -271,7 +276,8 @@ export class TenantDO extends DurableObject<Env> {
   private async processMessageWithStream(
     message: ChannelMessage,
     emit: SSEEmitter,
-    close: () => Promise<void>
+    close: () => Promise<void>,
+    requestId?: string
   ): Promise<void> {
     try {
       await emit("process", { type: "started" });
@@ -298,7 +304,11 @@ export class TenantDO extends DurableObject<Env> {
             pendingConfirmation,
             emit
           )
-        : await this.generateAssistantResponseWithStream(message, emit);
+        : await this.generateAssistantResponseWithStream(
+            message,
+            emit,
+            requestId
+          );
 
       // Store assistant response
       await this.storeMessage(message.conversationId, {
@@ -342,7 +352,7 @@ export class TenantDO extends DurableObject<Env> {
     const ragContext = await retrieveRAGContext(
       this.env,
       message.message,
-      this.orgId,
+      message.orgId,
       {
         jurisdictions: message.jurisdictions,
         practiceTypes: message.practiceTypes,
@@ -375,15 +385,22 @@ export class TenantDO extends DurableObject<Env> {
 
   private async generateAssistantResponseWithStream(
     message: ChannelMessage,
-    emit: SSEEmitter
+    emit: SSEEmitter,
+    requestId?: string
   ): Promise<string> {
-    // RAG lookup
+    const requestLog = this.log.child({
+      requestId,
+      conversationId: message.conversationId,
+    });
+
+    // RAG lookup with timing
+    const ragTimer = createTimer();
     await emit("process", { type: "rag_lookup", status: "started" });
 
     const ragContext = await retrieveRAGContext(
       this.env,
       message.message,
-      this.orgId,
+      message.orgId,
       {
         jurisdictions: message.jurisdictions,
         practiceTypes: message.practiceTypes,
@@ -392,13 +409,30 @@ export class TenantDO extends DurableObject<Env> {
     );
 
     const allChunks = [...ragContext.kbChunks, ...ragContext.orgChunks];
+    const ragDuration = ragTimer.elapsed();
+
     await emit("process", {
       type: "rag_lookup",
       status: "complete",
+      durationMs: ragDuration,
+      kbCount: ragContext.kbChunks.length,
+      orgCount: ragContext.orgChunks.length,
       chunks: allChunks.map((chunk) => ({
-        text: this.truncateText(chunk.content, TENANT_CONFIG.CHUNK_PREVIEW_LENGTH),
+        text: this.truncateText(
+          chunk.content,
+          TENANT_CONFIG.CHUNK_PREVIEW_LENGTH
+        ),
         source: chunk.source,
+        preview: this.truncateText(chunk.content, 150),
       })),
+    });
+
+    requestLog.info("RAG retrieval complete", {
+      phase: "rag",
+      durationMs: ragDuration,
+      kbChunks: ragContext.kbChunks.length,
+      orgChunks: ragContext.orgChunks.length,
+      sources: allChunks.map((c) => c.source),
     });
 
     // Build messages
@@ -409,20 +443,42 @@ export class TenantDO extends DurableObject<Env> {
     );
     const messages = [{ role: "system", content: systemPrompt }, ...history];
 
-    // LLM call
+    // LLM call with timing
+    const llmTimer = createTimer();
     await emit("process", { type: "llm_thinking", status: "started" });
+
     const llmResponse = await this.callLLM(
       messages,
       this.getClioTools(message.userRole)
     );
-    await emit("process", { type: "llm_thinking", status: "complete" });
+
+    const llmDuration = llmTimer.elapsed();
+    await emit("process", {
+      type: "llm_thinking",
+      status: "complete",
+      durationMs: llmDuration,
+      hasToolCalls: !!llmResponse.toolCalls?.length,
+      toolCallCount: llmResponse.toolCalls?.length || 0,
+    });
+
+    requestLog.info("LLM response received", {
+      phase: "llm",
+      durationMs: llmDuration,
+      hasToolCalls: !!llmResponse.toolCalls?.length,
+      toolCalls: llmResponse.toolCalls?.map((t) => ({
+        name: t.name,
+        operation: t.arguments.operation,
+        objectType: t.arguments.objectType,
+      })),
+    });
 
     // Handle tool calls or return content
     if (llmResponse.toolCalls?.length) {
       return this.handleToolCallsWithStream(
         message,
         llmResponse.toolCalls,
-        emit
+        emit,
+        requestLog
       );
     }
 
@@ -435,6 +491,52 @@ export class TenantDO extends DurableObject<Env> {
       return text;
     }
     return text.slice(0, maxLength - 3) + "...";
+  }
+
+  private summarizeClioResult(
+    result: string,
+    objectType: string
+  ): { items: Array<{ name: string; id?: string }>; totalCount: number } {
+    const items: Array<{ name: string; id?: string }> = [];
+    let totalCount = 0;
+
+    // Try to extract data from the formatted response
+    try {
+      const match = result.match(/\[[\s\S]*\]/);
+      if (match) {
+        const parsed = JSON.parse(match[0]) as Array<{
+          display_number?: string;
+          name?: string;
+          description?: string;
+          id?: number;
+        }>;
+        totalCount = parsed.length;
+
+        for (const item of parsed.slice(0, 3)) {
+          items.push({
+            name:
+              item.display_number ||
+              item.name ||
+              item.description ||
+              `${objectType} record`,
+            id: item.id ? String(item.id) : undefined,
+          });
+        }
+      } else if (result.includes("No ") && result.includes("records found")) {
+        totalCount = 0;
+      } else {
+        // Single record or other format
+        totalCount = 1;
+        items.push({ name: `${objectType} record` });
+      }
+    } catch {
+      // Fallback - count lines as rough approximation
+      const lines = result.split("\n").filter((line) => line.trim());
+      totalCount = Math.max(1, lines.length);
+      items.push({ name: `${totalCount} lines of data` });
+    }
+
+    return { items, totalCount };
   }
 
   // ===========================================================================
@@ -462,12 +564,24 @@ ${ragContext || "No relevant context found."}
 ${customFieldsInfo ? `**Firm Custom Fields:**\n${customFieldsInfo}` : ""}
 
 **Instructions:**
-- Use Knowledge Base and firm context for case management questions
-- Query Clio using the clioQuery tool for matters, contacts, tasks, calendar entries, time entries
+- For greetings, general questions, or explanations: respond directly WITHOUT using any tools
+- When the user mentions a specific case, matter, contact, or task BY NAME, use clioQuery to search for it
+- Use Knowledge Base context to answer questions about firm procedures and case management
 - For write operations (create, update, delete), always confirm first
 - NEVER give legal advice—you manage cases, not law
 - Stay in scope: case management, Clio operations, firm procedures
-- If Clio is not connected, guide user to connect at docket.com/settings`;
+- If Clio is not connected, guide user to connect at docket.com/settings
+
+**When to use clioQuery:**
+- "Show me my recent matters" → clioQuery with objectType="Matter"
+- "Find John Smith" → clioQuery with objectType="Contact", filters={"query": "John Smith"}
+- "Tell me about the Smith case" → clioQuery with objectType="Matter", filters={"query": "Smith"}
+- "What tasks are due this week?" → clioQuery with objectType="Task"
+
+**When NOT to use clioQuery:**
+- "Hello" → Greet the user back
+- "What can you do?" → Explain your capabilities
+- "What is a matter?" → Explain what a matter is in legal practice`;
   }
 
   // ===========================================================================
@@ -636,7 +750,8 @@ ${customFieldsInfo ? `**Firm Custom Fields:**\n${customFieldsInfo}` : ""}
               },
               filters: {
                 type: "object",
-                description: "Query filters for list operations",
+                description:
+                  "Query filters for list operations. Use 'query' for text search (e.g., {\"query\": \"Smith\"} to find records containing 'Smith'). Other filters: 'status', 'created_since', 'updated_since'.",
               },
               data: {
                 type: "object",
@@ -671,7 +786,8 @@ ${customFieldsInfo ? `**Firm Custom Fields:**\n${customFieldsInfo}` : ""}
   private async handleToolCallsWithStream(
     message: ChannelMessage,
     toolCalls: ToolCall[],
-    emit: SSEEmitter
+    emit: SSEEmitter,
+    requestLog?: Logger
   ): Promise<string> {
     const results: string[] = [];
 
@@ -679,7 +795,8 @@ ${customFieldsInfo ? `**Firm Custom Fields:**\n${customFieldsInfo}` : ""}
       const result = await this.executeSingleToolCallWithStream(
         message,
         toolCall,
-        emit
+        emit,
+        requestLog
       );
       results.push(result);
     }
@@ -725,7 +842,8 @@ ${customFieldsInfo ? `**Firm Custom Fields:**\n${customFieldsInfo}` : ""}
   private async executeSingleToolCallWithStream(
     message: ChannelMessage,
     toolCall: ToolCall,
-    emit: SSEEmitter
+    emit: SSEEmitter,
+    requestLog?: Logger
   ): Promise<string> {
     if (toolCall.name !== "clioQuery") {
       return `Unknown tool: ${toolCall.name}`;
@@ -744,21 +862,36 @@ ${customFieldsInfo ? `**Firm Custom Fields:**\n${customFieldsInfo}` : ""}
       operation,
       objectType,
       filters,
+      id,
     });
 
     // Handle read operations
     if (operation === "read") {
+      const clioTimer = createTimer();
+
       const result = await this.executeClioRead(message.userId, {
         objectType,
         id,
         filters,
       });
 
-      const lines = result.split("\n").filter((line) => line.trim());
+      const clioDuration = clioTimer.elapsed();
+      const preview = this.summarizeClioResult(result, objectType);
+
       await emit("process", {
         type: "clio_result",
-        count: lines.length,
-        preview: lines.slice(0, 3),
+        durationMs: clioDuration,
+        count: preview.totalCount,
+        preview,
+      });
+
+      requestLog?.info("Clio API call complete", {
+        phase: "clio",
+        durationMs: clioDuration,
+        operation,
+        objectType,
+        resultCount: preview.totalCount,
+        filters,
       });
 
       return result;
@@ -912,7 +1045,10 @@ ${customFieldsInfo ? `**Firm Custom Fields:**\n${customFieldsInfo}` : ""}
 
       case "modify":
         return this.generateAssistantResponseWithStream(
-          { ...message, message: classification.modifiedRequest || message.message },
+          {
+            ...message,
+            message: classification.modifiedRequest || message.message,
+          },
           emit
         );
 
@@ -1000,7 +1136,8 @@ Only include modifiedRequest if intent is "modify".`;
 
       const validIntents = ["approve", "reject", "modify", "unrelated"];
       const intent =
-        typeof parsed.intent === "string" && validIntents.includes(parsed.intent)
+        typeof parsed.intent === "string" &&
+        validIntents.includes(parsed.intent)
           ? parsed.intent
           : "unclear";
 
@@ -1036,7 +1173,9 @@ Only include modifiedRequest if intent is "modify".`;
       });
 
       const baseMessage = `Done! I've ${confirmation.action}d the ${confirmation.objectType}.`;
-      return result.details ? `${baseMessage}\n\n${result.details}` : baseMessage;
+      return result.details
+        ? `${baseMessage}\n\n${result.details}`
+        : baseMessage;
     } catch (error) {
       await this.appendAuditLog({
         user_id: userId,
@@ -1070,7 +1209,9 @@ Only include modifiedRequest if intent is "modify".`;
     }
 
     // Refresh schema if needed
-    if (customFieldsNeedRefresh(this.schemaVersion, this.customFieldsFetchedAt)) {
+    if (
+      customFieldsNeedRefresh(this.schemaVersion, this.customFieldsFetchedAt)
+    ) {
       await this.refreshCustomFieldsWithToken(accessToken);
     }
 
@@ -1251,7 +1392,9 @@ Only include modifiedRequest if intent is "modify".`;
       requestId?: string;
     };
 
-    const log = body.requestId ? this.log.child({ requestId: body.requestId }) : this.log;
+    const log = body.requestId
+      ? this.log.child({ requestId: body.requestId })
+      : this.log;
 
     if (!body.userId || !body.tokens) {
       return Response.json(
@@ -1325,7 +1468,9 @@ Only include modifiedRequest if intent is "modify".`;
       requestId?: string;
     };
 
-    const log = body.requestId ? this.log.child({ requestId: body.requestId }) : this.log;
+    const log = body.requestId
+      ? this.log.child({ requestId: body.requestId })
+      : this.log;
 
     if (!body.userId) {
       return Response.json(
@@ -1639,7 +1784,7 @@ Only include modifiedRequest if intent is "modify".`;
     }
 
     // Get conversation
-    const conversationRow = this.sql
+    const conversationRows = this.sql
       .exec(
         `SELECT id, title, channel_type, scope, created_at, updated_at
         FROM conversations
@@ -1647,14 +1792,18 @@ Only include modifiedRequest if intent is "modify".`;
         conversationId,
         userId
       )
-      .one();
+      .toArray();
 
-    if (!conversationRow) {
-      return Response.json(
-        { error: "Conversation not found" },
-        { status: 404 }
-      );
+    // Conversation may not exist yet (new chat with no messages)
+    if (conversationRows.length === 0) {
+      return Response.json({
+        conversation: null,
+        messages: [],
+        pendingConfirmations: [],
+      });
     }
+
+    const conversationRow = conversationRows[0];
 
     // Get messages
     const messageRows = this.sql
@@ -1728,15 +1877,15 @@ Only include modifiedRequest if intent is "modify".`;
     }
 
     // Verify conversation exists and belongs to user
-    const exists = this.sql
+    const existsRows = this.sql
       .exec(
         `SELECT id FROM conversations WHERE id = ? AND user_id = ?`,
         conversationId,
         userId
       )
-      .one();
+      .toArray();
 
-    if (!exists) {
+    if (existsRows.length === 0) {
       return Response.json(
         { error: "Conversation not found" },
         { status: 404 }
@@ -1860,7 +2009,7 @@ Only include modifiedRequest if intent is "modify".`;
       );
 
       // Claim (delete and return) the confirmation for this conversation/user
-      return this.sql
+      const rows = this.sql
         .exec(
           `DELETE FROM pending_confirmations
           WHERE conversation_id = ? AND user_id = ?
@@ -1868,7 +2017,8 @@ Only include modifiedRequest if intent is "modify".`;
           conversationId,
           userId
         )
-        .one();
+        .toArray();
+      return rows.length > 0 ? rows[0] : null;
     });
 
     if (!row) {
@@ -1959,7 +2109,7 @@ Only include modifiedRequest if intent is "modify".`;
     }
 
     // Find the confirmation
-    const row = this.sql
+    const rows = this.sql
       .exec(
         `SELECT id, conversation_id, user_id, action, object_type, params, expires_at
         FROM pending_confirmations
@@ -1967,14 +2117,16 @@ Only include modifiedRequest if intent is "modify".`;
         confirmationId,
         body.userId
       )
-      .one();
+      .toArray();
 
-    if (!row) {
+    if (rows.length === 0) {
       return Response.json(
         { error: "Confirmation not found or expired" },
         { status: 404 }
       );
     }
+
+    const row = rows[0];
 
     // Check if expired
     if ((row.expires_at as number) < Date.now()) {
@@ -2094,7 +2246,7 @@ Only include modifiedRequest if intent is "modify".`;
       );
     }
 
-    const row = this.sql
+    const rejectRows = this.sql
       .exec(
         `SELECT conversation_id, action, object_type
         FROM pending_confirmations
@@ -2102,14 +2254,16 @@ Only include modifiedRequest if intent is "modify".`;
         confirmationId,
         body.userId
       )
-      .one();
+      .toArray();
 
-    if (!row) {
+    if (rejectRows.length === 0) {
       return Response.json(
         { error: "Confirmation not found" },
         { status: 404 }
       );
     }
+
+    const row = rejectRows[0];
 
     // Delete the confirmation
     this.sql.exec(
@@ -2137,9 +2291,7 @@ Only include modifiedRequest if intent is "modify".`;
     const encoder = new TextEncoder();
 
     const emit: SSEEmitter = async (event: string, data: unknown) => {
-      const payload = requestId
-        ? { ...(data as object), requestId }
-        : data;
+      const payload = requestId ? { ...(data as object), requestId } : data;
 
       const message = `event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`;
       await writer.write(encoder.encode(message));
@@ -2243,8 +2395,9 @@ Only include modifiedRequest if intent is "modify".`;
       (this.sql.exec("SELECT COUNT(*) as count FROM messages").one()
         ?.count as number) ?? 0;
     const confCount =
-      (this.sql.exec("SELECT COUNT(*) as count FROM pending_confirmations").one()
-        ?.count as number) ?? 0;
+      (this.sql
+        .exec("SELECT COUNT(*) as count FROM pending_confirmations")
+        .one()?.count as number) ?? 0;
 
     // Delete all data
     this.sql.exec("DELETE FROM messages");
@@ -2312,7 +2465,10 @@ Only include modifiedRequest if intent is "modify".`;
 
     // Delete user data
     this.sql.exec("DELETE FROM messages WHERE user_id = ?", userId);
-    this.sql.exec("DELETE FROM pending_confirmations WHERE user_id = ?", userId);
+    this.sql.exec(
+      "DELETE FROM pending_confirmations WHERE user_id = ?",
+      userId
+    );
 
     // Delete Clio token
     const clioKey = `clio_token:${userId}`;
@@ -2470,13 +2626,15 @@ Only include modifiedRequest if intent is "modify".`;
 
   private async archiveConversation(conversationId: string): Promise<void> {
     // Get conversation data
-    const conversation = this.sql
+    const conversationRows = this.sql
       .exec("SELECT * FROM conversations WHERE id = ?", conversationId)
-      .one();
+      .toArray();
 
-    if (!conversation) {
+    if (conversationRows.length === 0) {
       return;
     }
+
+    const conversation = conversationRows[0];
 
     // Get messages
     const messages = this.sql
@@ -2512,7 +2670,10 @@ Only include modifiedRequest if intent is "modify".`;
       Date.now(),
       conversationId
     );
-    this.sql.exec("DELETE FROM messages WHERE conversation_id = ?", conversationId);
+    this.sql.exec(
+      "DELETE FROM messages WHERE conversation_id = ?",
+      conversationId
+    );
   }
 
   private async ensureAlarmIsSet(): Promise<void> {

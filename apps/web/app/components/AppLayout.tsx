@@ -1,6 +1,18 @@
 import { createContext, useState } from "react";
 import { Link } from "react-router";
-import { X } from "lucide-react";
+import {
+  Bot,
+  Cable,
+  Layout,
+  Plug,
+  PlugZap,
+  Scale,
+  Settings2,
+  SquarePen,
+  Unplug,
+  Users,
+  X,
+} from "lucide-react";
 import type { OrgMembership } from "~/lib/types";
 import styles from "~/styles/app-layout.module.css";
 
@@ -87,12 +99,18 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
           <ul className={styles.navList}>
             <li>
               <Link to="/dashboard" className={getNavItemClass("/dashboard")}>
+                <Layout
+                  size={16}
+                  strokeWidth={1.75}
+                  className={styles.navIcon}
+                />
                 Dashboard
               </Link>
             </li>
             <li>
               <Link to="/chat" className={getNavItemClass("/chat")}>
-                Chat
+                <Bot size={16} strokeWidth={1.75} className={styles.navIcon} />
+                Docket Bot
               </Link>
             </li>
           </ul>
@@ -108,11 +126,21 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
                   to="/org/context"
                   className={getNavItemClass("/org/context")}
                 >
+                  <Scale
+                    size={16}
+                    strokeWidth={1.75}
+                    className={styles.navIcon}
+                  />
                   Knowledge Base
                 </Link>
               </li>
               <li>
                 <Link to="/org/clio" className={getNavItemClass("/org/clio")}>
+                  <Plug
+                    size={16}
+                    strokeWidth={1.75}
+                    className={styles.navIcon}
+                  />
                   Clio Connection
                 </Link>
               </li>
@@ -121,6 +149,11 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
                   to="/org/members"
                   className={getNavItemClass("/org/members")}
                 >
+                  <Users
+                    size={16}
+                    strokeWidth={1.75}
+                    className={styles.navIcon}
+                  />
                   Members
                 </Link>
               </li>
@@ -137,6 +170,11 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
                 to="/account/settings"
                 className={getNavItemClass("/account/settings")}
               >
+                <Settings2
+                  size={16}
+                  strokeWidth={1.75}
+                  className={styles.navIcon}
+                />
                 User Settings
               </Link>
             </li>
@@ -166,7 +204,10 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
 
       {/* Main content area */}
       <main className={styles.content}>
-        <div className={styles.contentInner}>
+        <div
+          className={styles.contentInner}
+          style={currentPath === "/chat" ? { padding: "0px" } : undefined}
+        >
           <PageLayoutContext.Provider value={{ onMenuOpen: openMenu }}>
             {children}
           </PageLayoutContext.Provider>

@@ -361,6 +361,7 @@ Testing:
 - [ ] UPL mitigation: output filtering for legal advice patterns
 - [ ] UPL mitigation: prepend disclaimer to all responses
 - [ ] Demo deployed
+- [ ] Research an dintegratte Third-Party Observability Options for LLM
 
 ## Phase 12: Compliance Review
 

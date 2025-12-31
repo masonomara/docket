@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { ENDPOINTS } from "~/lib/api";
 import { API_URL } from "~/lib/auth-client";
 
@@ -18,8 +18,22 @@ export interface ProcessEvent {
   id: string;
   type: string;
   status?: string;
-  data?: Record<string, unknown>;
   timestamp: number;
+  durationMs?: number;
+  // RAG-specific
+  kbCount?: number;
+  orgCount?: number;
+  chunks?: Array<{ text: string; source: string; preview: string }>;
+  // LLM-specific
+  hasToolCalls?: boolean;
+  toolCallCount?: number;
+  // Clio-specific
+  operation?: string;
+  objectType?: string;
+  filters?: Record<string, unknown>;
+  count?: number;
+  preview?: { items: Array<{ name: string; id?: string }>; totalCount: number };
+  success?: boolean;
 }
 
 export interface PendingConfirmation {
@@ -91,8 +105,12 @@ async function parseSSE(
 // =============================================================================
 
 export function useChat(options: UseChatOptions = {}): UseChatReturn {
-  const [messages, setMessages] = useState<Message[]>(
-    options.initialMessages || []
+  // Initialize with initialMessages if provided, otherwise empty array
+  // Note: We DON'T reset to [] when initialMessages is undefined on re-renders
+  const [messages, setMessages] = useState<Message[]>(() =>
+    options.initialMessages && options.initialMessages.length > 0
+      ? options.initialMessages
+      : []
   );
   const [processEvents, setProcessEvents] = useState<ProcessEvent[]>([]);
   const [pendingConfirmations, setPendingConfirmations] = useState<
@@ -100,6 +118,25 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
   >(options.initialPendingConfirmations || []);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Sync messages when initialMessages prop has content
+  // This handles page refresh where useState initialized empty but loader has data
+  // IMPORTANT: We only sync when initialMessages is defined AND has content
+  // If initialMessages is undefined (base /chat route), we preserve existing messages
+  useEffect(() => {
+    // Only sync if we actually have messages from the loader
+    // Don't clear messages just because initialMessages is undefined
+    if (options.initialMessages !== undefined) {
+      if (options.initialMessages.length > 0) {
+        setMessages(options.initialMessages);
+      }
+      // If initialMessages is an empty array (new conversation), clear messages
+      else {
+        setMessages([]);
+      }
+    }
+    // If initialMessages is undefined, preserve current messages (don't clear)
+  }, [options.initialMessages]);
 
   const clearError = useCallback(() => setError(null), []);
 
@@ -166,10 +203,8 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
                 ...prev,
                 {
                   id: crypto.randomUUID(),
-                  type: eventData.type as string,
-                  status: eventData.status as string | undefined,
-                  data: eventData,
                   timestamp: Date.now(),
+                  ...(eventData as Omit<ProcessEvent, "id" | "timestamp">),
                 },
               ]);
               break;
