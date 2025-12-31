@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { redirect, useRevalidator } from "react-router";
-import type { Route } from "./+types/dashboard";
+import type { Route } from "./+types/admin";
 import { ENDPOINTS } from "~/lib/api";
 import { API_URL } from "~/lib/auth-client";
 import { protectedLoader } from "~/lib/loader-auth";
@@ -45,7 +45,7 @@ export const loader = protectedLoader(({ org }) => {
   return { org };
 });
 
-export default function Dashboard({ loaderData }: Route.ComponentProps) {
+export default function Admin({ loaderData }: Route.ComponentProps) {
   const { org } = loaderData;
   const revalidator = useRevalidator();
 
@@ -146,7 +146,7 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
   const isLastStep = currentStep === 4;
 
   return (
-    <AppLayout org={org} currentPath="/dashboard">
+    <AppLayout org={org} currentPath="/admin">
       <PageLayout
         title="Get Started"
         subtitle="Create or join a firm or clinic to start using Docket"

@@ -50,7 +50,7 @@ export interface OrgLoaderContext {
 
 /**
  * Wraps a loader to require authentication. Redirects to /auth if not logged in.
- * The org may or may not exist - use this for pages like /dashboard.
+ * The org may or may not exist - use this for pages like /admin.
  *
  * Usage:
  *   export const loader = protectedLoader(async ({ user, org, fetch }) => {
@@ -83,7 +83,7 @@ export function protectedLoader<T>(
 
 /**
  * Wraps a loader to require both authentication AND org membership.
- * Redirects to /auth if not logged in, /dashboard if no org.
+ * Redirects to /auth if not logged in, /admin if no org.
  *
  * Usage:
  *   export const loader = orgLoader(async ({ user, org, fetch }) => {
@@ -170,17 +170,17 @@ async function checkAuthRequireOrg(
     requestId
   );
   if (!orgResponse.ok) {
-    throw redirect("/dashboard");
+    throw redirect("/admin");
   }
 
   const org = (await orgResponse.json()) as OrgMembership | null;
   if (!org?.org) {
-    throw redirect("/dashboard");
+    throw redirect("/admin");
   }
 
   // Step 3: Check admin requirement
   if (options.requireAdmin && org.role !== "admin") {
-    throw redirect("/dashboard");
+    throw redirect("/admin");
   }
 
   return { user: session.user, org };

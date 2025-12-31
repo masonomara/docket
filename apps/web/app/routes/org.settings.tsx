@@ -170,7 +170,7 @@ export default function SettingsPage({ loaderData }: Route.ComponentProps) {
         throw new Error(data.error || "Failed to delete firm");
       }
 
-      navigate("/dashboard");
+      navigate("/admin");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete");
     } finally {

@@ -95,7 +95,7 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
           <ul className={styles.navList}>
             {org === null ? (
               <li>
-                <Link to="/dashboard" className={getNavItemClass("/dashboard")}>
+                <Link to="/admin" className={getNavItemClass("/admin")}>
                   <Landmark
                     size={16}
                     strokeWidth={1.75}

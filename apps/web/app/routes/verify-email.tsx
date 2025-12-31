@@ -79,11 +79,11 @@ export default function VerifyEmailPage() {
               Your email has been verified. You can now access your account.
             </p>
             <Link
-              to="/dashboard"
+              to="/admin"
               className={styles.submitButton}
               style={linkButtonStyles}
             >
-              Go to Dashboard
+              Go to Admin Console
             </Link>
           </>
         )}

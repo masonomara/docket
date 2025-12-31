@@ -25,11 +25,11 @@ const INVITEE_EMAIL = `invitee-${Date.now()}@e2e.test`;
 
 test.describe("Organization Creation Flow", () => {
   test("user can access dashboard when authenticated", async ({ page }) => {
-    await page.goto("/dashboard");
+    await page.goto("/admin");
 
-    await expect(page).toHaveURL("/dashboard");
+    await expect(page).toHaveURL("/admin");
     await expect(
-      page.getByRole("heading", { name: /dashboard/i })
+      page.getByRole("heading", { name: /admin/i })
     ).toBeVisible();
   });
 
@@ -88,7 +88,7 @@ test.describe("Organization Creation Flow", () => {
     await page.getByRole("button", { name: /create organization/i }).click();
 
     // Should redirect to dashboard with new org
-    await expect(page).toHaveURL("/dashboard");
+    await expect(page).toHaveURL("/admin");
     await expect(page.getByText(TEST_ORG.name)).toBeVisible();
   });
 });

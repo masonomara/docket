@@ -25,7 +25,7 @@ export default function AuthPage() {
   // Build redirect URL based on whether there's an invitation
   const redirectUrl = invitationId
     ? `/accept-invite?invitation=${invitationId}`
-    : searchParams.get("redirect") || "/dashboard";
+    : searchParams.get("redirect") || "/admin";
 
   // Auth flow state
   const [step, setStep] = useState<AuthStep>("email");

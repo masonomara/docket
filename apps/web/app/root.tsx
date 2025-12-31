@@ -72,7 +72,7 @@ export function ErrorBoundary() {
               {title}
             </h1>
             <p className={styles.subtitle}>{message}</p>
-            <a href="/dashboard" className="btn btn-primary btn-lg btn-lg-fit">
+            <a href="/admin" className="btn btn-primary btn-lg btn-lg-fit">
               Return Home
             </a>
           </div>

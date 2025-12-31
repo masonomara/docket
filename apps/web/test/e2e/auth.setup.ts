@@ -38,10 +38,10 @@ setup("authenticate", async ({ page }) => {
   }
 
   // First, check if we're already logged in
-  await page.goto("/dashboard");
+  await page.goto("/admin");
   await page.waitForTimeout(2000);
 
-  const alreadyLoggedIn = page.url().includes("/dashboard");
+  const alreadyLoggedIn = page.url().includes("/admin");
   if (alreadyLoggedIn) {
     await page.context().storageState({ path: AUTH_STATE_FILE });
     return;
@@ -87,7 +87,7 @@ setup("authenticate", async ({ page }) => {
     await page.waitForTimeout(2000);
 
     // Check if we made it to dashboard
-    if (page.url().includes("/dashboard")) {
+    if (page.url().includes("/admin")) {
       await page.context().storageState({ path: AUTH_STATE_FILE });
       return;
     }
@@ -110,7 +110,7 @@ setup("authenticate", async ({ page }) => {
   if (isLoginPage) {
     await page.getByLabel(/password/i).fill(TEST_USER.password);
     await page.getByRole("button", { name: /log in/i }).click();
-    await expect(page).toHaveURL("/dashboard", { timeout: 10000 });
+    await expect(page).toHaveURL("/admin", { timeout: 10000 });
   }
 
   // If we got here without handling a known state, something went wrong

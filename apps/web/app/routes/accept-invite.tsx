@@ -11,9 +11,9 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const url = new URL(request.url);
   const invitationId = url.searchParams.get("invitation");
 
-  // No invitation ID - redirect to dashboard
+  // No invitation ID - redirect to admin
   if (!invitationId) {
-    throw redirect("/dashboard");
+    throw redirect("/admin");
   }
 
   // Check if user is logged in
@@ -110,7 +110,7 @@ export default function AcceptInvitePage({ loaderData }: Route.ComponentProps) {
         throw new Error(data.error || "Failed to accept invitation");
       }
 
-      navigate("/dashboard");
+      navigate("/admin");
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to accept invitation"
@@ -141,8 +141,8 @@ export default function AcceptInvitePage({ loaderData }: Route.ComponentProps) {
 
         <p className={styles.footer}>
           Not what you expected?{" "}
-          <Link to="/dashboard" className={styles.footerLink}>
-            Go to Dashboard
+          <Link to="/admin" className={styles.footerLink}>
+            Go to Admin Console
           </Link>
         </p>
       </div>
@@ -165,8 +165,8 @@ function ErrorPage({ title, message }: ErrorPageProps) {
       <div className={styles.container}>
         <h1 className={styles.title}>{title}</h1>
         <p className={styles.subtitle}>{message}</p>
-        <Link to="/dashboard" className={styles.submitButton}>
-          Go to Dashboard
+        <Link to="/admin" className={styles.submitButton}>
+          Go to Admin Console
         </Link>
       </div>
     </main>
