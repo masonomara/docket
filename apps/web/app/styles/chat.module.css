@@ -18,19 +18,14 @@
    ============================================================================= */
 
 .chatSidebar {
-  border-right: 1px solid var(--border-default);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  background: var(--surface-1);
-
-  flex-shrink: 0;
-
-  border-right: 1px solid var(--border-default);
-  padding: 12px 12px 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  flex-shrink: 0;
+  overflow: hidden;
+  padding: 12px;
+  border-right: 1px solid var(--border-default);
+  background: var(--surface-1);
 }
 .sectionLabel {
   font-size: 12px;
@@ -559,5 +554,16 @@
 
   .chatSidebar {
     display: none;
+  }
+}
+
+/* =============================================================================
+   Accessibility - Reduced Motion
+   ============================================================================= */
+
+@media (prefers-reduced-motion: reduce) {
+  .chatMessageTyping,
+  .processLogEventDotActive {
+    animation: none;
   }
 }

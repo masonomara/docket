@@ -34,8 +34,17 @@
   --success-secondary: #00714a;
   --success-highlight: rgba(1, 102, 68, 0.15);
 
+  /* Status: Warning */
+  --warning-primary: #b45309;
+  --warning-secondary: #d97706;
+  --warning-highlight: rgba(180, 83, 9, 0.15);
+
   /* Overlay */
   --overlay: rgba(29, 29, 35, 0.6);
+
+  /* Typography */
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco,
+    monospace;
 
   /* Buttons */
   --button-primary: #131416;
@@ -83,7 +92,8 @@ strong {
 }
 
 :focus-visible {
-  outline: var(--text-primary) auto 0.5px;
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 2px;
 }
 
 /* ==========================================================================
