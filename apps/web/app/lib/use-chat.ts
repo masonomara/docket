@@ -20,19 +20,62 @@ export interface ProcessEvent {
   status?: string;
   timestamp: number;
   durationMs?: number;
-  // RAG-specific
+
+  // Embedding-specific
+  query?: string;
+
+  // KB Search-specific
+  filters?: {
+    jurisdictions?: string[];
+    practiceTypes?: string[];
+    firmSize?: string;
+  };
+  matchCount?: number;
+  chunks?: Array<{
+    source: string;
+    preview: string;
+    score?: number;
+  }>;
+
+  // Context retrieved summary
   kbCount?: number;
   orgCount?: number;
-  chunks?: Array<{ text: string; source: string; preview: string }>;
+  totalTokens?: number;
+  sources?: Array<{
+    type: "kb" | "org";
+    source: string;
+    preview: string;
+  }>;
+
+  // Clio schema
+  customFieldCount?: number;
+  cached?: boolean;
+
+  // History loaded
+  messageCount?: number;
+
+  // Prompt building
+  components?: {
+    ragContext: boolean;
+    customFields: boolean;
+    userRole: string;
+    toolsEnabled: string[];
+  };
+  promptLength?: number;
+
   // LLM-specific
+  model?: string;
   hasToolCalls?: boolean;
   toolCallCount?: number;
+
   // Clio-specific
   operation?: string;
   objectType?: string;
-  filters?: Record<string, unknown>;
   count?: number;
-  preview?: { items: Array<{ name: string; id?: string }>; totalCount: number };
+  preview?: {
+    items: Array<{ name: string; id?: string }>;
+    totalCount: number;
+  };
   success?: boolean;
 }
 

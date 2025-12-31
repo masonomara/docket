@@ -287,15 +287,38 @@ interface ProcessLogProps {
   events: ProcessEvent[];
 }
 
+// Event types to display in the process log
+const VISIBLE_EVENT_TYPES = [
+  "kb_search",
+  "org_context_search",
+  "clio_schema",
+  "llm_thinking",
+  "clio_call",
+  "clio_result",
+];
+
 function ProcessLog({ events }: ProcessLogProps) {
+  // Filter to only visible event types and consolidate (complete replaces started)
+  const consolidatedEvents = events
+    .filter((e) => VISIBLE_EVENT_TYPES.includes(e.type))
+    .reduce<ProcessEvent[]>((acc, event) => {
+      const existingIndex = acc.findIndex((e) => e.type === event.type);
+      if (existingIndex === -1) {
+        acc.push(event);
+      } else {
+        acc[existingIndex] = event;
+      }
+      return acc;
+    }, []);
+
   return (
     <aside className={styles.processLog}>
       <div className={styles.processLogHeader}>Process Log</div>
       <div className={styles.processLogEvents}>
-        {events.length === 0 && (
+        {consolidatedEvents.length === 0 && (
           <div className={styles.processLogEmpty}>No activity yet</div>
         )}
-        {events.map((event) => (
+        {consolidatedEvents.map((event) => (
           <ProcessLogEvent key={event.id} event={event} />
         ))}
       </div>
@@ -303,9 +326,26 @@ function ProcessLog({ events }: ProcessLogProps) {
   );
 }
 
+// Extract friendly name from source path
+function getFriendlyName(source: string): string {
+  const parts = source.split("/");
+  const filename = parts[parts.length - 1] || source;
+  return filename
+    .replace(/\.[^.]+$/, "")
+    .replace(/[-_]/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 function ProcessLogEvent({ event }: { event: ProcessEvent }) {
   const [expanded, setExpanded] = useState(false);
   const hasDetails = hasExpandableContent(event);
+
+  // Show sources inline for search events
+  const showInlineSources =
+    (event.type === "kb_search" || event.type === "org_context_search") &&
+    event.status === "complete" &&
+    event.chunks &&
+    event.chunks.length > 0;
 
   return (
     <div className={styles.processLogEvent}>
@@ -333,32 +373,48 @@ function ProcessLogEvent({ event }: { event: ProcessEvent }) {
         )}
       </div>
 
+      {showInlineSources && (
+        <div className={styles.inlineSources}>
+          {event.chunks!.map((chunk, i) => (
+            <div key={i} className={styles.sourceCard}>
+              <div className={styles.sourceTitle}>
+                {getFriendlyName(chunk.source)}
+              </div>
+              <div className={styles.sourceExcerpt}>"{chunk.preview}"</div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {expanded && <EventDetails event={event} />}
     </div>
   );
 }
 
 function EventDetails({ event }: { event: ProcessEvent }) {
-  if (event.type === "rag_lookup" && event.chunks && event.chunks.length > 0) {
+  // Clio call details
+  if (event.type === "clio_call" && event.operation) {
+    const operationLabels: Record<string, string> = {
+      read: "Reading",
+      create: "Creating",
+      update: "Updating",
+      delete: "Deleting",
+    };
     return (
       <div className={styles.processLogEventDetails}>
-        {event.chunks.map((chunk, i) => (
-          <div key={i} className={styles.chunkPreview}>
-            <div className={styles.chunkSource}>{chunk.source}</div>
-            <div className={styles.chunkText}>
-              {chunk.preview || chunk.text}
-            </div>
-          </div>
-        ))}
+        <div className={styles.detailRow}>
+          <span className={styles.detailLabel}>Action:</span>
+          <span className={styles.detailValue}>
+            {operationLabels[event.operation] || event.operation}{" "}
+            {event.objectType}
+          </span>
+        </div>
       </div>
     );
   }
 
-  if (
-    event.type === "clio_result" &&
-    event.preview?.items &&
-    event.preview.items.length > 0
-  ) {
+  // Clio result details
+  if (event.type === "clio_result" && event.preview?.items?.length) {
     return (
       <div className={styles.processLogEventDetails}>
         {event.preview.items.map((item, i) => (
@@ -381,29 +437,49 @@ function getEventLabel(event: ProcessEvent): string {
   switch (event.type) {
     case "started":
       return "Processing";
-    case "rag_lookup":
-      if (event.status === "started") return "Searching knowledge base";
-      const total = (event.kbCount || 0) + (event.orgCount || 0);
-      return `Found ${total} relevant chunks`;
+
+    case "kb_search":
+      if (event.status === "started") return "Searching Knowledge Base...";
+      const kbCount = event.matchCount || 0;
+      return `Knowledge Base: ${kbCount} article${kbCount !== 1 ? "s" : ""}`;
+
+    case "org_context_search":
+      if (event.status === "started") return "Searching Firm Documents...";
+      const orgCount = event.matchCount || 0;
+      return `Firm Documents: ${orgCount} document${orgCount !== 1 ? "s" : ""}`;
+
+    case "clio_schema":
+      const fieldCount = event.customFieldCount || 0;
+      return `Clio: ${fieldCount} custom field${fieldCount !== 1 ? "s" : ""}`;
+
     case "llm_thinking":
-      if (event.status === "started") return "Thinking";
+      if (event.status === "started") return "AI generating response...";
       if (event.hasToolCalls)
-        return `Planning ${event.toolCallCount} tool call${event.toolCallCount === 1 ? "" : "s"}`;
-      return "Response ready";
+        return `AI preparing ${event.toolCallCount} Clio ${event.toolCallCount === 1 ? "query" : "queries"}`;
+      return "AI response complete";
+
     case "clio_call":
-      return `Querying ${event.objectType}`;
+      return `Clio: ${event.objectType}`;
+
     case "clio_result":
       if (event.success !== undefined)
-        return event.success ? "Success" : "Failed";
-      return `Found ${event.count || 0} results`;
+        return event.success ? "Clio updated" : "Clio update failed";
+      const count = event.count || 0;
+      return `Found ${count} record${count !== 1 ? "s" : ""}`;
+
     default:
       return event.type;
   }
 }
 
 function hasExpandableContent(event: ProcessEvent): boolean {
-  return (
-    (event.type === "rag_lookup" && !!event.chunks?.length) ||
-    (event.type === "clio_result" && !!event.preview?.items?.length)
-  );
+  // Events are no longer expandable inline - sources shown in summary
+  switch (event.type) {
+    case "clio_call":
+      return !!event.operation;
+    case "clio_result":
+      return !!event.preview?.items?.length;
+    default:
+      return false;
+  }
 }

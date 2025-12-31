@@ -8,8 +8,12 @@ import {
   type ToolCall,
 } from "../types";
 import {
-  retrieveRAGContext,
+  generateQueryEmbedding,
+  searchKnowledgeBase,
+  searchOrgContext,
+  finalizeContext,
   formatRAGContext,
+  type OrgSettings,
 } from "../services/rag-retrieval";
 import {
   fetchAllCustomFields,
@@ -352,17 +356,26 @@ export class TenantDO extends DurableObject<Env> {
   private async generateAssistantResponse(
     message: ChannelMessage
   ): Promise<string> {
-    // Retrieve RAG context
-    const ragContext = await retrieveRAGContext(
-      this.env,
-      message.message,
-      message.orgId,
-      {
-        jurisdictions: message.jurisdictions,
-        practiceTypes: message.practiceTypes,
-        firmSize: message.firmSize,
-      }
-    );
+    const orgSettings: OrgSettings = {
+      jurisdictions: message.jurisdictions,
+      practiceTypes: message.practiceTypes,
+      firmSize: message.firmSize,
+    };
+
+    // Generate embedding
+    const { vector } = await generateQueryEmbedding(this.env, message.message);
+
+    // Search both sources in parallel
+    const [kbResult, orgResult] = await Promise.all([
+      searchKnowledgeBase(this.env, vector, orgSettings),
+      searchOrgContext(this.env, vector, message.orgId),
+    ]);
+
+    // Finalize context with token budget
+    const ragContext = finalizeContext({
+      kbChunks: kbResult.chunks,
+      orgChunks: orgResult.chunks,
+    });
 
     // Build messages for LLM
     const history = await this.getRecentMessages(message.conversationId);
@@ -397,64 +410,96 @@ export class TenantDO extends DurableObject<Env> {
       conversationId: message.conversationId,
     });
 
-    // RAG lookup with timing
-    const ragTimer = createTimer();
-    await emit("process", { type: "rag_lookup", status: "started" });
+    const orgSettings: OrgSettings = {
+      jurisdictions: message.jurisdictions,
+      practiceTypes: message.practiceTypes,
+      firmSize: message.firmSize,
+    };
 
-    const ragContext = await retrieveRAGContext(
+    // --- Step 1: Generate query embedding ---
+    const embeddingResult = await generateQueryEmbedding(
       this.env,
-      message.message,
-      message.orgId,
-      {
-        jurisdictions: message.jurisdictions,
-        practiceTypes: message.practiceTypes,
-        firmSize: message.firmSize,
-      }
+      message.message
     );
 
-    const allChunks = [...ragContext.kbChunks, ...ragContext.orgChunks];
-    const ragDuration = ragTimer.elapsed();
+    // --- Step 2: Search Knowledge Base ---
+    await emit("process", { type: "kb_search", status: "started" });
+
+    const kbResult = await searchKnowledgeBase(
+      this.env,
+      embeddingResult.vector,
+      orgSettings
+    );
 
     await emit("process", {
-      type: "rag_lookup",
+      type: "kb_search",
       status: "complete",
-      durationMs: ragDuration,
-      kbCount: ragContext.kbChunks.length,
-      orgCount: ragContext.orgChunks.length,
-      chunks: allChunks.map((chunk) => ({
-        text: this.truncateText(
-          chunk.content,
-          TENANT_CONFIG.CHUNK_PREVIEW_LENGTH
-        ),
+      matchCount: kbResult.chunks.length,
+      chunks: kbResult.chunks.map((chunk) => ({
         source: chunk.source,
-        preview: this.truncateText(chunk.content, 150),
+        preview: this.truncateText(chunk.content, 200),
+        score: chunk.score ? Math.round(chunk.score * 100) / 100 : undefined,
       })),
+      durationMs: kbResult.durationMs,
+    });
+
+    // --- Step 3: Search Org Context ---
+    await emit("process", { type: "org_context_search", status: "started" });
+
+    const orgResult = await searchOrgContext(
+      this.env,
+      embeddingResult.vector,
+      message.orgId
+    );
+
+    await emit("process", {
+      type: "org_context_search",
+      status: "complete",
+      matchCount: orgResult.chunks.length,
+      chunks: orgResult.chunks.map((chunk) => ({
+        source: chunk.source,
+        preview: this.truncateText(chunk.content, 200),
+        score: chunk.score ? Math.round(chunk.score * 100) / 100 : undefined,
+      })),
+      durationMs: orgResult.durationMs,
+    });
+
+    // --- Step 4: Finalize context with token budget ---
+    const ragContext = finalizeContext({
+      kbChunks: kbResult.chunks,
+      orgChunks: orgResult.chunks,
     });
 
     requestLog.info("RAG retrieval complete", {
       phase: "rag",
-      durationMs: ragDuration,
       kbChunks: ragContext.kbChunks.length,
       orgChunks: ragContext.orgChunks.length,
-      sources: allChunks.map((c) => c.source),
     });
 
-    // Build messages
+    // --- Step 5: Check Clio configuration ---
+    if (this.customFieldsCache?.length > 0) {
+      await emit("process", {
+        type: "clio_schema",
+        status: "complete",
+        customFieldCount: this.customFieldsCache.length,
+      });
+    }
+
+    // --- Step 6: Load conversation history and build prompt ---
     const history = await this.getRecentMessages(message.conversationId);
+    const formattedContext = formatRAGContext(ragContext);
+    const tools = this.getClioTools(message.userRole);
     const systemPrompt = this.buildSystemPrompt(
-      formatRAGContext(ragContext),
+      formattedContext,
       message.userRole
     );
     const messages = [{ role: "system", content: systemPrompt }, ...history];
 
-    // LLM call with timing
+    // --- Step 7: Call LLM ---
     const llmTimer = createTimer();
     await emit("process", { type: "llm_thinking", status: "started" });
 
-    const llmResponse = await this.callLLM(
-      messages,
-      this.getClioTools(message.userRole)
-    );
+    const llmResponse = await this.callLLM(messages, tools);
 
     const llmDuration = llmTimer.elapsed();
     await emit("process", {

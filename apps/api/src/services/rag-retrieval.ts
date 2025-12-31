@@ -2,9 +2,10 @@ import { Env } from "../types/env";
 import { KB_CONFIG } from "../config/kb";
 import { createLogger } from "../lib/logger";
 
-interface ChunkWithSource {
+export interface ChunkWithSource {
   content: string;
   source: string;
+  score?: number;
 }
 
 export interface RAGContext {
@@ -12,10 +13,102 @@ export interface RAGContext {
   orgChunks: ChunkWithSource[];
 }
 
-interface OrgSettings {
+export interface OrgSettings {
   jurisdictions: string[];
   practiceTypes: string[];
   firmSize: string | null;
+}
+
+// Intermediate result types for granular event emission
+export interface EmbeddingResult {
+  vector: number[];
+  durationMs: number;
+}
+
+export interface KBSearchResult {
+  chunks: ChunkWithSource[];
+  filters: {
+    jurisdictions?: string[];
+    practiceTypes?: string[];
+    firmSize?: string;
+  };
+  durationMs: number;
+}
+
+export interface OrgSearchResult {
+  chunks: ChunkWithSource[];
+  durationMs: number;
+}
+
+/**
+ * Generate embedding for a query using Workers AI.
+ */
+export async function generateQueryEmbedding(
+  env: Env,
+  query: string
+): Promise<EmbeddingResult> {
+  const startTime = Date.now();
+
+  const embeddingResult = (await env.AI.run("@cf/baai/bge-base-en-v1.5", {
+    text: [query],
+  })) as { data: number[][] };
+
+  return {
+    vector: embeddingResult.data[0],
+    durationMs: Date.now() - startTime,
+  };
+}
+
+/**
+ * Search the shared Knowledge Base with org-specific filters.
+ */
+export async function searchKnowledgeBase(
+  env: Env,
+  queryVector: number[],
+  orgSettings: OrgSettings
+): Promise<KBSearchResult> {
+  const startTime = Date.now();
+  const chunks = await retrieveKBChunks(env, queryVector, orgSettings);
+
+  return {
+    chunks,
+    filters: {
+      jurisdictions:
+        orgSettings.jurisdictions.length > 0
+          ? orgSettings.jurisdictions
+          : undefined,
+      practiceTypes:
+        orgSettings.practiceTypes.length > 0
+          ? orgSettings.practiceTypes
+          : undefined,
+      firmSize: orgSettings.firmSize || undefined,
+    },
+    durationMs: Date.now() - startTime,
+  };
+}
+
+/**
+ * Search org-specific context.
+ */
+export async function searchOrgContext(
+  env: Env,
+  queryVector: number[],
+  orgId: string
+): Promise<OrgSearchResult> {
+  const startTime = Date.now();
+  const chunks = await retrieveOrgChunks(env, queryVector, orgId);
+
+  return {
+    chunks,
+    durationMs: Date.now() - startTime,
+  };
+}
+
+/**
+ * Apply token budget and combine results.
+ */
+export function finalizeContext(context: RAGContext): RAGContext {
+  return applyTokenBudget(context);
 }
 
 /**
@@ -33,19 +126,19 @@ export async function retrieveRAGContext(
 
   try {
     // Generate embedding for the user's query
-    const embeddingResult = (await env.AI.run("@cf/baai/bge-base-en-v1.5", {
-      text: [query],
-    })) as { data: number[][] };
-    const queryVector = embeddingResult.data[0];
+    const { vector: queryVector } = await generateQueryEmbedding(env, query);
 
     // Fetch chunks from both sources in parallel
-    const [kbChunks, orgChunks] = await Promise.all([
-      retrieveKBChunks(env, queryVector, orgSettings),
-      retrieveOrgChunks(env, queryVector, orgId),
+    const [kbResult, orgResult] = await Promise.all([
+      searchKnowledgeBase(env, queryVector, orgSettings),
+      searchOrgContext(env, queryVector, orgId),
     ]);
 
     // Trim to fit within token budget
-    return applyTokenBudget({ kbChunks, orgChunks });
+    return applyTokenBudget({
+      kbChunks: kbResult.chunks,
+      orgChunks: orgResult.chunks,
+    });
   } catch (error) {
     logger.error("RAG retrieval failed", { error });
     return { kbChunks: [], orgChunks: [] };
@@ -113,14 +206,16 @@ async function retrieveKBChunks(
   const sortedEntries = Array.from(bestScoreById.entries()).sort(
     (a, b) => b[1] - a[1]
   );
-  const topIds = sortedEntries.slice(0, KB_CONFIG.KB_TOP_K).map(([id]) => id);
+  const topEntries = sortedEntries.slice(0, KB_CONFIG.KB_TOP_K);
+  const topIds = topEntries.map(([id]) => id);
+  const scoreById = new Map(topEntries);
 
   if (topIds.length === 0) {
     return [];
   }
 
   // Fetch the actual chunk content from D1
-  return fetchKBChunksFromDB(env, topIds);
+  return fetchKBChunksFromDB(env, topIds, scoreById);
 }
 
 function buildKBFilters(
@@ -177,7 +272,8 @@ async function queryVectorize(
 
 async function fetchKBChunksFromDB(
   env: Env,
-  ids: string[]
+  ids: string[],
+  scoreById?: Map<string, number>
 ): Promise<ChunkWithSource[]> {
   const placeholders = ids.map(() => "?").join(", ");
   const query = `SELECT id, content, source FROM kb_chunks WHERE id IN (${placeholders})`;
@@ -196,6 +292,7 @@ async function fetchKBChunksFromDB(
       orderedChunks.push({
         content: chunk.content,
         source: chunk.source,
+        score: scoreById?.get(id),
       });
     }
   }
@@ -221,15 +318,32 @@ async function retrieveOrgChunks(
     return [];
   }
 
+  // Create score map for each match
+  const scoreById = new Map(results.matches.map((m) => [m.id, m.score]));
   const ids = results.matches.map((match) => match.id);
   const placeholders = ids.map(() => "?").join(", ");
-  const query = `SELECT content, source FROM org_context_chunks WHERE id IN (${placeholders}) AND org_id = ?`;
+  const query = `SELECT id, content, source FROM org_context_chunks WHERE id IN (${placeholders}) AND org_id = ?`;
 
   const result = await env.DB.prepare(query)
     .bind(...ids, orgId)
-    .all<{ content: string; source: string }>();
+    .all<{ id: string; content: string; source: string }>();
 
-  return result.results;
+  // Return chunks with scores, preserving order
+  const chunksById = new Map(result.results.map((c) => [c.id, c]));
+  const orderedChunks: ChunkWithSource[] = [];
+
+  for (const id of ids) {
+    const chunk = chunksById.get(id);
+    if (chunk) {
+      orderedChunks.push({
+        content: chunk.content,
+        source: chunk.source,
+        score: scoreById.get(id),
+      });
+    }
+  }
+
+  return orderedChunks;
 }
 
 /**

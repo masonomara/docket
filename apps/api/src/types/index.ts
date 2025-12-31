@@ -218,11 +218,18 @@ export const SSEContentEventSchema = z.object({
 });
 
 // --- Process Events ---
-// Sent to show progress through the processing pipeline
+// Sent to show progress through the processing pipeline.
+// These events provide a granular, transparent view into how the assistant processes each message.
 
 export type ProcessEventType =
   | "started"
-  | "rag_lookup"
+  | "embedding"
+  | "kb_search"
+  | "org_context_search"
+  | "context_retrieved"
+  | "clio_schema"
+  | "history_loaded"
+  | "prompt_building"
   | "llm_thinking"
   | "clio_call"
   | "clio_result";
@@ -231,15 +238,95 @@ export interface SSEProcessEventStarted extends SSEBaseEvent {
   type: "started";
 }
 
-export interface SSEProcessEventRagLookup extends SSEBaseEvent {
-  type: "rag_lookup";
+// Embedding the user's query for semantic search
+export interface SSEProcessEventEmbedding extends SSEBaseEvent {
+  type: "embedding";
   status: "started" | "complete";
-  chunks?: Array<{ text: string; source: string }>;
+  query?: string; // The query being embedded
+  durationMs?: number;
+}
+
+// Searching the shared Knowledge Base
+export interface SSEProcessEventKBSearch extends SSEBaseEvent {
+  type: "kb_search";
+  status: "started" | "complete";
+  filters?: {
+    jurisdictions?: string[];
+    practiceTypes?: string[];
+    firmSize?: string;
+  };
+  matchCount?: number;
+  chunks?: Array<{
+    source: string;
+    preview: string;
+    score?: number;
+  }>;
+  durationMs?: number;
+}
+
+// Searching organization-specific context
+export interface SSEProcessEventOrgContextSearch extends SSEBaseEvent {
+  type: "org_context_search";
+  status: "started" | "complete";
+  matchCount?: number;
+  chunks?: Array<{
+    source: string;
+    preview: string;
+    score?: number;
+  }>;
+  durationMs?: number;
+}
+
+// Summary of all retrieved context
+export interface SSEProcessEventContextRetrieved extends SSEBaseEvent {
+  type: "context_retrieved";
+  kbCount: number;
+  orgCount: number;
+  totalTokens?: number;
+  sources: Array<{
+    type: "kb" | "org";
+    source: string;
+    preview: string;
+  }>;
+}
+
+// Loading Clio schema (custom fields, API configuration)
+export interface SSEProcessEventClioSchema extends SSEBaseEvent {
+  type: "clio_schema";
+  status: "started" | "complete";
+  customFieldCount?: number;
+  cached?: boolean;
+  durationMs?: number;
+}
+
+// Loading conversation history
+export interface SSEProcessEventHistoryLoaded extends SSEBaseEvent {
+  type: "history_loaded";
+  messageCount: number;
+  durationMs?: number;
+}
+
+// Building the system prompt
+export interface SSEProcessEventPromptBuilding extends SSEBaseEvent {
+  type: "prompt_building";
+  status: "started" | "complete";
+  components?: {
+    ragContext: boolean;
+    customFields: boolean;
+    userRole: string;
+    toolsEnabled: string[];
+  };
+  promptLength?: number;
+  durationMs?: number;
 }
 
 export interface SSEProcessEventLlmThinking extends SSEBaseEvent {
   type: "llm_thinking";
   status: "started" | "complete";
+  model?: string;
+  durationMs?: number;
+  hasToolCalls?: boolean;
+  toolCallCount?: number;
 }
 
 export interface SSEProcessEventClioCall extends SSEBaseEvent {
@@ -266,10 +353,22 @@ export type SSEProcessEventClioResult =
 
 export type SSEProcessEvent =
   | SSEProcessEventStarted
-  | SSEProcessEventRagLookup
+  | SSEProcessEventEmbedding
+  | SSEProcessEventKBSearch
+  | SSEProcessEventOrgContextSearch
+  | SSEProcessEventContextRetrieved
+  | SSEProcessEventClioSchema
+  | SSEProcessEventHistoryLoaded
+  | SSEProcessEventPromptBuilding
   | SSEProcessEventLlmThinking
   | SSEProcessEventClioCall
   | SSEProcessEventClioResult;
+
+const chunkSchema = z.object({
+  source: z.string(),
+  preview: z.string(),
+  score: z.number().optional(),
+});
 
 export const SSEProcessEventSchema = z.discriminatedUnion("type", [
   z.object({
@@ -277,16 +376,85 @@ export const SSEProcessEventSchema = z.discriminatedUnion("type", [
     requestId: z.string().optional(),
   }),
   z.object({
-    type: z.literal("rag_lookup"),
+    type: z.literal("embedding"),
     status: z.enum(["started", "complete"]),
-    chunks: z
-      .array(z.object({ text: z.string(), source: z.string() }))
+    query: z.string().optional(),
+    durationMs: z.number().optional(),
+    requestId: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal("kb_search"),
+    status: z.enum(["started", "complete"]),
+    filters: z
+      .object({
+        jurisdictions: z.array(z.string()).optional(),
+        practiceTypes: z.array(z.string()).optional(),
+        firmSize: z.string().optional(),
+      })
       .optional(),
+    matchCount: z.number().optional(),
+    chunks: z.array(chunkSchema).optional(),
+    durationMs: z.number().optional(),
+    requestId: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal("org_context_search"),
+    status: z.enum(["started", "complete"]),
+    matchCount: z.number().optional(),
+    chunks: z.array(chunkSchema).optional(),
+    durationMs: z.number().optional(),
+    requestId: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal("context_retrieved"),
+    kbCount: z.number(),
+    orgCount: z.number(),
+    totalTokens: z.number().optional(),
+    sources: z.array(
+      z.object({
+        type: z.enum(["kb", "org"]),
+        source: z.string(),
+        preview: z.string(),
+      })
+    ),
+    requestId: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal("clio_schema"),
+    status: z.enum(["started", "complete"]),
+    customFieldCount: z.number().optional(),
+    cached: z.boolean().optional(),
+    durationMs: z.number().optional(),
+    requestId: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal("history_loaded"),
+    messageCount: z.number(),
+    durationMs: z.number().optional(),
+    requestId: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal("prompt_building"),
+    status: z.enum(["started", "complete"]),
+    components: z
+      .object({
+        ragContext: z.boolean(),
+        customFields: z.boolean(),
+        userRole: z.string(),
+        toolsEnabled: z.array(z.string()),
+      })
+      .optional(),
+    promptLength: z.number().optional(),
+    durationMs: z.number().optional(),
     requestId: z.string().optional(),
   }),
   z.object({
     type: z.literal("llm_thinking"),
     status: z.enum(["started", "complete"]),
+    model: z.string().optional(),
+    durationMs: z.number().optional(),
+    hasToolCalls: z.boolean().optional(),
+    toolCallCount: z.number().optional(),
     requestId: z.string().optional(),
   }),
   z.object({
