@@ -116,20 +116,20 @@ The system has two sources of RAG context:
 
 ### Shared Knowledge Base (developer-managed)
 
-| Component | Location | Purpose |
-|-----------|----------|---------|
-| Source files | `apps/api/kb/*.md` | Markdown content |
-| Bundled manifest | `src/services/kb-manifest.ts` | Auto-generated imports |
-| D1 table | `kb_chunks` | Chunk text and metadata |
-| Vectorize | `type: "kb"` vectors | Semantic search |
+| Component        | Location                      | Purpose                 |
+| ---------------- | ----------------------------- | ----------------------- |
+| Source files     | `apps/api/kb/*.md`            | Markdown content        |
+| Bundled manifest | `src/services/kb-manifest.ts` | Auto-generated imports  |
+| D1 table         | `kb_chunks`                   | Chunk text and metadata |
+| Vectorize        | `type: "kb"` vectors          | Semantic search         |
 
 ### Org Context (org admin-managed)
 
-| Component | Location | Purpose |
-|-----------|----------|---------|
-| Source files | R2 via `/api/org/context` | Uploaded documents |
-| D1 table | `org_context_chunks` | Chunk text and metadata |
-| Vectorize | `type: "org"` + `org_id` | Per-org semantic search |
+| Component    | Location                  | Purpose                 |
+| ------------ | ------------------------- | ----------------------- |
+| Source files | R2 via `/api/org/context` | Uploaded documents      |
+| D1 table     | `org_context_chunks`      | Chunk text and metadata |
+| Vectorize    | `type: "org"` + `org_id`  | Per-org semantic search |
 
 ### Reseeding the Shared KB
 
