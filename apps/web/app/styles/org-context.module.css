@@ -12,14 +12,13 @@
   padding: 32px;
   background: var(--container);
   text-align: center;
-  transition: all 0.15s ease;
+  transition: all var(--transition-fast);
 }
 
 .uploadArea:hover,
 .uploadArea.uploading,
 .uploadArea.dragOver {
   border-color: var(--border-dark);
-
 }
 
 /* -----------------------------------------------------------------------------

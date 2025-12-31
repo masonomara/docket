@@ -39,17 +39,17 @@
 .chatSidebarList {
   flex: 1;
   overflow-y: auto;
-  padding: 0px;
+  padding: 0;
 }
 
 .chatSidebarItem {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0px 8px;
+  padding: 0 8px;
   border-radius: 8px;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background var(--transition-fast);
   height: 36px;
 }
 
@@ -101,11 +101,14 @@
   flex-shrink: 0;
 }
 
-.chatSidebarItem:hover .chatSidebarItemDelete {
+.chatSidebarItem:hover .chatSidebarItemDelete,
+.chatSidebarItem:focus-within .chatSidebarItemDelete,
+.chatSidebarItemDelete:focus {
   opacity: 1;
 }
 
-.chatSidebarItemDelete:hover {
+.chatSidebarItemDelete:hover,
+.chatSidebarItemDelete:focus {
   background: var(--error-highlight);
   color: var(--error-primary);
 }
@@ -129,9 +132,8 @@
   text-decoration: none;
   font-size: 14px;
   line-height: 19px;
-  transition: background 0.15s ease;
+  transition: background var(--transition-fast);
   outline: none;
-  stroke: none;
   border: none;
   background: none;
 }

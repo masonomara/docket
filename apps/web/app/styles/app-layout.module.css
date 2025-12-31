@@ -104,7 +104,7 @@
   text-decoration: none;
   font-size: 14px;
   line-height: 19px;
-  transition: background 0.15s ease;
+  transition: background var(--transition-fast);
 }
 
 .navItem:hover,
@@ -147,7 +147,7 @@
   align-items: center;
   gap: 10px;
   border-radius: 6px;
-  transition: background 0.15s ease;
+  transition: background var(--transition-fast);
 }
 
 .orgAvatar {
@@ -233,7 +233,7 @@
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.5);
-    z-index: 90;
+    z-index: var(--z-overlay);
   }
 
   /* Content takes full width on mobile */
@@ -250,7 +250,7 @@
     min-width: 255px;
     width: calc(100vw - 40px);
     max-width: 355px;
-    z-index: 100;
+    z-index: var(--z-modal);
     border-right: none;
     border-left: 1px solid var(--border-default);
     transform: translateX(100%);

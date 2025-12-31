@@ -219,16 +219,12 @@ function ConnectToClioSection({ onConnect }: ConnectToClioSectionProps) {
 
       <div className="info-card">
         <div>
-          <h3 className="text-headline">What Docket does with Clio</h3>
-          <ul
-            className="text-secondary"
-            style={{ marginTop: ".2em", marginLeft: "1em" }}
-          >
-            <li>Query matters, contacts, tasks, and calendar entries</li>
-            <li>Create and update records</li>
-            <li>Search across your firm&apos;s case data</li>
-            <li>Access is encrypted and limited to your Clio permissions</li>
-          </ul>
+          <h3 className="text-headline">Clio Integration</h3>
+
+          <p className="section-description">
+            Query matters, contacts, tasks, and calendar entries. Access is
+            encrypted and limited to your Clio permissions.
+          </p>
         </div>
 
         <button onClick={onConnect} className="btn btn-sm btn-primary">

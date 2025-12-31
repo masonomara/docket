@@ -42,6 +42,14 @@
   /* Overlay */
   --overlay: rgba(29, 29, 35, 0.6);
 
+  /* Z-Index Scale */
+  --z-overlay: 90;
+  --z-modal: 100;
+  --z-tooltip: 110;
+
+  /* Transitions */
+  --transition-fast: 0.15s ease;
+
   /* Typography */
   --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco,
     monospace;
@@ -150,8 +158,7 @@ strong {
   line-height: 16px;
 }
 
-.text-caption-1,
-.text-caption-2 {
+.text-caption {
   font-size: 11px;
   line-height: 13px;
 }
@@ -161,6 +168,14 @@ strong {
 }
 
 .text-tertiary {
+  color: var(--text-tertiary);
+}
+
+.section-label {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  text-transform: uppercase;
   color: var(--text-tertiary);
 }
 
@@ -179,7 +194,7 @@ strong {
   align-items: center;
   justify-content: center;
   text-decoration: none;
-  transition: background 0.15s ease;
+  transition: background var(--transition-fast);
 }
 
 .btn:disabled {
@@ -392,7 +407,7 @@ strong {
   line-height: 19px;
 }
 
-.infoSection {
+.info-section {
   background-color: var(--surface-2);
   border: 1px solid var(--border-default);
   display: flex;
@@ -401,12 +416,12 @@ strong {
   align-items: flex-start;
 }
 
-.infoSection * {
+.info-section * {
   font-size: 14px !important;
   line-height: 19px !important;
 }
 
-.infoSection ul {
+.info-section ul {
   padding-left: 1em;
 }
 
@@ -472,7 +487,7 @@ strong {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 100;
+  z-index: var(--z-modal);
 }
 
 .modal-content {
@@ -590,7 +605,7 @@ strong {
   border-radius: 8px;
   cursor: pointer;
   color: var(--text-secondary);
-  transition: all 0.15s ease;
+  transition: all var(--transition-fast);
 }
 
 .modal-option-card:hover,
@@ -633,7 +648,7 @@ strong {
   border-radius: 6px;
   cursor: pointer;
   color: var(--text-secondary);
-  transition: all 0.15s ease;
+  transition: all var(--transition-fast);
 }
 
 .modal-checkbox-item:hover,
@@ -660,7 +675,7 @@ strong {
    Tables
    ========================================================================== */
 
-.tableWrapper {
+.table-wrapper {
   width: 100%;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;

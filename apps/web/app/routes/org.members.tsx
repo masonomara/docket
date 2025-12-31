@@ -224,7 +224,7 @@ function MembersTable({
       {members.length === 0 ? (
         <div className="empty-state">No members found</div>
       ) : (
-        <div className="tableWrapper">
+        <div className="table-wrapper">
           <table className="table">
             <thead>
               <tr>
@@ -350,7 +350,7 @@ function InvitationsTable({ invitations, onRevoke }: InvitationsTableProps) {
         Pending Invitations ({invitations.length})
       </h2>
 
-      <div className="tableWrapper">
+      <div className="table-wrapper">
         <table className="table">
           <thead>
             <tr>

@@ -215,7 +215,7 @@ export default function DocumentsPage({ loaderData }: Route.ComponentProps) {
 
 function InfoBanner() {
   return (
-    <section className="section infoSection">
+    <section className="section info-section">
       <Info
         strokeWidth={2.25}
         size={16}
@@ -277,7 +277,7 @@ function DocumentsTable({ documents, onDelete }: DocumentsTableProps) {
       {documents.length === 0 ? (
         <p className="empty-state">No documents uploaded yet.</p>
       ) : (
-        <div className="tableWrapper">
+        <div className="table-wrapper">
           <table className="table">
             <thead>
               <tr>
