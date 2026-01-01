@@ -739,8 +739,44 @@
     border-left: 1px solid var(--border-default);
   }
 
+  .processLog::-webkit-scrollbar {
+    width: 5px;
+  }
+
+  /* Track */
+  .processLog::-webkit-scrollbar-track {
+    background: var(--surface-1);
+    width: 10px;
+  }
+
+  /* Handle */
+  .processLog::-webkit-scrollbar-thumb {
+    background: var(--border-default);
+    border-radius: 100px;
+  }
+
+  /* Handle on hover */
+  .processLog::-webkit-scrollbar-thumb:hover {
+    background: var(--border-dark);
+  }
+
   .processLogOpen {
     transform: translateX(0);
+  }
+
+  .processLogCloseButton {
+    display: flex;
+  }
+  .processLogHeaderRow {
+    display: none;
+  }
+  .processLogMobileHeader {
+    display: flex;
+    justify-content: space-between;
+    flex-direction: row;
+    align-items: center;
+    padding: 0px 8px;
+    width: 100%;
   }
 
   .processLogCloseButton {
@@ -756,9 +792,7 @@
   .chatLayout {
     grid-template-columns: 1fr;
   }
-.processLogHeaderRow {
-  display: none;
-}
+
   .chatSidebarOverlay {
     display: block;
     position: fixed;

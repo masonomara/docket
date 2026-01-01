@@ -494,13 +494,13 @@ function ProcessLog({ events, isOpen, onClose }: ProcessLogProps) {
       className={`${styles.processLog} ${isOpen ? styles.processLogOpen : ""}`}
     >
       <div
-        className={styles.chatSideBarMobileHeader}
+        className={`${styles.processLogMobileHeader} ${styles.chatSideBarMobileHeader}`}
         style={{ padding: "12px 8px 0px 20px" }}
       >
         <span className="text-title-3">Process Log</span>
         <button
           type="button"
-          className={styles.chatSidebarCloseButton}
+          className={`${styles.processLogCloseButton} ${styles.chatSidebarCloseButton}`}
           onClick={onClose}
           aria-label="Close conversations"
         >
