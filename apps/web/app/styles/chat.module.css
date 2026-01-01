@@ -776,6 +776,7 @@
     flex-direction: row;
     align-items: center;
     padding: 0px 8px;
+    padding-right: 16px !important;
     width: 100%;
   }
 
@@ -803,6 +804,7 @@
     background: rgba(0, 0, 0, 0.5);
     z-index: 98;
   }
+
   .chatSideBarMobileHeader {
     display: flex;
     justify-content: space-between;
