@@ -40,7 +40,11 @@ Use the structured logger from `lib/logger.ts`. All logs are JSON and include a 
 
 1. **DO SQLite in vitest** — The vitest-pool-workers plugin can't test Durable Object SQLite (SQLITE_AUTH error). Use the `/demo/clio` endpoint for manual testing instead.
 
-2. **RAG integration tests** — Set `INTEGRATION_TESTS_ENABLED=true` in `.dev.vars` to run tests that hit live Vectorize and Workers AI.
+2. **RAG integration tests** — Require remote Vectorize bindings and metadata indexes. Setup:
+   - `CLOUDFLARE_ACCOUNT_ID` in test command (already set in package.json)
+   - `remoteBindings: true` in vitest.config.mts (already configured)
+   - Metadata indexes created on `docket-kb` Vectorize index for: `type`, `category`, `jurisdiction`, `practice_type`, `firm_size`, `org_id`
+   - Tests may be flaky due to Vectorize eventual consistency (45s wait)
 
 ## Code Philosophy
 

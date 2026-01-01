@@ -4,14 +4,23 @@
  * These tests verify the end-to-end behavior of the Docket API
  * by making real HTTP requests to a running worker.
  *
- * Run with: npm run test:e2e
- * Requires: Worker running at WORKER_URL (default: https://api.docketadmin.com)
+ * Run with: WORKER_URL=http://localhost:8787 npm run test:e2e
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 
-// Base URL for the worker - can be overridden via environment variable
-const BASE_URL = process.env?.WORKER_URL || "https://api.docketadmin.com";
+// Base URL for the worker - must be explicitly set
+const BASE_URL = process.env.WORKER_URL;
+
+beforeAll(() => {
+  if (!BASE_URL) {
+    throw new Error(
+      "WORKER_URL environment variable is required for E2E tests.\n" +
+        "Set it to your local worker or staging URL.\n" +
+        "Example: WORKER_URL=http://localhost:8787 npm run test:e2e"
+    );
+  }
+});
 
 // =============================================================================
 // Test Helpers
@@ -41,7 +50,7 @@ function createTeamsActivity(overrides: Record<string, unknown> = {}): string {
  * Sends a message to the Teams webhook endpoint.
  */
 async function sendTeamsMessage(body: string): Promise<Response> {
-  return fetch(`${BASE_URL}/api/messages`, {
+  return fetch(`${BASE_URL!}/api/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body,
@@ -136,7 +145,7 @@ describe("E2E Demo Flow", () => {
 
   describe("Error Handling", () => {
     it("handles malformed JSON gracefully", async () => {
-      const response = await fetch(`${BASE_URL}/api/messages`, {
+      const response = await fetch(`${BASE_URL!}/api/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: "this is not valid JSON {{{",

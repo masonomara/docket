@@ -1,53 +1,31 @@
 import { env } from "cloudflare:test";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterAll } from "vitest";
 import {
   hashUserId,
   checkSoleOwnerships,
   deleteUserData,
   getDataDeletionPreview,
   type SoleOwnershipError,
+  type GdprDeleteResult,
 } from "../../src/services/gdpr";
+import {
+  uniqueEmail,
+  createTestUser,
+  createTestOrg,
+  addOrgMember,
+  createOrgContextChunk,
+  createSession,
+  createAccount,
+  createChannelLink,
+} from "../helpers";
+import {
+  generateEmbedding,
+  VectorTracker,
+} from "../helpers";
 
-// Helper to generate unique test emails
-function uniqueEmail(prefix: string): string {
-  return `${prefix}-${Date.now()}@test.com`;
-}
-
-// Database helper functions
-
-async function insertUser(
-  id: string,
-  email: string,
-  name = "Test"
-): Promise<void> {
-  const now = Date.now();
-  await env.DB.prepare(
-    `INSERT INTO user (id, name, email, email_verified, created_at, updated_at)
-     VALUES (?, ?, ?, 1, ?, ?)`
-  )
-    .bind(id, name, email, now, now)
-    .run();
-}
-
-async function insertOrg(id: string, name: string): Promise<void> {
-  const now = Date.now();
-  await env.DB.prepare(
-    `INSERT INTO org (id, name, created_at, updated_at)
-     VALUES (?, ?, ?, ?)`
-  )
-    .bind(id, name, now, now)
-    .run();
-}
-
-async function insertOwner(orgId: string, userId: string): Promise<void> {
-  const now = Date.now();
-  await env.DB.prepare(
-    `INSERT INTO org_members (id, org_id, user_id, role, is_owner, created_at)
-     VALUES (?, ?, ?, 'admin', 1, ?)`
-  )
-    .bind(crypto.randomUUID(), orgId, userId, now)
-    .run();
-}
+// Integration tests require CLOUDFLARE_ACCOUNT_ID set in environment
+const integrationEnabled = !!(env as { INTEGRATION_TESTS_ENABLED?: boolean })
+  .INTEGRATION_TESTS_ENABLED;
 
 describe("GDPR Deletion", () => {
   describe("hashUserId", () => {
@@ -69,59 +47,32 @@ describe("GDPR Deletion", () => {
 
   describe("checkSoleOwnerships", () => {
     it("returns empty when user owns no orgs", async () => {
-      const userId = crypto.randomUUID();
-      await insertUser(userId, uniqueEmail("no-orgs"));
+      const user = await createTestUser(env.DB, { email: uniqueEmail("no-orgs") });
 
-      const result = await checkSoleOwnerships(env.DB, userId);
+      const result = await checkSoleOwnerships(env.DB, user.id);
 
       expect(result).toEqual([]);
     });
 
     it("returns org ID when user is sole owner", async () => {
-      const userId = crypto.randomUUID();
-      const orgId = crypto.randomUUID();
+      const user = await createTestUser(env.DB, { email: uniqueEmail("sole") });
+      const org = await createTestOrg(env.DB, { name: "Sole Org" });
+      await addOrgMember(env.DB, { orgId: org.id, userId: user.id, isOwner: true });
 
-      await insertUser(userId, uniqueEmail("sole"));
-      await insertOrg(orgId, "Sole Org");
-      await insertOwner(orgId, userId);
+      const result = await checkSoleOwnerships(env.DB, user.id);
 
-      const result = await checkSoleOwnerships(env.DB, userId);
-
-      expect(result).toContain(orgId);
+      expect(result).toContain(org.id);
     });
 
     it("returns empty when multiple owners exist", async () => {
-      const userId1 = crypto.randomUUID();
-      const userId2 = crypto.randomUUID();
-      const orgId = crypto.randomUUID();
-      const now = Date.now();
+      const user1 = await createTestUser(env.DB, { name: "Owner 1", email: uniqueEmail("o1") });
+      const user2 = await createTestUser(env.DB, { name: "Owner 2", email: uniqueEmail("o2") });
+      const org = await createTestOrg(env.DB, { name: "Multi-Owner Org" });
 
-      // Create two users
-      await env.DB.batch([
-        env.DB.prepare(
-          `INSERT INTO user (id, name, email, email_verified, created_at, updated_at)
-           VALUES (?, ?, ?, 1, ?, ?)`
-        ).bind(userId1, "Owner 1", uniqueEmail("o1"), now, now),
-        env.DB.prepare(
-          `INSERT INTO user (id, name, email, email_verified, created_at, updated_at)
-           VALUES (?, ?, ?, 1, ?, ?)`
-        ).bind(userId2, "Owner 2", uniqueEmail("o2"), now, now),
-      ]);
+      await addOrgMember(env.DB, { orgId: org.id, userId: user1.id, isOwner: true });
+      await addOrgMember(env.DB, { orgId: org.id, userId: user2.id, isOwner: true });
 
-      // Create org with both as owners
-      await insertOrg(orgId, "Multi-Owner Org");
-      await env.DB.batch([
-        env.DB.prepare(
-          `INSERT INTO org_members (id, org_id, user_id, role, is_owner, created_at)
-           VALUES (?, ?, ?, 'admin', 1, ?)`
-        ).bind(crypto.randomUUID(), orgId, userId1, now),
-        env.DB.prepare(
-          `INSERT INTO org_members (id, org_id, user_id, role, is_owner, created_at)
-           VALUES (?, ?, ?, 'admin', 1, ?)`
-        ).bind(crypto.randomUUID(), orgId, userId2, now),
-      ]);
-
-      const result = await checkSoleOwnerships(env.DB, userId1);
+      const result = await checkSoleOwnerships(env.DB, user1.id);
 
       expect(result).toEqual([]);
     });
@@ -129,39 +80,24 @@ describe("GDPR Deletion", () => {
 
   describe("deleteUserData", () => {
     it("deletes user and related records", async () => {
-      const userId = crypto.randomUUID();
-      const now = Date.now();
+      const user = await createTestUser(env.DB, {
+        email: uniqueEmail("delete"),
+        name: "Delete Me",
+      });
 
-      // Create user with related records
-      await insertUser(userId, uniqueEmail("delete"), "Delete Me");
+      await createSession(env.DB, user.id, { token: "tok" });
+      await createAccount(env.DB, { userId: user.id, providerId: "credential" });
+      await createChannelLink(env.DB, {
+        channelType: "teams",
+        channelUserId: "29:test",
+        userId: user.id,
+      });
 
-      await env.DB.prepare(
-        `INSERT INTO session (id, user_id, token, expires_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)`
-      )
-        .bind(crypto.randomUUID(), userId, "tok", now + 86400000, now, now)
-        .run();
-
-      await env.DB.prepare(
-        `INSERT INTO account (id, user_id, account_id, provider_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)`
-      )
-        .bind(crypto.randomUUID(), userId, "acc", "credential", now, now)
-        .run();
-
-      await env.DB.prepare(
-        `INSERT INTO channel_user_links (id, channel_type, channel_user_id, user_id, created_at)
-         VALUES (?, ?, ?, ?, ?)`
-      )
-        .bind(crypto.randomUUID(), "teams", "29:test", userId, now)
-        .run();
-
-      // Delete the user
       const result = (await deleteUserData(
         env.DB,
         env.R2,
         env.VECTORIZE,
-        userId
+        user.id
       )) as {
         success: boolean;
         deletedRecords: { user: boolean; sessions: number };
@@ -171,34 +107,29 @@ describe("GDPR Deletion", () => {
       expect(result.deletedRecords.user).toBe(true);
       expect(result.deletedRecords.sessions).toBe(1);
 
-      // Verify user is gone
       const userCheck = await env.DB.prepare(`SELECT id FROM user WHERE id = ?`)
-        .bind(userId)
+        .bind(user.id)
         .first();
 
       expect(userCheck).toBeNull();
     });
 
     it("fails when user is sole owner", async () => {
-      const userId = crypto.randomUUID();
-      const orgId = crypto.randomUUID();
-
-      await insertUser(userId, uniqueEmail("sole-del"));
-      await insertOrg(orgId, "Sole Del Org");
-      await insertOwner(orgId, userId);
+      const user = await createTestUser(env.DB, { email: uniqueEmail("sole-del") });
+      const org = await createTestOrg(env.DB, { name: "Sole Del Org" });
+      await addOrgMember(env.DB, { orgId: org.id, userId: user.id, isOwner: true });
 
       const result = (await deleteUserData(
         env.DB,
         env.R2,
         env.VECTORIZE,
-        userId
+        user.id
       )) as SoleOwnershipError;
 
       expect(result.type).toBe("sole_owner");
 
-      // Verify user still exists
       const userCheck = await env.DB.prepare(`SELECT id FROM user WHERE id = ?`)
-        .bind(userId)
+        .bind(user.id)
         .first();
 
       expect(userCheck).not.toBeNull();
@@ -219,28 +150,13 @@ describe("GDPR Deletion", () => {
 
   describe("getDataDeletionPreview", () => {
     it("returns count of records", async () => {
-      const userId = crypto.randomUUID();
       const email = uniqueEmail("preview");
-      const now = Date.now();
+      const user = await createTestUser(env.DB, { email, name: "Preview" });
 
-      await insertUser(userId, email, "Preview");
+      await createSession(env.DB, user.id, { token: "t1" });
+      await createSession(env.DB, user.id, { token: "t2" });
 
-      // Add two sessions
-      await env.DB.prepare(
-        `INSERT INTO session (id, user_id, token, expires_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)`
-      )
-        .bind(crypto.randomUUID(), userId, "t1", now + 86400000, now, now)
-        .run();
-
-      await env.DB.prepare(
-        `INSERT INTO session (id, user_id, token, expires_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)`
-      )
-        .bind(crypto.randomUUID(), userId, "t2", now + 86400000, now, now)
-        .run();
-
-      const preview = await getDataDeletionPreview(env.DB, userId);
+      const preview = await getDataDeletionPreview(env.DB, user.id);
 
       expect(preview.user?.email).toBe(email);
       expect(preview.sessions).toBe(2);
@@ -253,16 +169,134 @@ describe("GDPR Deletion", () => {
     });
 
     it("includes sole owner orgs in preview", async () => {
-      const userId = crypto.randomUUID();
-      const orgId = crypto.randomUUID();
+      const user = await createTestUser(env.DB, { email: uniqueEmail("prev-sole") });
+      const org = await createTestOrg(env.DB, { name: "Preview Org" });
+      await addOrgMember(env.DB, { orgId: org.id, userId: user.id, isOwner: true });
 
-      await insertUser(userId, uniqueEmail("prev-sole"));
-      await insertOrg(orgId, "Preview Org");
-      await insertOwner(orgId, userId);
+      const preview = await getDataDeletionPreview(env.DB, user.id);
 
-      const preview = await getDataDeletionPreview(env.DB, userId);
-
-      expect(preview.soleOwnerOrgs).toContain(orgId);
+      expect(preview.soleOwnerOrgs).toContain(org.id);
     });
+  });
+});
+
+// =============================================================================
+// Vectorize Integration Tests (require live Vectorize)
+// =============================================================================
+
+const vectorTracker = new VectorTracker();
+
+describe.skipIf(!integrationEnabled)("GDPR Vectorize Deletion", () => {
+  afterAll(() => vectorTracker.cleanup(env as any));
+
+  it("deletes user's org context chunks from D1 and Vectorize", async () => {
+    const user = await createTestUser(env.DB, { email: uniqueEmail("vec-del") });
+    const org = await createTestOrg(env.DB, { name: "Vectorize Test Org" });
+    const chunkId = `gdpr-vec-test-${Date.now()}`;
+    const testContent = "Confidential client billing procedures for GDPR test";
+
+    await createOrgContextChunk(env.DB, {
+      id: chunkId,
+      orgId: org.id,
+      content: testContent,
+      uploadedBy: user.id,
+    });
+
+    // Verify D1 record exists before deletion
+    const beforeCheck = await env.DB.prepare(
+      `SELECT id, uploaded_by FROM org_context_chunks WHERE id = ?`
+    )
+      .bind(chunkId)
+      .first<{ id: string; uploaded_by: string }>();
+    expect(beforeCheck?.id).toBe(chunkId);
+    expect(beforeCheck?.uploaded_by).toBe(user.id);
+
+    // Generate embedding and upsert to Vectorize
+    const embedding = await generateEmbedding(env as any, testContent);
+    await env.VECTORIZE.upsert([
+      {
+        id: chunkId,
+        values: embedding,
+        metadata: { type: "org", org_id: org.id },
+      },
+    ]);
+    vectorTracker.track(chunkId);
+
+    // Execute GDPR deletion
+    const result = (await deleteUserData(
+      env.DB,
+      env.R2,
+      env.VECTORIZE,
+      user.id
+    )) as GdprDeleteResult;
+
+    expect(result.success).toBe(true);
+    expect(result.deletedVectorizeChunks).toBe(1);
+
+    // Verify D1 chunk record is deleted
+    const afterCheck = await env.DB.prepare(
+      `SELECT id FROM org_context_chunks WHERE id = ?`
+    )
+      .bind(chunkId)
+      .first();
+    expect(afterCheck).toBeNull();
+
+    // Verify Vectorize deletion
+    await new Promise((r) => setTimeout(r, 500));
+    const vectorCheck = await env.VECTORIZE.getByIds([chunkId]);
+    expect(vectorCheck.length).toBe(0);
+  });
+
+  it("handles multiple chunks from same user", async () => {
+    const user = await createTestUser(env.DB, { email: uniqueEmail("vec-multi") });
+    const org = await createTestOrg(env.DB, { name: "Multi Chunk Org" });
+    const baseId = `gdpr-multi-${Date.now()}`;
+    const chunkIds = [`${baseId}-0`, `${baseId}-1`, `${baseId}-2`];
+
+    for (let i = 0; i < chunkIds.length; i++) {
+      await createOrgContextChunk(env.DB, {
+        id: chunkIds[i],
+        orgId: org.id,
+        content: `Test content chunk ${i}`,
+        uploadedBy: user.id,
+      });
+
+      const embedding = await generateEmbedding(env as any, `Test content chunk ${i}`);
+      await env.VECTORIZE.upsert([
+        {
+          id: chunkIds[i],
+          values: embedding,
+          metadata: { type: "org", org_id: org.id },
+        },
+      ]);
+      vectorTracker.track(chunkIds[i]);
+    }
+
+    // Verify D1 records exist
+    const countBefore = await env.DB.prepare(
+      `SELECT COUNT(*) as count FROM org_context_chunks WHERE uploaded_by = ?`
+    )
+      .bind(user.id)
+      .first<{ count: number }>();
+    expect(countBefore?.count).toBe(3);
+
+    // Execute GDPR deletion
+    const result = (await deleteUserData(
+      env.DB,
+      env.R2,
+      env.VECTORIZE,
+      user.id
+    )) as GdprDeleteResult;
+
+    expect(result.success).toBe(true);
+    expect(result.deletedVectorizeChunks).toBe(3);
+
+    // Verify all D1 records are deleted
+    const countAfter = await env.DB.prepare(
+      `SELECT COUNT(*) as count FROM org_context_chunks WHERE uploaded_by = ?`
+    )
+      .bind(user.id)
+      .first<{ count: number }>();
+    expect(countAfter?.count).toBe(0);
   });
 });

@@ -4,7 +4,14 @@
 # =============================================================================
 
 # Client-side API URL (used by Vite for browser requests)
-VITE_API_URL=https://api.docketadmin.com
+VITE_API_URL=http://localhost:8787
+
+# -----------------------------------------------------------------------------
+# E2E Testing (optional - for authenticated Playwright tests)
+# -----------------------------------------------------------------------------
+# TEST_USER_EMAIL=
+# TEST_USER_PASSWORD=
+# E2E_AUTH_ENABLED=false
 
 # -----------------------------------------------------------------------------
 # Production values (for reference - set in Cloudflare dashboard)

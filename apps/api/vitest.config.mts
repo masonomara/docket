@@ -25,6 +25,9 @@ export default defineWorkersConfig(async () => {
           // Use single worker to avoid test isolation issues with DO state
           singleWorker: true,
 
+          // Enable remote bindings for Vectorize and AI
+          remoteBindings: hasCloudflareAccount,
+
           // Point to our wrangler config for bindings
           wrangler: {
             configPath: "./wrangler.jsonc",

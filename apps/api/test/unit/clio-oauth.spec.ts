@@ -7,8 +7,9 @@
 // - State parameter creation and verification
 // - Authorization URL building
 // - Token refresh timing logic
+// - Token exchange and refresh failure handling
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   generateCodeVerifier,
   generateCodeChallenge,
@@ -16,6 +17,8 @@ import {
   verifyState,
   buildAuthorizationUrl,
   tokenNeedsRefresh,
+  refreshAccessToken,
+  exchangeCodeForTokens,
 } from "../../src/services/clio-oauth";
 
 // =============================================================================
@@ -318,5 +321,163 @@ describe("Token Refresh Logic", () => {
     const needsRefresh = tokenNeedsRefresh(token);
 
     expect(needsRefresh).toBe(false);
+  });
+});
+
+// =============================================================================
+// Token Refresh Failure Tests
+// =============================================================================
+
+describe("Token Refresh Failures", () => {
+  const originalFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+  });
+
+  afterEach(() => {
+    vi.stubGlobal("fetch", originalFetch);
+  });
+
+  const refreshParams = {
+    refreshToken: "expired-refresh-token",
+    clientId: "test-client-id",
+    clientSecret: "test-client-secret",
+  };
+
+  it("throws error with status and message on invalid_grant", async () => {
+    // Simulate Clio returning invalid_grant (refresh token revoked/expired)
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "invalid_grant" }), {
+        status: 400,
+        statusText: "Bad Request",
+      })
+    );
+
+    await expect(refreshAccessToken(refreshParams)).rejects.toThrow(
+      /Token refresh failed: 400/
+    );
+  });
+
+  it("includes error details in exception message", async () => {
+    const errorBody = JSON.stringify({
+      error: "invalid_grant",
+      error_description: "The refresh token has expired",
+    });
+
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(errorBody, { status: 400 })
+    );
+
+    await expect(refreshAccessToken(refreshParams)).rejects.toThrow(
+      /invalid_grant/
+    );
+  });
+
+  it("throws on server errors (5xx)", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response("Internal Server Error", { status: 500 })
+    );
+
+    await expect(refreshAccessToken(refreshParams)).rejects.toThrow(
+      /Token refresh failed: 500/
+    );
+  });
+
+  it("throws on unauthorized (401)", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response("Unauthorized", { status: 401 })
+    );
+
+    await expect(refreshAccessToken(refreshParams)).rejects.toThrow(
+      /Token refresh failed: 401/
+    );
+  });
+
+  it("returns valid tokens on success", async () => {
+    const mockTokens = {
+      access_token: "new-access-token",
+      refresh_token: "new-refresh-token",
+      expires_in: 3600,
+      token_type: "Bearer",
+    };
+
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify(mockTokens), { status: 200 })
+    );
+
+    const tokens = await refreshAccessToken(refreshParams);
+
+    expect(tokens.access_token).toBe("new-access-token");
+    expect(tokens.refresh_token).toBe("new-refresh-token");
+    expect(tokens.expires_at).toBeGreaterThan(Date.now());
+  });
+});
+
+// =============================================================================
+// Token Exchange Failure Tests
+// =============================================================================
+
+describe("Token Exchange Failures", () => {
+  const originalFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+  });
+
+  afterEach(() => {
+    vi.stubGlobal("fetch", originalFetch);
+  });
+
+  const exchangeParams = {
+    code: "auth-code",
+    codeVerifier: "test-verifier-43-chars-minimum-length-ok",
+    clientId: "test-client-id",
+    clientSecret: "test-client-secret",
+    redirectUri: "https://example.com/callback",
+  };
+
+  it("throws error on invalid authorization code", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "invalid_grant" }), { status: 400 })
+    );
+
+    await expect(exchangeCodeForTokens(exchangeParams)).rejects.toThrow(
+      /Token exchange failed: 400/
+    );
+  });
+
+  it("throws error when PKCE verification fails", async () => {
+    const errorBody = JSON.stringify({
+      error: "invalid_grant",
+      error_description: "code_verifier does not match code_challenge",
+    });
+
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(errorBody, { status: 400 })
+    );
+
+    await expect(exchangeCodeForTokens(exchangeParams)).rejects.toThrow(
+      /code_verifier/
+    );
+  });
+
+  it("returns valid tokens on success", async () => {
+    const mockTokens = {
+      access_token: "access-token",
+      refresh_token: "refresh-token",
+      expires_in: 3600,
+      token_type: "Bearer",
+    };
+
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify(mockTokens), { status: 200 })
+    );
+
+    const tokens = await exchangeCodeForTokens(exchangeParams);
+
+    expect(tokens.access_token).toBe("access-token");
+    expect(tokens.refresh_token).toBe("refresh-token");
+    expect(tokens.token_type).toBe("Bearer");
   });
 });
