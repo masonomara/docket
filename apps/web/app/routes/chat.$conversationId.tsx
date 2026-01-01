@@ -272,7 +272,7 @@ function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
           </div>
         </div>
       </div>
-      <p className={`text-caption text-tertiary ${styles.chatNote}`}>
+      <p className={`text-footnote text-tertiary ${styles.chatNote}`}>
         Docketbot is AI and can make mistakes. Check important information.
       </p>
     </div>
@@ -297,9 +297,108 @@ const VISIBLE_EVENT_TYPES = [
   "clio_result",
 ];
 
+// TODO: Remove this demo data before production - for styling only
+const DEMO_EVENTS: ProcessEvent[] = [
+  {
+    id: "demo-1",
+    type: "kb_search",
+    status: "complete",
+    timestamp: Date.now(),
+    durationMs: 142,
+    matchCount: 4,
+    chunks: [
+      {
+        source: "client-intake-best-practices.md",
+        preview:
+          "Always verify client identity before discussing case details. Request government-issued ID and cross-reference with matter records.",
+      },
+      {
+        source: "matter-billing-guidelines.md",
+        preview:
+          "Time entries should be recorded daily and include specific task descriptions. Vague entries like 'research' should be avoided.",
+      },
+      {
+        source: "trust-accounting-compliance.md",
+        preview:
+          "Client funds must be deposited into the trust account within 24 hours of receipt. Commingling of funds is strictly prohibited.",
+      },
+      {
+        source: "document-retention-policy.md",
+        preview:
+          "Original documents should be returned to clients upon matter closure. Maintain copies for a minimum of 7 years.",
+      },
+    ],
+  },
+  {
+    id: "demo-2",
+    type: "org_context_search",
+    status: "complete",
+    timestamp: Date.now(),
+    durationMs: 89,
+    matchCount: 2,
+    chunks: [
+      {
+        source: "firm-operating-procedures.pdf",
+        preview:
+          "New matters require partner approval before opening. Associates must complete the intake checklist and obtain conflict clearance.",
+      },
+      {
+        source: "client-communication-standards.docx",
+        preview:
+          "Respond to client inquiries within 24 business hours. Document all substantive communications in the matter notes.",
+      },
+    ],
+  },
+  {
+    id: "demo-3",
+    type: "clio_schema",
+    status: "complete",
+    timestamp: Date.now(),
+    durationMs: 23,
+    customFieldCount: 12,
+    cached: true,
+  },
+  {
+    id: "demo-4",
+    type: "llm_thinking",
+    status: "complete",
+    timestamp: Date.now(),
+    durationMs: 1847,
+    hasToolCalls: true,
+    toolCallCount: 2,
+  },
+  {
+    id: "demo-5",
+    type: "clio_call",
+    status: "complete",
+    timestamp: Date.now(),
+    operation: "read",
+    objectType: "Matter",
+  },
+  {
+    id: "demo-6",
+    type: "clio_result",
+    status: "complete",
+    timestamp: Date.now(),
+    count: 3,
+    preview: {
+      items: [
+        { name: "Johnson v. Smith", id: "12345" },
+        { name: "Estate of Williams", id: "12346" },
+        { name: "ABC Corp Acquisition", id: "12347" },
+      ],
+      totalCount: 3,
+    },
+  },
+];
+
 function ProcessLog({ events }: ProcessLogProps) {
+  // TODO: Remove this line before production - uses demo data for styling
+  const useDemo = events.length === 0;
+  const sourceEvents = useDemo ? DEMO_EVENTS : events;
+
   // Filter to only visible event types and consolidate (complete replaces started)
-  const consolidatedEvents = events
+  const consolidatedEvents = sourceEvents
     .filter((e) => VISIBLE_EVENT_TYPES.includes(e.type))
     .reduce<ProcessEvent[]>((acc, event) => {
       const existingIndex = acc.findIndex((e) => e.type === event.type);
@@ -337,9 +436,6 @@ function getFriendlyName(source: string): string {
 }
 
 function ProcessLogEvent({ event }: { event: ProcessEvent }) {
-  const [expanded, setExpanded] = useState(false);
-  const hasDetails = hasExpandableContent(event);
-
   // Show sources inline for search events
   const showInlineSources =
     (event.type === "kb_search" || event.type === "org_context_search") &&
@@ -347,28 +443,24 @@ function ProcessLogEvent({ event }: { event: ProcessEvent }) {
     event.chunks &&
     event.chunks.length > 0;
 
+  // Show Clio results inline
+  const showClioResults =
+    event.type === "clio_result" && event.preview?.items?.length;
+
   return (
     <div className={styles.processLogEvent}>
-      <div
-        className={`${styles.processLogEventHeader} ${hasDetails ? styles.processLogEventHeaderClickable : ""}`}
-        onClick={() => hasDetails && setExpanded(!expanded)}
-      >
+      <div className={styles.processLogEventHeader}>
         <span
           className={`${styles.processLogEventDot} ${
             event.status === "started" ? styles.processLogEventDotActive : ""
           }`}
         />
-        <span className={styles.processLogEventLabel}>
+        <span className={`text-subhead ${styles.processLogEventLabel}`}>
           {getEventLabel(event)}
         </span>
         {event.durationMs !== undefined && (
           <span className={styles.processLogEventTiming}>
-            {event.durationMs}ms
-          </span>
-        )}
-        {hasDetails && (
-          <span className={styles.processLogEventExpand}>
-            {expanded ? "−" : "+"}
+            {(event.durationMs / 1000).toFixed(1)}s
           </span>
         )}
       </div>
@@ -377,61 +469,38 @@ function ProcessLogEvent({ event }: { event: ProcessEvent }) {
         <div className={styles.inlineSources}>
           {event.chunks!.map((chunk, i) => (
             <div key={i} className={styles.sourceCard}>
-              <div className={styles.sourceTitle}>
+              <div className={`text-footnote ${styles.sourceTitle}`}>
                 {getFriendlyName(chunk.source)}
               </div>
-              <div className={styles.sourceExcerpt}>"{chunk.preview}"</div>
+              <div className={`text-footnote ${styles.sourceExcerpt}`}>"{chunk.preview}"</div>
             </div>
           ))}
         </div>
       )}
 
-      {expanded && <EventDetails event={event} />}
+      {showClioResults && (
+        <div className={styles.inlineSources}>
+          {event.preview!.items.map((item, i) => (
+            <div key={i} className={styles.sourceCard}>
+              <div className={`text-footnote ${styles.sourceTitle}`}>
+                {item.name}
+              </div>
+              {item.id && (
+                <div className={`text-footnote ${styles.sourceExcerpt}`}>#{item.id}</div>
+              )}
+            </div>
+          ))}
+          {event.count && event.count > 3 && (
+            <div className={`text-footnote ${styles.sourceExcerpt}`}>
+              +{event.count - 3} more
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-function EventDetails({ event }: { event: ProcessEvent }) {
-  // Clio call details
-  if (event.type === "clio_call" && event.operation) {
-    const operationLabels: Record<string, string> = {
-      read: "Reading",
-      create: "Creating",
-      update: "Updating",
-      delete: "Deleting",
-    };
-    return (
-      <div className={styles.processLogEventDetails}>
-        <div className={styles.detailRow}>
-          <span className={styles.detailLabel}>Action:</span>
-          <span className={styles.detailValue}>
-            {operationLabels[event.operation] || event.operation}{" "}
-            {event.objectType}
-          </span>
-        </div>
-      </div>
-    );
-  }
-
-  // Clio result details
-  if (event.type === "clio_result" && event.preview?.items?.length) {
-    return (
-      <div className={styles.processLogEventDetails}>
-        {event.preview.items.map((item, i) => (
-          <div key={i} className={styles.clioItem}>
-            {item.name}
-            {item.id && <span className={styles.clioItemId}>#{item.id}</span>}
-          </div>
-        ))}
-        {event.count && event.count > 3 && (
-          <div className={styles.clioMoreItems}>+{event.count - 3} more</div>
-        )}
-      </div>
-    );
-  }
-
-  return null;
-}
 
 function getEventLabel(event: ProcessEvent): string {
   switch (event.type) {
@@ -472,14 +541,3 @@ function getEventLabel(event: ProcessEvent): string {
   }
 }
 
-function hasExpandableContent(event: ProcessEvent): boolean {
-  // Events are no longer expandable inline - sources shown in summary
-  switch (event.type) {
-    case "clio_call":
-      return !!event.operation;
-    case "clio_result":
-      return !!event.preview?.items?.length;
-    default:
-      return false;
-  }
-}

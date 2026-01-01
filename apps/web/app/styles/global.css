@@ -51,8 +51,8 @@
   --transition-fast: 0.15s ease;
 
   /* Typography */
-  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco,
-    monospace;
+  --font-mono:
+    "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
 
   /* Buttons */
   --button-primary: #131416;
@@ -79,11 +79,12 @@ html,
 html * {
   font-family: "Geist", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 body {
   min-height: 100svh;
-  background: var(--surface-1);
+  background: var(--surƒface-1);
   color: var(--text-primary);
 }
 
