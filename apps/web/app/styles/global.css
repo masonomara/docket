@@ -293,6 +293,14 @@ textarea {
   width: 100%;
 }
 
+.btn-group-td {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  width: 100%;
+}
+
 /* Link styled as button */
 .link-button {
   background: none;
@@ -327,8 +335,8 @@ textarea {
 
 .form-input,
 .form-select {
-  width: 100%;
-  padding: 0 12px;
+  width: 100% !important;
+  padding: 0 12px !important;
   border: 1px solid var(--border-default);
   border-radius: 8px;
   background: var(--container);
@@ -746,12 +754,19 @@ textarea {
 }
 
 .badge-owner {
-  background: var(--text-primary);
-  color: var(--container);
+  background: var(--surface-3);
+  font-size: 14px;
+  line-height: 19px;
+  padding: 4px 8px;
+  margin: -4px 0px;
 }
 
 .badge-admin {
   background: var(--surface-3);
+  font-size: 14px;
+  line-height: 19px;
+  padding: 4px 8px;
+  margin: -4px 0px;
 }
 
 .chip-grid {

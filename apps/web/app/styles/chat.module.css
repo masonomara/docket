@@ -262,6 +262,8 @@
 .chatMessageError {
   background: var(--error-highlight);
   color: var(--error-primary);
+  padding-left: 16px;
+  padding-right: 16px;
 }
 
 .chatMessageContent {

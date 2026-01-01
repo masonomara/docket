@@ -314,7 +314,7 @@ function MemberRow({
       <td>{new Date(member.createdAt).toLocaleDateString()}</td>
 
       <td>
-        <div className="btn-group">
+        <div className="btn-group-td">
           {canTransferOwnership && (
             <button className="btn-primary" onClick={() => onTransfer(member)}>
               Transfer Ownership
