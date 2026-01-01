@@ -1,178 +1,158 @@
 # Clio Schema Generator
 
+**LONGER DOC:** Code examples
+
 ## Problem
 
-The LLM generates invalid Clio API parameters because the tool schema provides minimal guidance. Manual documentation drifts from the actual API and introduces errors (wrong casing, wrong parameter names, missing constraints).
+The LLM generates invalid Clio API parameters. Current `getClioTools()` in `tenant.ts:764` provides minimal guidance, and the hardcoded schema drifts from the API.
 
 ## Solution
 
-Generate schema from Clio's OpenAPI spec (`openapi.json`). Single source of truth, zero maintenance, zero manual errors.
+Extract ALL parameters from `openapi.json`. Use examples (not param lists) in the tool description.
 
-## Task 1: Create Extraction Script
+**Reference:** `openapi.json` (root directory)
 
-**File:** `scripts/extract-clio-schema.ts`
+**Philosophy:**
+
+- Extract all params automatically (no manual documentation)
+- Validate enum values with suggestions
+- Fail open on unknown params (OpenAPI may be incomplete)
+- Examples in tool description (concise, pattern-based)
+
+## Architecture
+
+```text
+openapi.json
+    ↓
+scripts/extract-clio-params.ts (extracts ALL query params)
+    ↓
+apps/api/src/generated/clio-params.json (committed)
+    ↓
+apps/api/src/services/clio-static-schema.ts (validation + examples)
+    ↓
+tenant.ts
+```
+
+**Separate from:** `clio-schema.ts` (per-org custom fields at runtime)
+
+---
+
+## Task 1: Create Directories
+
+```bash
+mkdir -p scripts
+mkdir -p apps/api/src/generated
+```
+
+---
+
+## Task 2: Create Extraction Script
+
+**File:** `scripts/extract-clio-params.ts`
+
+Extracts ALL query parameters from OpenAPI spec.
 
 ```typescript
 import * as fs from "fs";
+import * as path from "path";
 
-// Load OpenAPI spec
-const openapi = JSON.parse(
-  fs.readFileSync("openapi (1).json", "utf-8")
+const OPENAPI_PATH = path.join(__dirname, "..", "openapi.json");
+const OUTPUT_PATH = path.join(
+  __dirname,
+  "..",
+  "apps/api/src/generated/clio-params.json"
 );
 
-// Endpoints we care about
+const openapi = JSON.parse(fs.readFileSync(OPENAPI_PATH, "utf-8"));
+
 const ENDPOINTS: Record<string, string> = {
-  matter: "/matters.json",
-  contact: "/contacts.json",
-  task: "/tasks.json",
-  calendarentry: "/calendar_entries.json",
-  activity: "/activities.json",
+  Matter: "/matters.json",
+  Contact: "/contacts.json",
+  Task: "/tasks.json",
+  CalendarEntry: "/calendar_entries.json",
+  Activity: "/activities.json",
 };
 
-// Response schema names in OpenAPI
-const RESPONSE_SCHEMAS: Record<string, string> = {
-  matter: "Matter_base",
-  contact: "Contact_base",
-  task: "Task_base",
-  calendarentry: "CalendarEntry_base",
-  activity: "Activity_base",
-};
+// Skip meta params (handled separately)
+const SKIP_PARAMS = new Set([
+  "fields",
+  "limit",
+  "page_token",
+  "order",
+  "X-API-VERSION",
+]);
 
-interface ParamSchema {
+interface ParamInfo {
   name: string;
   type: string;
-  enum?: string[];
   format?: string;
-  required: boolean;
-  description: string;
-}
-
-interface FieldSchema {
-  type: string;
   enum?: string[];
-  format?: string;
-  description: string;
 }
 
 interface ObjectSchema {
   endpoint: string;
-  queryParams: Record<string, ParamSchema>;
-  responseFields: Record<string, FieldSchema>;
+  params: Record<string, ParamInfo>;
 }
 
-function extractQueryParams(path: string): Record<string, ParamSchema> {
-  const endpoint = openapi.paths[path]?.get;
+function extractParams(apiPath: string): Record<string, ParamInfo> {
+  const endpoint = openapi.paths?.[apiPath]?.get;
   if (!endpoint?.parameters) return {};
 
-  const params: Record<string, ParamSchema> = {};
+  const params: Record<string, ParamInfo> = {};
 
   for (const p of endpoint.parameters) {
     if (p.in !== "query") continue;
-    // Skip pagination/meta params
-    if (["fields", "limit", "page_token", "order", "X-API-VERSION"].includes(p.name)) continue;
+    if (SKIP_PARAMS.has(p.name)) continue;
 
-    const name = p.name.replace("[]", ""); // Normalize array params
-    params[name] = {
+    const key = p.name.replace("[]", "");
+    params[key] = {
       name: p.name,
       type: p.schema?.type || "string",
-      enum: p.schema?.enum,
       format: p.schema?.format,
-      required: p.required || false,
-      description: p.description || "",
+      enum: p.schema?.enum,
     };
   }
 
   return params;
 }
 
-function extractResponseFields(schemaName: string): Record<string, FieldSchema> {
-  const schema = openapi.components?.schemas?.[schemaName];
-  if (!schema?.properties) return {};
+const clioParams: Record<string, ObjectSchema> = {};
 
-  const fields: Record<string, FieldSchema> = {};
-
-  for (const [name, prop] of Object.entries(schema.properties) as [string, any][]) {
-    // Skip internal fields
-    if (["etag", "created_at", "updated_at", "deleted_at"].includes(name)) continue;
-
-    fields[name] = {
-      type: prop.type || "object",
-      enum: prop.enum,
-      format: prop.format,
-      description: prop.description || "",
-    };
-  }
-
-  return fields;
-}
-
-// Build the schema
-const clioSchema: Record<string, ObjectSchema> = {};
-
-for (const [type, path] of Object.entries(ENDPOINTS)) {
-  clioSchema[type] = {
-    endpoint: path,
-    queryParams: extractQueryParams(path),
-    responseFields: extractResponseFields(RESPONSE_SCHEMAS[type]),
+for (const [objectType, apiPath] of Object.entries(ENDPOINTS)) {
+  clioParams[objectType] = {
+    endpoint: apiPath,
+    params: extractParams(apiPath),
   };
 }
 
-// Write output
-const output = JSON.stringify(clioSchema, null, 2);
-fs.writeFileSync("apps/api/src/generated/clio-schema.json", output);
+fs.writeFileSync(OUTPUT_PATH, JSON.stringify(clioParams, null, 2));
 
-console.log("Generated clio-schema.json");
-console.log(`  ${Object.keys(clioSchema).length} object types`);
-for (const [type, schema] of Object.entries(clioSchema)) {
-  console.log(`  ${type}: ${Object.keys(schema.queryParams).length} params, ${Object.keys(schema.responseFields).length} fields`);
+console.log("Generated clio-params.json");
+for (const [type, schema] of Object.entries(clioParams)) {
+  const total = Object.keys(schema.params).length;
+  const withEnum = Object.values(schema.params).filter((p) => p.enum).length;
+  console.log(`  ${type}: ${total} params (${withEnum} with enums)`);
 }
 ```
 
-**Run:** `npx ts-node scripts/extract-clio-schema.ts`
+**Run:**
 
-## Task 2: Generated Schema Structure
-
-**File:** `apps/api/src/generated/clio-schema.json`
-
-The script outputs:
-
-```json
-{
-  "matter": {
-    "endpoint": "/matters.json",
-    "queryParams": {
-      "status": {
-        "name": "status",
-        "type": "string",
-        "enum": ["open", "closed", "pending"],
-        "required": false,
-        "description": "Filter Matter records to those with a given status."
-      },
-      "responsible_attorney_id": {
-        "name": "responsible_attorney_id",
-        "type": "integer",
-        "format": "int64",
-        "required": false,
-        "description": "The unique identifier for a single User."
-      }
-    },
-    "responseFields": {
-      "status": {
-        "type": "string",
-        "enum": ["Pending", "Open", "Closed"],
-        "description": "The current status of the Matter"
-      }
-    }
-  }
-}
+```bash
+node --experimental-strip-types scripts/extract-clio-params.ts
 ```
 
-## Task 3: Build Validation from Schema
+**Expected output:** All params per type (~20-25 each), with enum info where applicable.
 
-**File:** `apps/api/src/services/clio-validation.ts`
+---
+
+## Task 3: Create Static Schema Service
+
+**File:** `apps/api/src/services/clio-static-schema.ts`
 
 ```typescript
-import clioSchema from "../generated/clio-schema.json";
+import clioParams from "../generated/clio-params.json";
+
+type ObjectType = keyof typeof clioParams;
 
 interface ValidationResult {
   valid: boolean;
@@ -180,247 +160,365 @@ interface ValidationResult {
   suggestion?: string;
 }
 
+/**
+ * Validates filters against extracted schema.
+ * - Enum params: validate and suggest corrections
+ * - Non-enum params: pass through (fail open)
+ */
 export function validateFilters(
   objectType: string,
   filters?: Record<string, unknown>
 ): ValidationResult {
-  const type = objectType.toLowerCase().replace("_", "");
-  const schema = clioSchema[type as keyof typeof clioSchema];
+  const schema = clioParams[objectType as ObjectType];
 
   if (!schema) {
-    return { valid: false, error: `Unknown object type: ${objectType}` };
+    return {
+      valid: false,
+      error: `Unknown objectType "${objectType}".`,
+      suggestion: `Valid: ${Object.keys(clioParams).join(", ")}`,
+    };
   }
 
   if (!filters) return { valid: true };
 
   for (const [key, value] of Object.entries(filters)) {
-    const param = schema.queryParams[key];
+    const param = schema.params[key];
+    // Fail open: unknown params pass through to Clio
+    if (!param?.enum) continue;
 
-    // Unknown parameter - let Clio handle it (might be valid, just not extracted)
-    if (!param) continue;
+    const normalized = String(value).toLowerCase();
+    const valid = param.enum.map((v: string) => v.toLowerCase());
 
-    // Check enum values
-    if (param.enum && value !== undefined) {
-      const normalizedValue = String(value).toLowerCase();
-      const validValues = param.enum.map((v) => v.toLowerCase());
-
-      if (!validValues.includes(normalizedValue)) {
-        return {
-          valid: false,
-          error: `Invalid ${key} "${value}" for ${objectType}.`,
-          suggestion: `Valid values: ${param.enum.join(", ")}`,
-        };
-      }
+    if (!valid.includes(normalized)) {
+      return {
+        valid: false,
+        error: `Invalid ${key}="${value}".`,
+        suggestion: `Valid: ${param.enum.join(", ")}`,
+      };
     }
   }
 
-  // Task-specific: assignee_id requires assignee_type
-  if (type === "task" && filters.assignee_id && !filters.assignee_type) {
+  // Business rule: Task assignee_id requires assignee_type
+  if (objectType === "Task" && filters.assignee_id && !filters.assignee_type) {
     return {
       valid: false,
-      error: "assignee_id requires assignee_type to be specified.",
-      suggestion: 'Add assignee_type: "user" or "contact"',
+      error: "assignee_id requires assignee_type.",
+      suggestion: "Add assignee_type: User or Contact",
     };
   }
 
   return { valid: true };
 }
 
-// Normalize filter values (e.g., lowercase status)
+/**
+ * Normalizes enum values to lowercase (Clio query param convention).
+ */
 export function normalizeFilters(
   objectType: string,
   filters?: Record<string, unknown>
 ): Record<string, unknown> | undefined {
   if (!filters) return undefined;
 
-  const type = objectType.toLowerCase().replace("_", "");
-  const schema = clioSchema[type as keyof typeof clioSchema];
+  const schema = clioParams[objectType as ObjectType];
   if (!schema) return filters;
 
   const normalized = { ...filters };
 
   for (const [key, value] of Object.entries(normalized)) {
-    const param = schema.queryParams[key];
+    const param = schema.params[key];
     if (!param?.enum || value === undefined) continue;
-
-    // Lowercase enum values for query params
     normalized[key] = String(value).toLowerCase();
   }
 
   return normalized;
 }
-```
 
-## Task 4: Build Tool Schema from Generated Schema
+/**
+ * Returns the clioQuery tool definition.
+ * Uses examples (not exhaustive param lists) for concise prompts.
+ */
+export function getClioToolSchema(userRole: string): object {
+  const permissionNote =
+    userRole === "admin"
+      ? "Create/update/delete require confirmation."
+      : "Members: read only.";
 
-**File:** `apps/api/src/services/clio-tool-schema.ts`
-
-```typescript
-import clioSchema from "../generated/clio-schema.json";
-
-function formatParamsForType(type: string): string {
-  const schema = clioSchema[type as keyof typeof clioSchema];
-  if (!schema) return "";
-
-  const lines: string[] = [];
-
-  for (const [name, param] of Object.entries(schema.queryParams)) {
-    let line = `- ${name}: ${param.type}`;
-    if (param.enum) {
-      line += ` (${param.enum.map((v) => `"${v}"`).join(" | ")})`;
-    }
-    if (param.format) {
-      line += ` [${param.format}]`;
-    }
-    lines.push(line);
-  }
-
-  return lines.join("\n");
-}
-
-export function buildFiltersDescription(): string {
-  const sections = Object.entries(clioSchema).map(([type, schema]) => {
-    const typeName = type.toUpperCase();
-    const params = formatParamsForType(type);
-    return `${typeName}:\n${params}`;
-  });
-
-  return `Query filters (vary by objectType):
-
-${sections.join("\n\n")}
-
-Date format: YYYY-MM-DD
-Datetime format: ISO 8601 (e.g., 2024-01-15T14:00:00Z)`;
-}
-
-// Use in getClioTools()
-export function getClioToolSchema() {
   return {
-    name: "clioQuery",
-    description: "Query or modify data in Clio",
-    parameters: {
-      type: "object",
-      properties: {
-        operation: {
-          type: "string",
-          enum: ["read", "create", "update"],
+    type: "function",
+    function: {
+      name: "clioQuery",
+      description: `Query or modify Clio data. ${permissionNote}`,
+      parameters: {
+        type: "object",
+        properties: {
+          operation: {
+            type: "string",
+            enum: ["read", "create", "update", "delete"],
+          },
+          objectType: {
+            type: "string",
+            enum: Object.keys(clioParams),
+            description: "Clio object type. Use Activity for time entries.",
+          },
+          id: {
+            type: "string",
+            description: "Object ID (required for update/delete)",
+          },
+          filters: {
+            type: "object",
+            description: `Query filters. Examples:
+- {"query": "Smith"} - text search
+- {"status": "open"} - status (open | closed | pending)
+- {"matter_id": 123} - filter by matter
+- {"user_id": 456} - filter by user
+- {"created_since": "2024-01-01"} - date filter`,
+          },
+          data: {
+            type: "object",
+            description: "Data for create/update",
+          },
         },
-        objectType: {
-          type: "string",
-          enum: ["Matter", "Contact", "Task", "CalendarEntry", "Activity"],
-          description: "The Clio object type. Use Activity for time entries.",
-        },
-        id: {
-          type: "string",
-          description: "Object ID for single-record operations",
-        },
-        filters: {
-          type: "object",
-          description: buildFiltersDescription(),
-        },
-        fields: {
-          type: "string",
-          description: "Comma-separated fields to return. Use nested syntax: client{id,name}",
-        },
-        data: {
-          type: "object",
-          description: "Data for create/update operations",
-        },
+        required: ["operation", "objectType"],
       },
-      required: ["operation", "objectType"],
     },
   };
 }
 ```
 
-## Task 5: Wire Up in Tenant
+---
+
+## Task 4: Update tenant.ts
 
 **File:** `apps/api/src/do/tenant.ts`
 
-Replace manual tool schema with generated version:
+### 4a. Add import after line 24
 
 ```typescript
-import { getClioToolSchema } from "../services/clio-tool-schema";
-import { validateFilters, normalizeFilters } from "../services/clio-validation";
+import {
+  getClioToolSchema,
+  validateFilters,
+  normalizeFilters,
+} from "../services/clio-static-schema";
+```
 
-// In getClioTools():
-private getClioTools(): Tool[] {
-  return [getClioToolSchema()];
-}
+### 4b. Replace getClioTools (~line 764)
 
-// In executeClioRead():
-private async executeClioRead(
-  userId: string,
-  args: { objectType: string; id?: string; filters?: Record<string, unknown> }
-): Promise<string> {
-  // Validate filters
-  if (!args.id) {
-    const validation = validateFilters(args.objectType, args.filters);
-    if (!validation.valid) {
-      const hint = validation.suggestion ? ` ${validation.suggestion}` : "";
-      return `Filter error: ${validation.error}${hint}`;
-    }
-  }
+Delete lines 764-815. Replace with:
 
-  // Normalize filter values (lowercase enums, etc.)
-  const normalizedFilters = normalizeFilters(args.objectType, args.filters);
-
-  // ... rest of implementation
+```typescript
+private getClioTools(userRole: string): object[] {
+  return [getClioToolSchema(userRole)];
 }
 ```
 
-## Task 6: Add to Build Process
+### 4c. Add validation in executeSingleToolCall (~line 867)
 
-**File:** `package.json`
+After `const { operation, objectType, id, filters, data } = toolCall.arguments;`:
+
+```typescript
+// Validate and normalize filters
+if (operation === "read" && !id) {
+  const validation = validateFilters(objectType, filters);
+  if (!validation.valid) {
+    const hint = validation.suggestion ? ` ${validation.suggestion}` : "";
+    return `Filter error: ${validation.error}${hint}`;
+  }
+}
+const normalizedFilters = normalizeFilters(objectType, filters);
+```
+
+Use `normalizedFilters` in subsequent code.
+
+### 4d. Update system prompt examples (~line 624)
+
+Change `TimeEntry` to `Activity`:
+
+```typescript
+- "Log my time" → clioQuery with objectType="Activity"
+```
+
+---
+
+## Task 5: Add npm script
+
+**File:** `package.json` (root)
 
 ```json
-{
-  "scripts": {
-    "generate:clio-schema": "ts-node scripts/extract-clio-schema.ts",
-    "prebuild": "npm run generate:clio-schema",
-    "build": "..."
-  }
-}
+"generate:clio-params": "node --experimental-strip-types scripts/extract-clio-params.ts"
 ```
 
-## Task 7: Add Generated File to .gitignore (Optional)
+---
 
-If you want to regenerate on each build:
+## Task 6: Generate and Commit
 
+```bash
+npm run generate:clio-params
+
+git add scripts/extract-clio-params.ts
+git add apps/api/src/generated/clio-params.json
+git add apps/api/src/services/clio-static-schema.ts
 ```
-# .gitignore
-apps/api/src/generated/
-```
 
-Or commit it for transparency and faster builds.
+---
 
 ## Verification
 
-After running the generator:
-
 ```bash
-npx ts-node scripts/extract-clio-schema.ts
+# 1. Generator runs
+npm run generate:clio-params
+# Expected: 5 object types, ~20-25 params each
+
+# 2. Generated file contains all params
+cat apps/api/src/generated/clio-params.json | grep -c '"name"'
+# Expected: ~100+ (all params across all types)
+
+# 3. TypeScript compiles
+npm run build:api
+
+# 4. Tests pass
+npm test
 ```
 
-Check output:
-- `apps/api/src/generated/clio-schema.json` exists
-- Contains 5 object types
-- Each has queryParams and responseFields
-- Enum values match OpenAPI spec
+**Manual validation tests:**
 
-Test validation:
-- `status: "Open"` normalizes to `"open"`, query succeeds
-- `status: "active"` fails with suggestion
-- `assignee_id` without `assignee_type` fails with suggestion
+| Input                                    | Expected                             |
+| ---------------------------------------- | ------------------------------------ |
+| `status: "open"`                         | Pass                                 |
+| `status: "Open"`                         | Pass (normalized to lowercase)       |
+| `status: "active"`                       | Fail: "Valid: open, closed, pending" |
+| `matter_id: 123`                         | Pass (known param, no enum)          |
+| `unknown_param: "xyz"`                   | Pass (fail open)                     |
+| `assignee_id: 1` without `assignee_type` | Fail: "Add assignee_type"            |
 
-## Source
+---
 
-All data extracted from `openapi (1).json` (Clio API v4 OpenAPI spec).
+## Why Examples Over Param Lists
 
-## Benefits
+**Param lists (old approach):**
 
-1. **Single source of truth** - OpenAPI spec is authoritative
-2. **Zero maintenance** - Regenerate when Clio updates API
-3. **Zero manual errors** - No typos, wrong casing, missing params
-4. **Type safe** - Can generate TypeScript types from schema
-5. **Comprehensive** - Extracts ALL parameters, not just manually documented ones
+```text
+Matter: status (open|closed|pending), responsible_attorney_id [int64],
+client_id [int64], practice_area_id [int64], ...25 more params
+```
+
+**Examples (new approach):**
+
+```text
+{"query": "Smith"} - text search
+{"status": "open"} - status filter
+{"matter_id": 123} - filter by matter
+```
+
+**Benefits:**
+
+1. **Concise** - 5 lines vs 100+
+2. **Pattern-based** - LLMs generalize from examples
+3. **Zero maintenance** - no curating which params to show
+4. **Matches user intent** - users say "open matters" not "status=open"
+
+**Validation still catches errors** via the enum extraction. Best of both worlds.
+
+---
+
+## When to Regenerate
+
+Run `npm run generate:clio-params` when:
+
+- New `openapi.json` from Clio
+- Adding/removing object types
+
+The generated JSON is committed. Regeneration is manual and explicit.
+
+---
+
+## Task 7: Process Log Improvements
+
+**Files:**
+
+- `apps/web/app/routes/chat.$conversationId.tsx`
+- `apps/api/src/do/tenant.ts`
+
+The process log should give users a friendly "under the hood" view of what's happening. Non-technical but informative.
+
+### Log Events to Emit from tenant.ts
+
+Add SSE events for each stage:
+
+```typescript
+// When LLM decides to query Clio
+emit("process", { stage: "thinking", text: "Looking up your matters..." });
+
+// When validation catches an error (before hitting Clio)
+emit("process", { stage: "validation", text: "Checking query parameters..." });
+
+// If validation fails
+emit("process", {
+  stage: "error",
+  text: "Hmm, that filter isn't quite right. Adjusting...",
+});
+
+// When calling Clio API
+emit("process", { stage: "querying", text: "Searching Clio..." });
+
+// When results come back
+emit("process", { stage: "found", text: "Found 12 open matters" });
+
+// When LLM is formatting response
+emit("process", {
+  stage: "formatting",
+  text: "Putting together your answer...",
+});
+```
+
+### Process Log Display Examples
+
+**User asks:** "Show me my open matters"
+
+```text
+💭 Looking up your matters...
+🔍 Searching Clio...
+📋 Found 12 open matters
+✨ Putting together your answer...
+```
+
+**Validation catches error (internal, user doesn't see raw error):**
+
+```text
+💭 Looking up active cases...
+🔧 Adjusting search parameters...
+🔍 Searching Clio...
+📋 Found 8 matters
+```
+
+**Clio returns error:**
+
+```text
+💭 Looking up the Johnson case...
+🔍 Searching Clio...
+⚠️ Couldn't find that one. Trying a broader search...
+🔍 Searching Clio...
+📋 Found 3 possible matches
+```
+
+### Frontend Component Updates
+
+In `chat.$conversationId.tsx`, render process events:
+
+```tsx
+{
+  processLog.map((event, i) => (
+    <div key={i} className="process-step">
+      <span className="process-icon">{getIcon(event.stage)}</span>
+      <span className="process-text">{event.text}</span>
+    </div>
+  ));
+}
+```
+
+### Design Principles
+
+1. **Friendly language** - "Looking up" not "Executing clioQuery"
+2. **Progress feeling** - Each step shows movement
+3. **Hide technical errors** - Validation failures become "Adjusting..."
+4. **Show counts** - "Found 12 matters" gives confidence
+5. **Subtle animation** - Steps fade in sequentially
