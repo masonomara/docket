@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useContext } from "react";
 import { useParams, useRevalidator } from "react-router";
 import type { Route } from "./+types/chat.$conversationId";
 import { ENDPOINTS } from "~/lib/api";
@@ -9,8 +9,17 @@ import {
   type ProcessEvent,
   type PendingConfirmation,
 } from "~/lib/use-chat";
+import { PageLayoutContext } from "~/components/AppLayout";
+import { ChatSidebarContext } from "~/lib/chat-context";
 import styles from "~/styles/chat.module.css";
-import { ArrowUp } from "lucide-react";
+import {
+  ArrowUp,
+  Menu,
+  MessageSquare,
+  X,
+  ChevronRight,
+  ArrowRightFromLine,
+} from "lucide-react";
 
 // =============================================================================
 // Loader - fetches the specific conversation's messages
@@ -69,6 +78,9 @@ export default function ChatConversation({ loaderData }: Route.ComponentProps) {
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Process log panel state (for mobile/tablet)
+  const [processLogOpen, setProcessLogOpen] = useState(false);
+
   // Auto-scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -97,6 +109,15 @@ export default function ChatConversation({ loaderData }: Route.ComponentProps) {
 
   return (
     <>
+      {/* Mobile overlay for process log */}
+      {processLogOpen && (
+        <div
+          className={styles.processLogOverlay}
+          onClick={() => setProcessLogOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
       <div className={styles.chatMain}>
         <ChatMessages
           messages={messages}
@@ -105,6 +126,7 @@ export default function ChatConversation({ loaderData }: Route.ComponentProps) {
           onAccept={acceptConfirmation}
           onReject={rejectConfirmation}
           messagesEndRef={messagesEndRef}
+          onOpenProcessLog={() => setProcessLogOpen(true)}
         />
 
         {error && <div className={styles.chatError}>{error}</div>}
@@ -116,7 +138,11 @@ export default function ChatConversation({ loaderData }: Route.ComponentProps) {
         />
       </div>
 
-      <ProcessLog events={processEvents} />
+      <ProcessLog
+        events={processEvents}
+        isOpen={processLogOpen}
+        onClose={() => setProcessLogOpen(false)}
+      />
     </>
   );
 }
@@ -132,6 +158,7 @@ interface ChatMessagesProps {
   onAccept: (id: string) => void;
   onReject: (id: string) => void;
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
+  onOpenProcessLog: () => void;
 }
 
 function ChatMessages({
@@ -140,9 +167,47 @@ function ChatMessages({
   onAccept,
   onReject,
   messagesEndRef,
+  onOpenProcessLog,
 }: ChatMessagesProps) {
+  const layoutContext = useContext(PageLayoutContext);
+  const sidebarContext = useContext(ChatSidebarContext);
+
+  function handleMenuClick() {
+    if (layoutContext) {
+      layoutContext.onMenuOpen();
+    }
+  }
+
+  function handleConversationsClick() {
+    if (sidebarContext) {
+      sidebarContext.onSidebarOpen();
+    }
+  }
+
   return (
     <div className={styles.chatMessages}>
+      <div className={styles.mobileChatHeader}>
+        <button
+          type="button"
+          className={styles.menuButton}
+          onClick={handleConversationsClick}
+          aria-label="Open conversations"
+        >
+          <MessageSquare
+            size={22}
+            strokeWidth={1.67}
+            color={"var(--text-primary)"}
+          />
+        </button>
+        <button
+          type="button"
+          className={styles.menuButton}
+          onClick={handleMenuClick}
+          aria-label="Open menu"
+        >
+          <Menu size={22} strokeWidth={1.67} color={"var(--text-primary)"} />
+        </button>
+      </div>
       {messages.length === 0 && (
         <div className={styles.chatMessagesEmpty}>
           <p>Start a conversation with Docket</p>
@@ -198,6 +263,18 @@ function ChatMessages({
           </div>
         </div>
       ))}
+
+      {/* Process log button - only visible on tablet/mobile */}
+      {messages.length > 0 && (
+        <button
+          type="button"
+          className={styles.viewProcessLogButton}
+          onClick={onOpenProcessLog}
+        >
+          View Process Log
+          <ChevronRight size={14} />
+        </button>
+      )}
 
       <div ref={messagesEndRef} />
     </div>
@@ -285,6 +362,8 @@ function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
 
 interface ProcessLogProps {
   events: ProcessEvent[];
+  isOpen: boolean;
+  onClose: () => void;
 }
 
 // Event types to display in the process log
@@ -392,7 +471,7 @@ const DEMO_EVENTS: ProcessEvent[] = [
   },
 ];
 
-function ProcessLog({ events }: ProcessLogProps) {
+function ProcessLog({ events, isOpen, onClose }: ProcessLogProps) {
   // TODO: Remove this line before production - uses demo data for styling
   const useDemo = events.length === 0;
   const sourceEvents = useDemo ? DEMO_EVENTS : events;
@@ -411,8 +490,30 @@ function ProcessLog({ events }: ProcessLogProps) {
     }, []);
 
   return (
-    <aside className={styles.processLog}>
-      <div className={styles.processLogHeader}>Process Log</div>
+    <aside
+      className={`${styles.processLog} ${isOpen ? styles.processLogOpen : ""}`}
+    >
+      <div
+        className={styles.chatSideBarMobileHeader}
+        style={{ padding: "12px 8px 0px 20px" }}
+      >
+        <span className="text-title-3">Process Log</span>
+        <button
+          type="button"
+          className={styles.chatSidebarCloseButton}
+          onClick={onClose}
+          aria-label="Close conversations"
+        >
+          <ArrowRightFromLine
+            size={22}
+            strokeWidth={1.67}
+            color="var(--text-secondary)"
+          />
+        </button>
+      </div>
+      <div className={styles.processLogHeaderRow}>
+        <div className={styles.processLogHeader}>Process Log</div>
+      </div>
       <div className={styles.processLogEvents}>
         {consolidatedEvents.length === 0 && (
           <div className={styles.processLogEmpty}>No activity yet</div>
@@ -472,7 +573,9 @@ function ProcessLogEvent({ event }: { event: ProcessEvent }) {
               <div className={`text-footnote ${styles.sourceTitle}`}>
                 {getFriendlyName(chunk.source)}
               </div>
-              <div className={`text-footnote ${styles.sourceExcerpt}`}>"{chunk.preview}"</div>
+              <div className={`text-footnote ${styles.sourceExcerpt}`}>
+                "{chunk.preview}"
+              </div>
             </div>
           ))}
         </div>
@@ -486,7 +589,9 @@ function ProcessLogEvent({ event }: { event: ProcessEvent }) {
                 {item.name}
               </div>
               {item.id && (
-                <div className={`text-footnote ${styles.sourceExcerpt}`}>#{item.id}</div>
+                <div className={`text-footnote ${styles.sourceExcerpt}`}>
+                  #{item.id}
+                </div>
               )}
             </div>
           ))}
@@ -500,7 +605,6 @@ function ProcessLogEvent({ event }: { event: ProcessEvent }) {
     </div>
   );
 }
-
 
 function getEventLabel(event: ProcessEvent): string {
   switch (event.type) {
@@ -540,4 +644,3 @@ function getEventLabel(event: ProcessEvent): string {
       return event.type;
   }
 }
-

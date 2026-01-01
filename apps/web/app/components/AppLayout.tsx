@@ -1,6 +1,15 @@
 import { createContext, useState } from "react";
 import { Link } from "react-router";
-import { Bot, Landmark, Plug, Scale, Settings2, Users, X } from "lucide-react";
+import {
+  ArrowRightFromLineIcon,
+  Bot,
+  Landmark,
+  Plug,
+  Scale,
+  Settings2,
+  Users,
+  X,
+} from "lucide-react";
 import type { OrgMembership } from "~/lib/types";
 import styles from "~/styles/app-layout.module.css";
 
@@ -72,12 +81,15 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
           </div>
           <button
             type="button"
-            className={`${styles.closeButton} btn-sm btn`}
+            className={styles.closeButton}
             onClick={closeMenu}
             aria-label="Close menu"
           >
-            <span>Close</span>
-            <X size={16} />
+            <ArrowRightFromLineIcon
+              size={22}
+              strokeWidth={1.67}
+              color={"var(--text-secondary)"}
+            />
           </button>
         </div>
 

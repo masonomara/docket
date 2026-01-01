@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Outlet, useNavigate, useRevalidator, useParams } from "react-router";
 import type { Route } from "./+types/chat";
 import { ENDPOINTS } from "~/lib/api";
@@ -6,7 +6,8 @@ import { API_URL } from "~/lib/auth-client";
 import { orgLoader } from "~/lib/loader-auth";
 import styles from "~/styles/chat.module.css";
 import { AppLayout } from "~/components/AppLayout";
-import { SquarePen } from "lucide-react";
+import { ChatSidebarContext } from "~/lib/chat-context";
+import { ArrowLeftFromLine, SquarePen, X } from "lucide-react";
 
 // =============================================================================
 // Types (exported for use by child routes)
@@ -49,6 +50,18 @@ export default function ChatLayout({ loaderData }: Route.ComponentProps) {
   // Conversations state (can be updated by children via revalidation)
   const [conversations, setConversations] =
     useState<Conversation[]>(initialConversations);
+
+  // Mobile sidebar state
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const openSidebar = useCallback(() => setSidebarOpen(true), []);
+  const closeSidebar = useCallback(() => setSidebarOpen(false), []);
+
+  // Memoize context value to prevent unnecessary re-renders
+  const sidebarContextValue = useMemo(
+    () => ({ onSidebarOpen: openSidebar }),
+    [openSidebar]
+  );
 
   // Sync when loader data changes
   useEffect(() => {
@@ -105,15 +118,34 @@ export default function ChatLayout({ loaderData }: Route.ComponentProps) {
   return (
     <AppLayout org={org} currentPath="/chat">
       <div className={styles.chatLayout}>
+        {/* Mobile overlay - click to close sidebar */}
+        {sidebarOpen && (
+          <div
+            className={styles.chatSidebarOverlay}
+            onClick={closeSidebar}
+            aria-hidden="true"
+          />
+        )}
+
         <ChatSidebar
           conversations={conversations}
           currentId={currentConversationId}
-          onSelect={handleSelectConversation}
-          onNew={handleNewChat}
+          onSelect={(id) => {
+            handleSelectConversation(id);
+            closeSidebar();
+          }}
+          onNew={() => {
+            handleNewChat();
+            closeSidebar();
+          }}
           onDelete={handleDeleteConversation}
+          isOpen={sidebarOpen}
+          onClose={closeSidebar}
         />
 
-        <Outlet />
+        <ChatSidebarContext.Provider value={sidebarContextValue}>
+          <Outlet />
+        </ChatSidebarContext.Provider>
       </div>
     </AppLayout>
   );
@@ -129,6 +161,8 @@ interface ChatSidebarProps {
   onSelect: (id: string) => void;
   onNew: () => void;
   onDelete: (id: string) => void;
+  isOpen: boolean;
+  onClose: () => void;
 }
 
 function ChatSidebar({
@@ -137,17 +171,38 @@ function ChatSidebar({
   onSelect,
   onNew,
   onDelete,
+  isOpen,
+  onClose,
 }: ChatSidebarProps) {
   return (
-    <aside className={styles.chatSidebar}>
-      <button className={styles.newChatButton} onClick={onNew}>
-        <SquarePen
-          size={16}
-          strokeWidth={1.75}
-          className={styles.newChatButtonIcon}
-        />
-        New Chat
-      </button>
+    <aside
+      className={`${styles.chatSidebar} ${isOpen ? styles.chatSidebarOpen : ""}`}
+    >
+      <div className={styles.chatSideBarMobileHeader}>
+        <span className="text-title-3">Conversations List</span>
+        <button
+          type="button"
+          className={styles.chatSidebarCloseButton}
+          onClick={onClose}
+          aria-label="Close conversations"
+        >
+          <ArrowLeftFromLine
+            size={22}
+            strokeWidth={1.67}
+            color="var(--text-secondary)"
+          />
+        </button>
+      </div>
+      <div className={styles.chatSidebarHeader}>
+        <button className={styles.newChatButton} onClick={onNew}>
+          <SquarePen
+            size={16}
+            strokeWidth={1.75}
+            className={styles.newChatButtonIcon}
+          />
+          New Chat
+        </button>
+      </div>
       <div className={styles.sectionLabel}>
         {conversations.length === 0
           ? "No conversations yet"

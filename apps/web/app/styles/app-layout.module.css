@@ -25,7 +25,7 @@
   flex-shrink: 0;
   background: var(--surface-2);
   border-right: 1px solid var(--border-default);
-  padding: 27px 12px 12px;
+  padding: 22px 12px 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -42,7 +42,11 @@
 }
 
 .logo {
-  padding: 3.75px 8px;
+  padding: 0px 8px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .logo img {
@@ -213,7 +217,7 @@
 }
 
 .contentInner {
-  padding: 27px 22px 44px;
+  padding: 22px 22px 44px;
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -264,5 +268,13 @@
   /* Show close button on mobile */
   .closeButton {
     display: flex;
+    align-items: center;
+    justify-content: center;
+    outline: none;
+    border: none;
+    background: none;
+    height: 44px;
+    width: 44px;
+    margin: -6px;
   }
 }

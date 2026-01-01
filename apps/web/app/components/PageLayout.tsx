@@ -51,12 +51,15 @@ export function PageLayout({
           {showMenuButton && (
             <button
               type="button"
-              className={`${styles.menuButton} btn-sm btn btn-secondary`}
+              className={styles.menuButton}
               onClick={handleMenuClick}
               aria-label="Open menu"
             >
-              <span>Menu</span>
-              <Menu size={16} />
+              <Menu
+                size={22}
+                strokeWidth={1.67}
+                color={"var(--text-primary)"}
+              />
             </button>
           )}
         </div>

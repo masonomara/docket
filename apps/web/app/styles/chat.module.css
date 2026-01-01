@@ -17,6 +17,50 @@
    Chat Sidebar (Left Column)
    ============================================================================= */
 
+.mobileChatHeader {
+  display: none;
+}
+
+.chatSidebarOverlay {
+  display: none;
+}
+
+.menuButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  outline: none;
+  border: none;
+  background: none;
+  height: 44px;
+  width: 44px;
+  margin: -6px;
+}
+
+.chatSidebarHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.chatSidebarCloseButton {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 8px;
+}
+.chatSideBarMobileHeader {
+  display: none;
+}
+
+.chatSidebarCloseButton:hover {
+  background: var(--surface-2);
+}
+
 .chatSidebar {
   display: flex;
   flex-direction: column;
@@ -99,6 +143,7 @@
     opacity 0.15s,
     background 0.15s;
   flex-shrink: 0;
+  margin-right: -4px;
 }
 
 .chatSidebarItem:hover .chatSidebarItemDelete,
@@ -109,8 +154,7 @@
 
 .chatSidebarItemDelete:hover,
 .chatSidebarItemDelete:focus {
-  background: var(--error-highlight);
-  color: var(--error-primary);
+  color: var(--text-primary);
 }
 
 .chatSidebarEmpty {
@@ -127,6 +171,7 @@
   gap: 8px;
   height: 36px;
   padding: 0 8px;
+  width: 100%;
   border-radius: 6px;
   color: var(--text-secondary);
   text-decoration: none;
@@ -136,6 +181,7 @@
   outline: none;
   border: none;
   background: none;
+  cursor: pointer;
 }
 
 .newChatButton:hover,
@@ -470,6 +516,14 @@
    Process Log (Right Column)
    ============================================================================= */
 
+.viewProcessLogButton {
+  display: none;
+}
+
+.processLogOverlay {
+  display: none;
+}
+
 .processLog {
   border-left: 1px solid var(--border-default);
   overflow-y: auto;
@@ -479,13 +533,35 @@
   font-family: var(--font-mono);
 }
 
+.processLogHeaderRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px 0;
+}
+
 .processLogHeader {
   font-size: 12px;
   line-height: 16px;
   font-weight: 500;
   text-transform: uppercase;
   color: var(--text-tertiary);
-  padding: 16px 20px 0;
+}
+
+.processLogCloseButton {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 8px;
+  margin: -8px;
+}
+
+.processLogCloseButton:hover {
+  background: var(--surface-2);
 }
 
 .processLogEvents {
@@ -614,8 +690,61 @@
     grid-template-columns: 260px 1fr;
   }
 
+  .viewProcessLogButton {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 32px;
+    align-self: flex-start;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    color: var(--text-tertiary);
+    font-size: 14px;
+    line-height: 19px;
+    cursor: pointer;
+    padding: 0px 4px;
+    margin-left: -4px;
+    margin-top: -22px;
+    transition: background var(--transition-fast);
+  }
+
+  .viewProcessLogButton:hover {
+    background: var(--surface-2);
+    color: var(--text-primary);
+  }
+
+  .processLogOverlay {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 98;
+  }
+
   .processLog {
-    display: none;
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    min-width: 255px;
+    width: calc(100vw - 40px);
+    max-width: 355px;
+    z-index: 99;
+    transform: translateX(100%);
+    transition: transform 0.2s ease;
+    border-left: 1px solid var(--border-default);
+  }
+
+  .processLogOpen {
+    transform: translateX(0);
+  }
+
+  .processLogCloseButton {
+    display: flex;
   }
 }
 
@@ -627,9 +756,63 @@
   .chatLayout {
     grid-template-columns: 1fr;
   }
-
+.processLogHeaderRow {
+  display: none;
+}
+  .chatSidebarOverlay {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 98;
+  }
+  .chatSideBarMobileHeader {
+    display: flex;
+    justify-content: space-between;
+    flex-direction: row;
+    align-items: center;
+    padding: 0px 8px;
+  }
   .chatSidebar {
-    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    min-width: 255px;
+    width: calc(100vw - 40px);
+    max-width: 355px;
+    z-index: 99;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    border-right: 1px solid var(--border-default);
+  }
+
+  .chatSidebarOpen {
+    transform: translateX(0);
+  }
+
+  .chatSidebarCloseButton {
+    display: flex;
+  }
+
+  .mobileChatHeader {
+    display: flex;
+    position: fixed;
+    justify-content: space-between;
+    align-items: center;
+    top: 0px;
+    left: 0px;
+    right: 0px;
+    padding: 12px 20px;
+    gap: 12px;
+    background: var(--surface-1);
+    z-index: 50;
+  }
+  .chatMessages {
+    margin-top: 54px;
   }
 }
 
@@ -641,5 +824,10 @@
   .chatMessageTyping,
   .processLogEventDotActive {
     animation: none;
+  }
+
+  .chatSidebar,
+  .processLog {
+    transition: none;
   }
 }
