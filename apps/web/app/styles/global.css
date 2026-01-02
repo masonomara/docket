@@ -52,7 +52,7 @@
 
   /* Typography */
   --font-mono:
-    "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+    "ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
 
   /* Buttons */
   --button-primary: #131416;
@@ -77,9 +77,10 @@
 
 html,
 html * {
-  font-family: "Geist", system-ui, sans-serif;
+  font-family: "Inter", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.012em !important;
 }
 
 body {
@@ -163,7 +164,11 @@ textarea {
   line-height: 16px;
 }
 
-.text-caption {
+.text-caption-1 {
+  font-size: 11px;
+  line-height: 13px;
+}
+.text-caption-2 {
   font-size: 11px;
   line-height: 13px;
 }

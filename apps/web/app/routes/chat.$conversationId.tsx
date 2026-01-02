@@ -374,110 +374,14 @@ const VISIBLE_EVENT_TYPES = [
   "llm_thinking",
   "clio_call",
   "clio_result",
-];
-
-// TODO: Remove this demo data before production - for styling only
-const DEMO_EVENTS: ProcessEvent[] = [
-  {
-    id: "demo-1",
-    type: "kb_search",
-    status: "complete",
-    timestamp: Date.now(),
-    durationMs: 142,
-    matchCount: 4,
-    chunks: [
-      {
-        source: "client-intake-best-practices.md",
-        preview:
-          "Always verify client identity before discussing case details. Request government-issued ID and cross-reference with matter records.",
-      },
-      {
-        source: "matter-billing-guidelines.md",
-        preview:
-          "Time entries should be recorded daily and include specific task descriptions. Vague entries like 'research' should be avoided.",
-      },
-      {
-        source: "trust-accounting-compliance.md",
-        preview:
-          "Client funds must be deposited into the trust account within 24 hours of receipt. Commingling of funds is strictly prohibited.",
-      },
-      {
-        source: "document-retention-policy.md",
-        preview:
-          "Original documents should be returned to clients upon matter closure. Maintain copies for a minimum of 7 years.",
-      },
-    ],
-  },
-  {
-    id: "demo-2",
-    type: "org_context_search",
-    status: "complete",
-    timestamp: Date.now(),
-    durationMs: 89,
-    matchCount: 2,
-    chunks: [
-      {
-        source: "firm-operating-procedures.pdf",
-        preview:
-          "New matters require partner approval before opening. Associates must complete the intake checklist and obtain conflict clearance.",
-      },
-      {
-        source: "client-communication-standards.docx",
-        preview:
-          "Respond to client inquiries within 24 business hours. Document all substantive communications in the matter notes.",
-      },
-    ],
-  },
-  {
-    id: "demo-3",
-    type: "clio_schema",
-    status: "complete",
-    timestamp: Date.now(),
-    durationMs: 23,
-    customFieldCount: 12,
-    cached: true,
-  },
-  {
-    id: "demo-4",
-    type: "llm_thinking",
-    status: "complete",
-    timestamp: Date.now(),
-    durationMs: 1847,
-    hasToolCalls: true,
-    toolCallCount: 2,
-  },
-  {
-    id: "demo-5",
-    type: "clio_call",
-    status: "complete",
-    timestamp: Date.now(),
-    operation: "read",
-    objectType: "Matter",
-  },
-  {
-    id: "demo-6",
-    type: "clio_result",
-    status: "complete",
-    timestamp: Date.now(),
-    count: 3,
-    preview: {
-      items: [
-        { name: "Johnson v. Smith", id: "12345" },
-        { name: "Estate of Williams", id: "12346" },
-        { name: "ABC Corp Acquisition", id: "12347" },
-      ],
-      totalCount: 3,
-    },
-  },
+  "thinking",
+  "validation",
+  "auto_correct",
 ];
 
 function ProcessLog({ events, isOpen, onClose }: ProcessLogProps) {
-  // TODO: Remove this line before production - uses demo data for styling
-  const useDemo = events.length === 0;
-  const sourceEvents = useDemo ? DEMO_EVENTS : events;
-
   // Filter to only visible event types and consolidate (complete replaces started)
-  const consolidatedEvents = sourceEvents
+  const consolidatedEvents = events
     .filter((e) => VISIBLE_EVENT_TYPES.includes(e.type))
     .reduce<ProcessEvent[]>((acc, event) => {
       const existingIndex = acc.findIndex((e) => e.type === event.type);
@@ -632,15 +536,25 @@ function getEventLabel(event: ProcessEvent): string {
       return "AI response complete";
 
     case "clio_call":
-      return `Clio: ${event.objectType}`;
+      return event.text || `Clio: ${event.objectType}`;
 
     case "clio_result":
+      if (event.text) return event.text;
       if (event.success !== undefined)
         return event.success ? "Clio updated" : "Clio update failed";
       const count = event.count || 0;
       return `Found ${count} record${count !== 1 ? "s" : ""}`;
 
+    case "thinking":
+      return event.text || "Processing...";
+
+    case "validation":
+      return event.text || "Checking parameters...";
+
+    case "auto_correct":
+      return event.text || "Adjusting query...";
+
     default:
-      return event.type;
+      return event.text || event.type;
   }
 }

@@ -20,6 +20,7 @@ export interface ProcessEvent {
   status?: string;
   timestamp: number;
   durationMs?: number;
+  text?: string;
 
   // Embedding-specific
   query?: string;

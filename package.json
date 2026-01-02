@@ -17,7 +17,8 @@
     "deploy:web": "npm run deploy -w @docket/web",
     "test": "npm run test -w @docket/api",
     "test:e2e": "npm run test:e2e -w @docket/api",
-    "test:all": "npm run test:all -w @docket/api"
+    "test:all": "npm run test:all -w @docket/api",
+    "generate:clio-params": "node --experimental-strip-types scripts/extract-clio-params.ts"
   },
   "devDependencies": {
     "typescript": "^5.5.2"

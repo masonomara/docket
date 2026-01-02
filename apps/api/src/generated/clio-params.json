@@ -1,0 +1,754 @@
+{
+  "generatedAt": "2026-01-01T23:35:22.392Z",
+  "openApiVersion": "v4",
+  "objects": {
+    "Matter": {
+      "endpoint": "/matters.json",
+      "params": {
+        "billable": {
+          "name": "billable",
+          "type": "boolean",
+          "isArray": false,
+          "description": "Filter Matter records to those which are billable."
+        },
+        "client_id": {
+          "name": "client_id",
+          "type": "integer",
+          "isArray": false,
+          "format": "int64",
+          "description": "The unique identifier for a single Contact. The keyword `null` is not valid for this field. The list will be filtered to include only the Matter records with the matching property."
+        },
+        "close_date": {
+          "name": "close_date[]",
+          "type": "string",
+          "isArray": true,
+          "enum": [
+            ">DATE",
+            ">=DATE",
+            "=DATE",
+            "<=DATE",
+            "<DATE"
+          ],
+          "description": "Filter Matter records by the close date. The date should be provided in the format YYYY-MM-DD.\n\ne.g. `?close_date==2020-01-01`, `?close_date=<=2021-12-31`\n\nYou can provide more than one value to narro"
+        },
+        "created_since": {
+          "name": "created_since",
+          "type": "string",
+          "isArray": false,
+          "format": "date-time",
+          "description": "Filter Matter records to those having the `created_at` field after a specific time. (Expects an ISO-8601 timestamp)."
+        },
+        "currency_id": {
+          "name": "currency_id",
+          "type": "integer",
+          "isArray": false,
+          "format": "int64",
+          "description": "Filter Matter records to those of a specific currency."
+        },
+        "custom_field_ids": {
+          "name": "custom_field_ids[]",
+          "type": "integer",
+          "isArray": true,
+          "format": "int64",
+          "description": "Filter Matter's custom_field_values to only include values for the given custom field unique identifiers."
+        },
+        "custom_field_values": {
+          "name": "custom_field_values",
+          "type": "string",
+          "isArray": false,
+          "enum": [
+            "=",
+            "<",
+            ">",
+            "<=",
+            ">="
+          ],
+          "description": "Filter records to only those with the given custom field(s) set. The value is compared using the operator provided, or,\nif the value type only supports one operator, the supported operator is used. In"
+        },
+        "grant_id": {
+          "name": "grant_id",
+          "type": "integer",
+          "isArray": false,
+          "format": "int64",
+          "description": "The unique identifier for a single Grant. Use the keyword `null` to match those without a Matter. The list will be filtered to include only the Matter records with the matching property."
+        },
+        "group_id": {
+          "name": "group_id",
+          "type": "integer",
+          "isArray": false,
+          "format": "int64",
+          "description": "The unique identifier for a single Group. The keyword `null` is not valid for this field. The list will be filtered to include only the Matter records with the matching property."
+        },
+        "ids": {
+          "name": "ids[]",
+          "type": "integer",
+          "isArray": true,
+          "format": "int64",
+          "description": "Filter Matter records to those having the specified unique identifiers."
+        },
+        "notification_event_subscriber_user_id": {
+          "name": "notification_event_subscriber_user_id",
+          "type": "integer",
+          "isArray": false,
+          "format": "int64",
+          "description": "The unique identifier for a single NotificationEventSubscriber. Use the keyword `null` to match those without a Matter. The list will be filtered to include only the Matter records with the matching p"
+        },
+        "open_date": {
+          "name": "open_date[]",
+          "type": "string",
+          "isArray": true,
+          "enum": [
+            ">DATE",
+            ">=DATE",
+            "=DATE",
+            "<=DATE",
+            "<DATE"
+          ],
+          "description": "Filter Matter records by the open date. The date should be provided in the format YYYY-MM-DD.\n\ne.g. `?open_date==2020-01-01`, `?open_date=<=2021-12-31`\n\nYou can provide more than one value to narrow t"
+        },
+        "originating_attorney_id": {
+          "name": "originating_attorney_id",
+          "type": "integer",
+          "isArray": false,
+          "format": "int64",
+          "description": "The unique identifier for a single User. Use the keyword `null` to match those without a Matter. The list will be filtered to include only the Matter records with the matching property."
+        },
+        "pending_date": {
+          "name": "pending_date[]",
+          "type": "string",
+          "isArray": true,
+          "enum": [
+            ">DATE",
+            ">=DATE",
+            "=DATE",
+            "<=DATE",
+            "<DATE"
+          ],
+          "description": "Filter Matter records by the pending date. The date should be provided in the format YYYY-MM-DD.\n\ne.g. `?pending_date==2020-01-01`, `?pending_date=<=2021-12-31`\n\nYou can provide more than one value to"
+        },
+        "practice_area_id": {
+          "name": "practice_area_id",
+          "type": "integer",
+          "isArray": false,
+          "format": "int64",
+          "description": "The unique identifier for a single PracticeArea. The keyword `null` is not valid for this field. The list will be filtered to include only the Matter records with the matching property."
+        },
+        "query": {
+          "name": "query",
+          "type": "string",
+          "isArray": false,
+          "description": "Wildcard search for `display_number`, `number` or `description` matching a given string, as well as the `first_name`, `last_name` or `name` of the associated client."
+        },
+        "responsible_attorney_id": {
+          "name": "responsible_attorney_id",
+          "type": "integer",
+          "isArray": false,
+          "format": "int64",
+          "description": "The unique identifier for a single User. Use the keyword `null` to match those without a Matter. The list will be filtered to include only the Matter records with the matching property."
+        },
+        "responsible_staff_id": {
+          "name": "responsible_staff_id",
+          "type": "integer",
+          "isArray": false,
+          "format": "int64",
+          "description": "The unique identifier for a single User. Use the keyword `null` to match those without a Matter. The list will be filtered to include only the Matter records with the matching property."
+        },
+        "status": {
+          "name": "status",
+          "type": "string",
+          "isArray": false,
+          "enum": [
+            "open",
+            "closed",
+            "pending"
+          ],
+          "description": "Filter Matter records to those with a given status. It accepts comma-separated statuses, e.g. `open,pending`."
+        },
+        "subscriber_user_id": {
+          "name": "subscriber_user_id",
+          "type": "integer",
+          "isArray": false,
+          "format": "int64",
+          "description": "The unique identifier for a single NotificationEventSubscriber. Use the keyword `null` to match those without a Matter. The list will be filtered to include only the Matter records with the matching p"
+        },
+        "updated_since": {
+          "name": "updated_since",
+          "type": "string",
+          "isArray": false,
+          "format": "date-time",
+          "description": "Filter Matter records to those having the `updated_at` field after a specific time. (Expects an ISO-8601 timestamp)."
+        }
+      }
+    },
+    "Contact": {
+      "endpoint": "/contacts.json",
+      "params": {
+        "client_only": {
+          "name": "client_only",
+          "type": "boolean",
+          "isArray": false,
+          "description": "Filter Contact records to those that are clients."
+        },
+        "clio_connect_only": {
+          "name": "clio_connect_only",
+          "type": "boolean",
+          "isArray": false,
+          "description": "Filter Contact records to those that are Clio Connect users."
+        },
+        "created_since": {
+          "name": "created_since",
+          "type": "string",
+          "isArray": false,
+          "format": "date-time",
+          "description": "Filter Contact records to those having the `created_at` field after a specific time. (Expects an ISO-8601 timestamp)."
+        },
+        "custom_field_ids": {
+          "name": "custom_field_ids[]",
+          "type": "integer",
+          "isArray": true,
+          "format": "int64",
+          "description": "Filter Contact's custom_field_values to only include values for the given custom field unique identifiers."
+        },
+        "custom_field_values": {
+          "name": "custom_field_values",
+          "type": "string",
+          "isArray": false,
+          "enum": [
+            "=",
+            "<",
+            ">",
+            "<=",
+            ">="
+          ],
+          "description": "Filter records to only those with the given custom field(s) set. The value is compared using the operator provided, or,\nif the value type only supports one operator, the supported operator is used. In"
+        },
+        "email_only": {
+          "name": "email_only",
+          "type": "boolean",
+          "isArray": false,
+          "description": "Filter Contact records to those that have email addresses."
+        },
+        "exclude_ids": {
+          "name": "exclude_ids[]",
+          "type": "integer",
+          "isArray": true,
+          "format": "int64",
+          "description": "Filter Contact records to those who are not included in the given list of unique identifiers."
+        },
+        "ids": {
+          "name": "ids[]",
+          "type": "integer",
+          "isArray": true,
+          "format": "int64",
+          "description": "Filter Contact records to those having the specified unique identifiers."
+        },
+        "initial": {
+          "name": "initial",
+          "type": "string",
+          "isArray": false,
+          "enum": [
+            "A",
+            "B",
+            "C",
+            "D",
+            "E",
+            "F",
+            "G",
+            "H",
+            "I",
+            "J",
+            "K",
+            "L",
+            "M",
+            "N",
+            "O",
+            "P",
+            "Q",
+            "R",
+            "S",
+            "T",
+            "U",
+            "V",
+            "W",
+            "X",
+            "Y",
+            "Z"
+          ],
+          "description": "Filter Contact records to those where the last name or company name start with the given initial."
+        },
+        "query": {
+          "name": "query",
+          "type": "string",
+          "isArray": false,
+          "description": "Wildcard search for name, title, email address, address, phone number, web site, instant messenger address,\ncustom fields, related matter name, or company name matching a given string.\n"
+        },
+        "shared_resource_id": {
+          "name": "shared_resource_id",
+          "type": "integer",
+          "isArray": false,
+          "format": "int64",
+          "description": "Filter Contact records to those that currently have access to a given shared resource."
+        },
+        "type": {
+          "name": "type",
+          "type": "string",
+          "isArray": false,
+          "enum": [
+            "Company",
+            "Person"
+          ],
+          "description": "Filter Contact records to those that match the given type."
+        },
+        "updated_since": {
+          "name": "updated_since",
+          "type": "string",
+          "isArray": false,
+          "format": "date-time",
+          "description": "Filter Contact records to those having the `updated_at` field after a specific time. (Expects an ISO-8601 timestamp)."
+        }
+      }
+    },
+    "Task": {
+      "endpoint": "/tasks.json",
+      "params": {
+        "assignee_id": {
+          "name": "assignee_id",
+          "type": "integer",
+          "isArray": false,
+          "format": "int64",
+          "description": "The unique identifier for a single User or Contact. Use the keyword `null` to match those without a Task. The list will be filtered to include only the Task records with the matching property."
+        },
+        "assignee_type": {
+          "name": "assignee_type",
+          "type": "string",
+          "isArray": false,
+          "enum": [
+            "user",
+            "contact"
+          ],
+          "description": "Filter Task records to those with a specific assignee. Must be passed if filtering by assignee."
+        },
+        "assigner_id": {
+          "name": "assigner_id",
+          "type": "integer",
+          "isArray": false,
+          "format": "int64",
+          "description": "The unique identifier for a single User. Use the keyword `null` to match those without a Task. The list will be filtered to include only the Task records with the matching property."
+        },
+        "cascading_source_id": {
+          "name": "cascading_source_id",
+          "type": "integer",
+          "isArray": false,
+          "format": "int32",
+          "description": "Filter Task records to those with a parent task that has the specified ID."
+        },
+        "client_id": {
+          "name": "client_id",
+          "type": "integer",
+          "isArray": false,
+          "format": "int64",
+          "description": "The unique identifier for a single Contact. Use the keyword `null` to match those without a Task. The list will be filtered to include only the Task records with the matching property."
+        },
+        "complete": {
+          "name": "complete",
+          "type": "boolean",
+          "isArray": false,
+          "description": "Filter Task records to those which are complete or not."
+        },
+        "created_since": {
+          "name": "created_since",
+          "type": "string",
+          "isArray": false,
+          "format": "date-time",
+          "description": "Filter Task records to those having the `created_at` field after a specific time. (Expects an ISO-8601 timestamp)."
+        },
+        "due_at_from": {
+          "name": "due_at_from",
+          "type": "string",
+          "isArray": false,
+          "format": "date",
+          "description": "Start of date range when querying by due_at in a range. (Expects an ISO-8601 date)."
+        },
+        "due_at_present": {
+          "name": "due_at_present",
+          "type": "boolean",
+          "isArray": false,
+          "description": "Filter Task records to those that have a due date specified, or not."
+        },
+        "due_at_to": {
+          "name": "due_at_to",
+          "type": "string",
+          "isArray": false,
+          "format": "date",
+          "description": "End of date range when querying by due_at in a range. (Expects an ISO-8601 date)."
+        },
+        "ids": {
+          "name": "ids[]",
+          "type": "integer",
+          "isArray": true,
+          "format": "int64",
+          "description": "Filter Task records to those having the specified unique identifiers."
+        },
+        "matter_id": {
+          "name": "matter_id",
+          "type": "integer",
+          "isArray": false,
+          "format": "int64",
+          "description": "The unique identifier for a single Matter. Use the keyword `null` to match those without a Task. The list will be filtered to include only the Task records with the matching property."
+        },
+        "permission": {
+          "name": "permission",
+          "type": "string",
+          "isArray": false,
+          "enum": [
+            "private",
+            "public"
+          ],
+          "description": "Filter Task records to those with the given permission. Returns all tasks by default."
+        },
+        "priority": {
+          "name": "priority",
+          "type": "string",
+          "isArray": false,
+          "enum": [
+            "high",
+            "normal",
+            "low"
+          ],
+          "description": "Filter Task records to those with the given priority."
+        },
+        "query": {
+          "name": "query",
+          "type": "string",
+          "isArray": false,
+          "description": "Wildcard search for `name` or `description` matching a given string."
+        },
+        "responsible_attorney_id": {
+          "name": "responsible_attorney_id",
+          "type": "integer",
+          "isArray": false,
+          "format": "int64",
+          "description": "Filter Task records to those that have an associated matter with a responsible attorney ID."
+        },
+        "status": {
+          "name": "status",
+          "type": "string",
+          "isArray": false,
+          "enum": [
+            "pending",
+            "in_progress",
+            "in_review",
+            "complete",
+            "draft"
+          ],
+          "description": "Filter Task records to those with the given status. Users without advanced tasks enabled may only specify 'complete' or 'pending'."
+        },
+        "statuses": {
+          "name": "statuses[]",
+          "type": "string",
+          "isArray": true,
+          "enum": [
+            "pending",
+            "in_progress",
+            "in_review",
+            "complete",
+            "draft"
+          ],
+          "description": "Filter Task records to those with the given statuses. Users without advanced tasks enabled may only specify 'complete' or 'pending'."
+        },
+        "statute_of_limitations": {
+          "name": "statute_of_limitations",
+          "type": "boolean",
+          "isArray": false,
+          "description": "Filter Task records to those which are a statute of limitations or not."
+        },
+        "task_type_id": {
+          "name": "task_type_id",
+          "type": "integer",
+          "isArray": false,
+          "format": "int64",
+          "description": "The unique identifier for a single TaskType. Use the keyword `null` to match those without a Task. The list will be filtered to include only the Task records with the matching property."
+        },
+        "time_entries_present": {
+          "name": "time_entries_present",
+          "type": "boolean",
+          "isArray": false,
+          "description": "Filter Task records to those that have associated time entries, or not."
+        },
+        "updated_since": {
+          "name": "updated_since",
+          "type": "string",
+          "isArray": false,
+          "format": "date-time",
+          "description": "Filter Task records to those having the `updated_at` field after a specific time. (Expects an ISO-8601 timestamp)."
+        }
+      }
+    },
+    "CalendarEntry": {
+      "endpoint": "/calendar_entries.json",
+      "params": {
+        "calendar_id": {
+          "name": "calendar_id",
+          "type": "integer",
+          "isArray": false,
+          "format": "int64",
+          "description": "The unique identifier for a single Calendar. The keyword `null` is not valid for this field. The list will be filtered to include only the CalendarEntry records with the matching property."
+        },
+        "created_since": {
+          "name": "created_since",
+          "type": "string",
+          "isArray": false,
+          "format": "date-time",
+          "description": "Filter CalendarEntry records to those having the `created_at` field after a specific time. (Expects an ISO-8601 timestamp)."
+        },
+        "expanded": {
+          "name": "expanded",
+          "type": "boolean",
+          "isArray": false,
+          "description": "Returns a record for each occurrence of a recurring calendar event.  Non-recurring calendar events are unaffected and returned as separate records regardless of the expanded setting."
+        },
+        "external_property_name": {
+          "name": "external_property_name",
+          "type": "string",
+          "isArray": false,
+          "description": "Filter records to only those with the given external property(s) name set.\n\ne.g. `?external_property_name=Name`\n"
+        },
+        "external_property_value": {
+          "name": "external_property_value",
+          "type": "string",
+          "isArray": false,
+          "description": "Filter records to only those with the given external property(s) value set. Requires external property name as well.\n\ne.g. `?external_property_name=Name&external_property_value=Value`\n"
+        },
+        "from": {
+          "name": "from",
+          "type": "string",
+          "isArray": false,
+          "format": "date-time",
+          "description": "Filter CalendarEntry records to those that end on or after the provided time (Expects an ISO-8601 timestamp)."
+        },
+        "has_court_rule": {
+          "name": "has_court_rule",
+          "type": "boolean",
+          "isArray": false,
+          "description": "Allows matching court rule on calendar entry."
+        },
+        "ids": {
+          "name": "ids[]",
+          "type": "integer",
+          "isArray": true,
+          "format": "int64",
+          "description": "Filter CalendarEntry records to those having the specified unique identifiers."
+        },
+        "is_all_day": {
+          "name": "is_all_day",
+          "type": "boolean",
+          "isArray": false,
+          "description": "Filter CalendarEntry records to those that are marked as all day events."
+        },
+        "matter_id": {
+          "name": "matter_id",
+          "type": "integer",
+          "isArray": false,
+          "format": "int64",
+          "description": "The unique identifier for a single Matter. Use the keyword `null` to match those without a CalendarEntry. The list will be filtered to include only the CalendarEntry records with the matching property"
+        },
+        "owner_entries_across_all_users": {
+          "name": "owner_entries_across_all_users",
+          "type": "boolean",
+          "isArray": false,
+          "description": "Returns CalendarEntry records for all users related to a matter. Requires matter id."
+        },
+        "query": {
+          "name": "query",
+          "type": "string",
+          "isArray": false,
+          "description": "Allows matching search on calendar entry."
+        },
+        "source": {
+          "name": "source",
+          "type": "string",
+          "isArray": false,
+          "enum": [
+            "web",
+            "mobile"
+          ],
+          "description": "Filter CalendarEntry records to those having a specific calendar visibility source (mobile, web)."
+        },
+        "to": {
+          "name": "to",
+          "type": "string",
+          "isArray": false,
+          "format": "date-time",
+          "description": "Filter CalendarEntry records to those that begin on or before the provided time (Expects an ISO-8601 timestamp)."
+        },
+        "updated_since": {
+          "name": "updated_since",
+          "type": "string",
+          "isArray": false,
+          "format": "date-time",
+          "description": "Filter CalendarEntry records to those having the `updated_at` field after a specific time. (Expects an ISO-8601 timestamp)."
+        },
+        "visible": {
+          "name": "visible",
+          "type": "boolean",
+          "isArray": false,
+          "description": "Filter CalendarEntry records to those that are visible."
+        }
+      }
+    },
+    "Activity": {
+      "endpoint": "/activities.json",
+      "params": {
+        "activity_description_id": {
+          "name": "activity_description_id",
+          "type": "integer",
+          "isArray": false,
+          "format": "int64",
+          "description": "The unique identifier for a single ActivityDescription. Use the keyword `null` to match those without a Activity. The list will be filtered to include only the Activity records with the matching prope"
+        },
+        "calendar_entry_id": {
+          "name": "calendar_entry_id",
+          "type": "integer",
+          "isArray": false,
+          "format": "int64",
+          "description": "The unique identifier for a single CalendarEntry. Use the keyword `null` to match those without a Activity. The list will be filtered to include only the Activity records with the matching property."
+        },
+        "communication_id": {
+          "name": "communication_id",
+          "type": "integer",
+          "isArray": false,
+          "format": "int64",
+          "description": "The unique identifier for a single Communication. Use the keyword `null` to match those without a Activity. The list will be filtered to include only the Activity records with the matching property."
+        },
+        "contact_note_id": {
+          "name": "contact_note_id",
+          "type": "integer",
+          "isArray": false,
+          "format": "int64",
+          "description": "The unique identifier for a single Note. Use the keyword `null` to match those without a Activity. The list will be filtered to include only the Activity records with the matching property."
+        },
+        "created_since": {
+          "name": "created_since",
+          "type": "string",
+          "isArray": false,
+          "format": "date-time",
+          "description": "Filter Activity records to those having the `created_at` field after a specific time. (Expects an ISO-8601 timestamp)."
+        },
+        "end_date": {
+          "name": "end_date",
+          "type": "string",
+          "isArray": false,
+          "format": "date-time",
+          "description": "Filter Activity records to those whose `date` is on or before the date provided (Expects an ISO-8601 date)."
+        },
+        "expense_category_id": {
+          "name": "expense_category_id",
+          "type": "integer",
+          "isArray": false,
+          "format": "int64",
+          "description": "The unique identifier for a single ExpenseCategory. Use the keyword `null` to match those without a Activity. The list will be filtered to include only the Activity records with the matching property."
+        },
+        "flat_rate": {
+          "name": "flat_rate",
+          "type": "boolean",
+          "isArray": false,
+          "description": "Filter Activity TimeEntry records to those that have a flat rate, or not."
+        },
+        "grant_id": {
+          "name": "grant_id",
+          "type": "integer",
+          "isArray": false,
+          "format": "int64",
+          "description": "The unique identifier for a single Grant. Use the keyword `null` to match those without a Activity. The list will be filtered to include only the Activity records with the matching property."
+        },
+        "ids": {
+          "name": "ids[]",
+          "type": "integer",
+          "isArray": true,
+          "format": "int64",
+          "description": "Filter Activity records to those having the specified unique identifiers."
+        },
+        "matter_id": {
+          "name": "matter_id",
+          "type": "integer",
+          "isArray": false,
+          "format": "int64",
+          "description": "The unique identifier for a single Matter. Use the keyword `null` to match those without a Activity. The list will be filtered to include only the Activity records with the matching property."
+        },
+        "matter_note_id": {
+          "name": "matter_note_id",
+          "type": "integer",
+          "isArray": false,
+          "format": "int64",
+          "description": "The unique identifier for a single Note. Use the keyword `null` to match those without a Activity. The list will be filtered to include only the Activity records with the matching property."
+        },
+        "only_unaccounted_for": {
+          "name": "only_unaccounted_for",
+          "type": "boolean",
+          "isArray": false,
+          "description": "Only unaccounted for activities."
+        },
+        "query": {
+          "name": "query",
+          "type": "string",
+          "isArray": false,
+          "description": "Wildcard search for `note` matching a given string."
+        },
+        "start_date": {
+          "name": "start_date",
+          "type": "string",
+          "isArray": false,
+          "format": "date-time",
+          "description": "Filter Activity records to those whose `date` is on or after the date provided (Expects an ISO-8601 date)."
+        },
+        "status": {
+          "name": "status",
+          "type": "string",
+          "isArray": false,
+          "enum": [
+            "billed",
+            "draft",
+            "unbilled",
+            "non_billable",
+            "billable",
+            "written_off"
+          ],
+          "description": "Filter Activity records to those that are draft, billed, unbilled or non-billable."
+        },
+        "task_id": {
+          "name": "task_id",
+          "type": "integer",
+          "isArray": false,
+          "format": "int64",
+          "description": "The unique identifier for a single Task. Use the keyword `null` to match those without a Activity. The list will be filtered to include only the Activity records with the matching property."
+        },
+        "type": {
+          "name": "type",
+          "type": "string",
+          "isArray": false,
+          "enum": [
+            "TimeEntry",
+            "ExpenseEntry",
+            "HardCostEntry",
+            "SoftCostEntry"
+          ],
+          "description": "Filter Activity records to those of a specific type."
+        },
+        "updated_since": {
+          "name": "updated_since",
+          "type": "string",
+          "isArray": false,
+          "format": "date-time",
+          "description": "Filter Activity records to those having the `updated_at` field after a specific time. (Expects an ISO-8601 timestamp)."
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "integer",
+          "isArray": false,
+          "format": "int64",
+          "description": "The unique identifier for a single User. Use the keyword `null` to match those without a Activity. The list will be filtered to include only the Activity records with the matching property."
+        }
+      }
+    }
+  }
+}

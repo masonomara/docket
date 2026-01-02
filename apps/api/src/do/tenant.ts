@@ -23,6 +23,11 @@ import {
   type ClioCustomField,
 } from "../services/clio-schema";
 import {
+  getClioToolSchema,
+  validateFilters,
+  normalizeFilters,
+} from "../services/clio-static-schema";
+import {
   storeClioTokens,
   getClioTokens,
   deleteClioTokens,
@@ -542,6 +547,17 @@ export class TenantDO extends DurableObject<Env> {
     return text.slice(0, maxLength - 3) + "...";
   }
 
+  private formatFiltersForDisplay(
+    filters?: Record<string, unknown>
+  ): string {
+    if (!filters || Object.keys(filters).length === 0) {
+      return "";
+    }
+    return Object.entries(filters)
+      .map(([key, value]) => `${key}: "${value}"`)
+      .join(", ");
+  }
+
   private summarizeClioResult(
     result: string,
     objectType: string
@@ -626,6 +642,18 @@ ${customFieldsInfo ? `**Firm Custom Fields:**\n${customFieldsInfo}` : ""}
 - "Find John Smith" → clioQuery with objectType="Contact", filters={"query": "John Smith"}
 - "Tell me about the Smith case" → clioQuery with objectType="Matter", filters={"query": "Smith"}
 - "What tasks are due this week?" → clioQuery with objectType="Task"
+- "Log my time" → clioQuery with objectType="Activity"
+
+**For create/update operations - ALWAYS look up IDs first:**
+When creating or updating records that reference other objects (matters, contacts, users), you MUST:
+1. First search for the referenced object to get its real ID
+2. Then create/update using that numeric ID
+
+Example - "Log 2 hours on the Johnson matter":
+1. First: clioQuery read Matter with filters={"query": "Johnson"} → get matter_id (e.g., 12345)
+2. Then: clioQuery create Activity with data={"matter_id": 12345, "quantity": 7200, ...}
+
+NEVER use placeholder text like "Johnson matter ID" - always look up the real numeric ID first.
 
 **When NOT to use clioQuery:**
 - "Hello" → Greet the user back
@@ -661,6 +689,11 @@ ${customFieldsInfo ? `**Firm Custom Fields:**\n${customFieldsInfo}` : ""}
   private parseLLMResponse(response: unknown): LLMResponse {
     // Handle string response
     if (typeof response === "string") {
+      // Check if string looks like a JSON tool call
+      const toolCallFromString = this.tryParseToolCallFromString(response);
+      if (toolCallFromString) {
+        return { content: "", toolCalls: [toolCallFromString] };
+      }
       return { content: response };
     }
 
@@ -681,10 +714,36 @@ ${customFieldsInfo ? `**Firm Custom Fields:**\n${customFieldsInfo}` : ""}
 
     const toolCalls = this.parseToolCalls(result.tool_calls);
 
-    return {
-      content: typeof result.response === "string" ? result.response : "",
-      toolCalls,
-    };
+    // If no structured tool calls, check if response content is a JSON tool call
+    const content = typeof result.response === "string" ? result.response : "";
+    if (!toolCalls?.length && content) {
+      const toolCallFromContent = this.tryParseToolCallFromString(content);
+      if (toolCallFromContent) {
+        return { content: "", toolCalls: [toolCallFromContent] };
+      }
+    }
+
+    return { content, toolCalls };
+  }
+
+  private tryParseToolCallFromString(text: string): ToolCall | null {
+    const trimmed = text.trim();
+    if (!trimmed.startsWith("{") || !trimmed.includes('"name"')) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed.name && parsed.arguments && typeof parsed.arguments === "object") {
+        return {
+          name: parsed.name,
+          arguments: parsed.arguments,
+        };
+      }
+    } catch {
+      // Not valid JSON, return null
+    }
+    return null;
   }
 
   private parseToolCalls(
@@ -762,56 +821,7 @@ ${customFieldsInfo ? `**Firm Custom Fields:**\n${customFieldsInfo}` : ""}
   // ===========================================================================
 
   private getClioTools(userRole: string): object[] {
-    const permissionNote =
-      userRole === "admin"
-        ? "Create/update/delete operations will require user confirmation."
-        : "As a Member, only read operations are permitted.";
-
-    return [
-      {
-        type: "function",
-        function: {
-          name: "clioQuery",
-          description: `Query or modify Clio data. ${permissionNote}`,
-          parameters: {
-            type: "object",
-            properties: {
-              operation: {
-                type: "string",
-                enum: ["read", "create", "update", "delete"],
-                description: "The operation to perform",
-              },
-              objectType: {
-                type: "string",
-                enum: [
-                  "Matter",
-                  "Contact",
-                  "Task",
-                  "CalendarEntry",
-                  "TimeEntry",
-                ],
-                description: "The Clio object type",
-              },
-              id: {
-                type: "string",
-                description:
-                  "Object ID (required for read single/update/delete)",
-              },
-              filters: {
-                type: "object",
-                description:
-                  "Query filters for list operations. Use 'query' for text search (e.g., {\"query\": \"Smith\"} to find records containing 'Smith'). Other filters: 'status', 'created_since', 'updated_since'.",
-              },
-              data: {
-                type: "object",
-                description: "Data for create/update operations",
-              },
-            },
-            required: ["operation", "objectType"],
-          },
-        },
-      },
-    ];
+    return [getClioToolSchema(userRole)];
   }
 
   // ===========================================================================
@@ -866,6 +876,26 @@ ${customFieldsInfo ? `**Firm Custom Fields:**\n${customFieldsInfo}` : ""}
 
     const { operation, objectType, id, filters, data } = toolCall.arguments;
 
+    // Validate and normalize filters
+    let correctedFilters = filters ? { ...filters } : undefined;
+
+    if (operation === "read" && !id) {
+      const validation = validateFilters(objectType, filters);
+
+      if (!validation.valid) {
+        if (validation.correctedValue && validation.invalidKey && correctedFilters) {
+          // Auto-correct enum errors
+          correctedFilters[validation.invalidKey] = validation.correctedValue;
+        } else {
+          // Can't auto-correct
+          const friendlyTypes = "matters, contacts, tasks, calendar entries, or activities (time entries)";
+          return `I can't search for that directly. I can look up ${friendlyTypes}. Which would you like?`;
+        }
+      }
+    }
+
+    const normalizedFilters = normalizeFilters(objectType, correctedFilters);
+
     // Check permissions for write operations
     if (operation !== "read" && message.userRole !== "admin") {
       return `You don't have permission to ${operation} ${objectType}s. Only Admins can make changes.`;
@@ -873,7 +903,7 @@ ${customFieldsInfo ? `**Firm Custom Fields:**\n${customFieldsInfo}` : ""}
 
     // Handle read operations directly
     if (operation === "read") {
-      return this.executeClioRead(message.userId, { objectType, id, filters });
+      return this.executeClioRead(message.userId, { objectType, id, filters: normalizedFilters });
     }
 
     // Handle write operations (require confirmation)
@@ -900,17 +930,56 @@ ${customFieldsInfo ? `**Firm Custom Fields:**\n${customFieldsInfo}` : ""}
 
     const { operation, objectType, id, filters, data } = toolCall.arguments;
 
+    // Emit thinking event
+    const objectLabel = objectType.toLowerCase() + (id ? "" : "s");
+    await emit("process", {
+      type: "thinking",
+      text: `Looking up ${objectLabel}...`,
+    });
+
+    // Validate and normalize filters
+    let correctedFilters = filters ? { ...filters } : undefined;
+
+    if (operation === "read" && !id) {
+      const validation = validateFilters(objectType, filters);
+
+      if (!validation.valid) {
+        // If we can auto-correct (enum error), do so and notify user
+        if (validation.correctedValue && validation.invalidKey && correctedFilters) {
+          const invalidValue = correctedFilters[validation.invalidKey];
+          correctedFilters[validation.invalidKey] = validation.correctedValue;
+
+          await emit("process", {
+            type: "auto_correct",
+            text: `"${invalidValue}" isn't an option. Showing ${validation.correctedValue} instead...`,
+          });
+        } else {
+          // Can't auto-correct (e.g., unknown objectType) - return friendly error
+          const friendlyTypes = "matters, contacts, tasks, calendar entries, or activities (time entries)";
+          return `I can't search for that directly. I can look up ${friendlyTypes}. Which would you like?`;
+        }
+      }
+    }
+
+    const normalizedFilters = normalizeFilters(objectType, correctedFilters);
+
     // Check permissions
     if (operation !== "read" && message.userRole !== "admin") {
       return `You don't have permission to ${operation} ${objectType}s. Only Admins can make changes.`;
     }
 
-    // Emit Clio call event
+    // Emit Clio call event with human-readable filter description
+    const filterDesc = this.formatFiltersForDisplay(normalizedFilters);
+    const searchText = filterDesc
+      ? `Searching ${objectType}s: ${filterDesc}`
+      : `Searching ${objectType}s...`;
+
     await emit("process", {
       type: "clio_call",
+      text: searchText,
       operation,
       objectType,
-      filters,
+      filters: normalizedFilters,
       id,
     });
 
@@ -921,14 +990,20 @@ ${customFieldsInfo ? `**Firm Custom Fields:**\n${customFieldsInfo}` : ""}
       const result = await this.executeClioRead(message.userId, {
         objectType,
         id,
-        filters,
+        filters: normalizedFilters,
       });
 
       const clioDuration = clioTimer.elapsed();
       const preview = this.summarizeClioResult(result, objectType);
 
+      const resultText =
+        preview.totalCount === 0
+          ? `No ${objectType.toLowerCase()}s found`
+          : `Found ${preview.totalCount} ${objectType.toLowerCase()}${preview.totalCount === 1 ? "" : "s"}`;
+
       await emit("process", {
         type: "clio_result",
+        text: resultText,
         durationMs: clioDuration,
         count: preview.totalCount,
         preview,
@@ -1163,6 +1238,18 @@ Only include modifiedRequest if intent is "modify".`;
         confirmation.objectType,
         confirmation.params
       );
+
+      if (!result.success) {
+        await this.appendAuditLog({
+          user_id: userId,
+          action: confirmation.action,
+          object_type: confirmation.objectType,
+          params: confirmation.params,
+          result: "error",
+          error_message: result.details,
+        });
+        return result.details || `Failed to ${confirmation.action} the ${confirmation.objectType}.`;
+      }
 
       await this.appendAuditLog({
         user_id: userId,

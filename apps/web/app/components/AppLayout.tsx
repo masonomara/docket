@@ -87,7 +87,7 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
           >
             <ArrowRightFromLineIcon
               size={22}
-              strokeWidth={1.67}
+              strokeWidth={1.5}
               color={"var(--text-secondary)"}
             />
           </button>
@@ -101,8 +101,8 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
               <li>
                 <Link to="/admin" className={getNavItemClass("/admin")}>
                   <Landmark
-                    size={16}
-                    strokeWidth={1.75}
+                    size={19}
+                    strokeWidth={1.5}
                     className={styles.navIcon}
                   />
                   Get Started
@@ -111,11 +111,7 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
             ) : (
               <li>
                 <Link to="/chat" className={getNavItemClass("/chat")}>
-                  <Bot
-                    size={16}
-                    strokeWidth={1.75}
-                    className={styles.navIcon}
-                  />
+                  <Bot size={19} strokeWidth={1.5} className={styles.navIcon} />
                   Docketbot
                 </Link>
               </li>
@@ -133,21 +129,13 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
                   to="/org/context"
                   className={getNavItemClass("/org/context")}
                 >
-                  <Scale
-                    size={16}
-                    strokeWidth={1.75}
-                    className={styles.navIcon}
-                  />
+                  <Scale size={19} strokeWidth={1.5} className={styles.navIcon} />
                   Knowledge Base
                 </Link>
               </li>
               <li>
                 <Link to="/org/clio" className={getNavItemClass("/org/clio")}>
-                  <Plug
-                    size={16}
-                    strokeWidth={1.75}
-                    className={styles.navIcon}
-                  />
+                  <Plug size={19} strokeWidth={1.5} className={styles.navIcon} />
                   Clio Connection
                 </Link>
               </li>
@@ -156,11 +144,7 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
                   to="/org/members"
                   className={getNavItemClass("/org/members")}
                 >
-                  <Users
-                    size={16}
-                    strokeWidth={1.75}
-                    className={styles.navIcon}
-                  />
+                  <Users size={19} strokeWidth={1.5} className={styles.navIcon} />
                   Members
                 </Link>
               </li>
@@ -178,8 +162,8 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
                 className={getNavItemClass("/account/settings")}
               >
                 <Settings2
-                  size={16}
-                  strokeWidth={1.75}
+                  size={19}
+                  strokeWidth={1.5}
                   className={styles.navIcon}
                 />
                 User Settings
