@@ -136,21 +136,18 @@
    Organization Info (bottom of sidebar)
    ========================================================================== */
 
-.orgInfoDivider {
-  margin-top: auto;
-  height: 1px;
-  width: 100%;
-  background-color: var(--border-default);
-}
-
 .orgInfo {
-  padding: 8px;
+  padding: 20px 20px;
   text-decoration: none;
   display: flex;
   align-items: center;
   gap: 10px;
-  border-radius: 6px;
-  transition: background var(--transition-fast);
+  border-radius: 0px;
+  position: absolute;
+  bottom: 0px;
+  left: 0px;
+  width: 254px;
+  border-top: 1px solid var(--border-default);
 }
 
 .orgAvatar {
@@ -162,7 +159,7 @@
   align-items: center;
   justify-content: center;
   font-size: 14px;
-  font-weight: 550;
+  font-weight: 575;
   color: var(--text-secondary);
   flex-shrink: 0;
 }
@@ -178,7 +175,7 @@
   line-height: 19px;
   color: var(--text-secondary);
   white-space: nowrap;
-  font-weight: 550;
+  font-weight: 400;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -190,20 +187,22 @@
 }
 
 /* Hover states */
-.orgInfo:hover .orgName, .orgInfoActive .orgName  {
+.orgInfo:hover .orgName,
+.orgInfoActive .orgName {
   color: var(--text-primary);
 }
 
-.orgInfo:hover .orgRole, .orgInfoActive .orgRole {
+.orgInfo:hover .orgRole,
+.orgInfoActive .orgRole {
   color: var(--text-secondary);
 }
 
 .orgInfo:hover {
-  background-color: var(--surface-2)
+  background-color: var(--surface-1);
 }
 
 .orgInfoActive {
-  background-color: var(--surface-2);
+  background-color: var(--surface-1);
 }
 
 /* ==========================================================================

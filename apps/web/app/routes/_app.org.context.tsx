@@ -17,9 +17,7 @@ const ACCEPTED_FILE_TYPES =
 export const loader = childLoader(async ({ fetch }) => {
   const res = await fetch(ENDPOINTS.org.context);
 
-  const documents = res.ok
-    ? ((await res.json()) as OrgContextDocument[])
-    : [];
+  const documents = res.ok ? ((await res.json()) as OrgContextDocument[]) : [];
 
   const loadError = res.ok ? null : "Failed to load documents.";
 
@@ -52,7 +50,8 @@ export default function DocumentsPage({ loaderData }: Route.ComponentProps) {
   // Don't render if no org
   if (!org) return null;
 
-  const pageTitle = org.org.orgType === "legal-clinic" ? "Clinic Documents" : "Firm Documents";
+  const pageTitle =
+    org.org.orgType === "legal-clinic" ? "Clinic Documents" : "Firm Documents";
 
   async function uploadFile(file: File) {
     const validation = validateFile(file);
@@ -285,7 +284,7 @@ function DocumentsTable({ documents, onDelete }: DocumentsTableProps) {
   return (
     documents.length > 0 && (
       <section className="section">
-        <h2 className="text-title-3">Manage Documents ({documents.length})</h2>
+        <h2 className="text-title-3">Manage Documents </h2>
 
         <div className="table-wrapper">
           <table className="table">

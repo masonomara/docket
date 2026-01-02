@@ -4,46 +4,44 @@
 
 :root {
   /* Backgrounds */
-  --container: #ffffff; /* set */
-  --surface-1: rgba(250, 250, 250, 1); /* set */
-  --surface-2: rgba(243, 243, 243, 1); /* set */
-  --surface-3: rgba(239, 239, 239, 1);
+  --container: #ffff; /* 1.00 */
+  --surface-1: #fafafb; /* 1.04 */
+  --surface-2: #f4f4f5; /* 1.10 */
+  --surface-3: #eff0f1; /* 1.14 */
 
   /* Text */
-  --text-primary: rgba(48, 48, 48, 1); /* set */
-  --text-secondary: rgba(97, 97, 97, 1); /* set */
-  --text-tertiary: rgba(138, 138, 138, 1);
+  --text-primary: #2e3034; /* 13.19 */
+  --text-secondary: #5f6168; /* 6.19 */
+  --text-tertiary: #878a92; /* 3.45 */
 
-  --btn-primary-hover: rgba(26, 26, 26, 1); /* set */
-  --surface-input: rgba(253, 253, 253, 1); /* set */
-  --surface-input-hover: rgba(250, 250, 250, 1); /* set */
+  --btn-primary-hover: #191a1d; /* 17.40 */
+  --surface-input: #fdfdfe; /* 1.01 */
 
-  --border-input: rgba(196, 196, 196, 1); /* set */
-  --border-input-hover: rgba(173, 173, 173, 1); /* set */
+  --border-input: #c4c4c4ff; /* 1.74 */
+  --border-input-hover: #abadb3; /* 2.24 */
 
   /* Borders */
-  --border-dark: rgba(29, 29, 35, 0.2);
-  --border-default: rgba(227, 227, 227, 1); /* set */
+  --border-default: #e2e3e5; /* 1.28 */
 
   /* Brand */
-  --brand-focus: #004299; /* set */
-  --brand-primary: rgba(0, 91, 211, 1); /* set */
-  --brand-highlight: rgba(234, 244, 255, 1); /* set */
+  --brand-focus: #00419c; /* 9.37 */
+  --brand-primary: #005bd3; /* 6.10 */
+  --brand-highlight: #f1f3ff; /* 1.10 */
 
   /* Status: Error */
-  --error-focused: #a82639;
-  --error-primary: #b92b40;
-  --error-highlight: rgba(168, 38, 57, 0.1);
+  --error-focus: #871c2c; /* 9.37 */
+  --error-primary: #b82a3f; /* 6.10 */
+  --error-highlight: #fcf0f0; /* 1.10 */
 
   /* Status: Success */
-  --success-primary: #016644;
-  --success-secondary: #00714a;
-  --success-highlight: rgba(1, 102, 68, 0.1);
+  --success-focus: #0b5131; /* 9.37 */
+  --success-primary: #137045; /* 6.10 */
+  --success-highlight: #d2fee2; /* 1.10 */
 
   /* Status: Warning */
-  --warning-primary: #b45309;
-  --warning-secondary: #d97706;
-  --warning-highlight: rgba(180, 83, 9, 0.1);
+  --warning-focus: #554416; /* 9.37 */
+  --warning-primary: #765f22; /* 6.10 */
+  --warning-highlight: #fdf3e2; /* 1.10 */
 
   /* Overlay */
   --overlay: rgba(29, 29, 35, 0.6);
@@ -113,7 +111,7 @@ li {
 }
 
 strong {
-  font-weight: 550;
+  font-weight: 575;
 }
 
 :focus-visible {
@@ -132,31 +130,31 @@ textarea {
 .text-large-title {
   font-size: 33px;
   line-height: 40px;
-  font-weight: 550;
+  font-weight: 575;
 }
 
 .text-title-1 {
   font-size: 27px;
   line-height: 33px;
-  font-weight: 550;
+  font-weight: 575;
 }
 
 .text-title-2 {
   font-size: 21px;
   line-height: 26px;
-  font-weight: 550;
+  font-weight: 575;
 }
 
 .text-title-3 {
-  font-size: 19px;
-  line-height: 24px;
-  font-weight: 550;
+  font-size: 18px;
+  line-height: 23px;
+  font-weight: 575;
 }
 
 .text-headline {
   font-size: 16px;
   line-height: 21px;
-  font-weight: 550;
+  font-weight: 575;
 }
 
 .text-body {
@@ -200,7 +198,7 @@ textarea {
 .section-label {
   font-size: 12px;
   line-height: 16px;
-  font-weight: 550;
+  font-weight: 575;
   text-transform: uppercase;
   color: var(--text-tertiary);
 }
@@ -214,7 +212,7 @@ textarea {
   cursor: pointer;
   font-size: 14px;
   line-height: 19px;
-  font-weight: 550;
+  font-weight: 575;
   white-space: nowrap;
   display: flex;
   align-items: center;
@@ -255,8 +253,8 @@ textarea {
 }
 
 .btn-danger:hover:not(:disabled) {
-  background: var(--error-focused) !important;
-  border: 1px solid var(--error-focused) !important;
+  background: var(--error-focus) !important;
+  border: 1px solid var(--error-focus) !important;
 }
 
 .btn-danger-outline {
@@ -275,7 +273,7 @@ textarea {
   gap: 5px;
   font-size: 14px !important;
   line-height: 19px !important;
-  font-weight: 550;
+  font-weight: 575;
   height: 32px;
   border-radius: 8px;
 }
@@ -291,7 +289,7 @@ textarea {
   line-height: 21px;
   height: 44px;
   border-radius: 8px;
-  font-weight: 550;
+  font-weight: 575;
   gap: 10px;
 }
 
@@ -366,7 +364,7 @@ textarea {
 }
 
 .form-input:hover {
-  background: var(--surface-input-hover);
+  background: var(--surface-1);
   border: 1px solid var(--border-input-hover);
 }
 
@@ -441,10 +439,12 @@ textarea {
 
 .warning-section {
   background-color: var(--warning-highlight);
+  color: var(--warning-primary);
   display: flex;
   flex-direction: row;
   gap: 10px;
   align-items: flex-start;
+  border: none !important;
 }
 
 .warning-section * {
@@ -495,7 +495,7 @@ textarea {
   justify-content: flex-start;
 }
 .info-card-content h3 {
-  font-weight: 550;
+  font-weight: 575;
 }
 
 .info-card * {
@@ -559,7 +559,7 @@ textarea {
 .modal-title {
   font-size: 19px;
   line-height: 24px;
-  font-weight: 550;
+  font-weight: 575;
 }
 
 .modal-close {
@@ -655,7 +655,7 @@ textarea {
 .modal-size-card:hover {
   border-color: var(--border-input-hover);
   color: var(--text-primary);
-  background: var(--surface-input-hover);
+  background: var(--surface-1);
 }
 
 .modal-option-card.selected,
@@ -698,13 +698,13 @@ textarea {
 .chip:hover {
   border-color: var(--border-input-hover);
   color: var(--text-primary);
-  background: var(--surface-input-hover);
+  background: var(--surface-1);
 }
 
 .modal-checkbox-item.selected,
 .chip-selected {
   border-color: var(--text-primary) !important;
-  background: var(--surface-input-hover);
+  background: var(--surface-1);
   color: var(--text-primary);
 }
 

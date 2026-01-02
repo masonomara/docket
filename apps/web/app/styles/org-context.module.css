@@ -19,7 +19,7 @@
 .uploadArea.uploading,
 .uploadArea.dragOver {
   border: 1px solid var(--border-input-hover);
-  background: var(--surface-input-hover);
+  background: var(--surface-1);
 }
 
 /* -----------------------------------------------------------------------------

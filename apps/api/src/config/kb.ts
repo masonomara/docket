@@ -13,8 +13,8 @@ export const KB_CONFIG = {
   VECTORIZE_BATCH_SIZE: 100, // Max vectors per upsert/delete call
   EMBEDDING_BATCH_SIZE: 100, // Max texts per embedding call
 
-  // Context window management
-  TOKEN_BUDGET: 3000, // Max tokens to include in prompt context
+  // Context window management (reduced since LLM can actively search)
+  TOKEN_BUDGET: 1000, // Max tokens for passive auto-injection
   CHARS_PER_TOKEN: 4, // Rough estimate for budget calculations
 
   // Retrieval settings

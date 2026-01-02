@@ -28,6 +28,16 @@ import {
   normalizeFilters,
 } from "../services/clio-static-schema";
 import {
+  getOrgContextToolSchema,
+  executeOrgContextQuery,
+  type OrgContextQueryArgs,
+} from "../services/org-context-tools";
+import {
+  getKnowledgeBaseToolSchema,
+  executeKnowledgeBaseQuery,
+  type KBQueryArgs,
+} from "../services/kb-tools";
+import {
   storeClioTokens,
   getClioTokens,
   deleteClioTokens,
@@ -394,7 +404,7 @@ export class TenantDO extends DurableObject<Env> {
     // Call LLM
     const llmResponse = await this.callLLM(
       messages,
-      this.getClioTools(message.userRole)
+      this.getTools(message.userRole)
     );
 
     // Handle tool calls or return content
@@ -493,7 +503,7 @@ export class TenantDO extends DurableObject<Env> {
     // --- Step 6: Load conversation history and build prompt ---
     const history = await this.getRecentMessages(message.conversationId);
     const formattedContext = formatRAGContext(ragContext);
-    const tools = this.getClioTools(message.userRole);
+    const tools = this.getTools(message.userRole);
     const systemPrompt = this.buildSystemPrompt(
       formattedContext,
       message.userRole
@@ -615,38 +625,58 @@ export class TenantDO extends DurableObject<Env> {
 ## User Role
 ${isAdmin ? "Admin. Can create, update, delete with confirmation." : "Member. Read-only."}
 
-## Knowledge Hierarchy (strict priority order)
-1. **Org Context** (firm documents, procedures): Authoritative. Use first.
-2. **Shared Knowledge Base**: Use only if org context lacks answer.
-3. **Clio Query**: Use only for specific records, filtered lists, or write operations.
+## Available Tools
 
-${ragContext ? `## Org Context\n${ragContext}` : ""}
-${customFieldsInfo ? `## Firm Custom Fields\n${customFieldsInfo}` : ""}
+**orgContextQuery** - Search firm documents (policies, procedures, templates)
+- list: See all uploaded documents
+- search: Find content by topic
+- getDocument: Read full document by filename
+
+**knowledgeBaseQuery** - Search shared knowledge base
+- search: Find Clio workflows, practice management, billing guidance
+- listCategories: See available categories
+
+**clioQuery** - Query Clio data (matters, contacts, tasks, calendar entries, activities)
+- read: Search or get records
+- create/update/delete: Modify records (admin only, requires confirmation)
 
 ## Decision Logic
 
-**Answer from knowledge (no clioQuery):**
-- Definitions, procedures, policies, best practices
-- Anything answerable from Org Context or Shared KB
+**Use orgContextQuery when:**
+- User asks about firm policies, procedures, or documents
+- You need to find or read firm-specific content
+- User asks "What documents do we have?"
 
-**Query Clio (clioQuery required):**
-- Specific records by name: "Find the Johnson matter"
-- Filtered lists: "Open matters", "Tasks due this week"
-- Write operations: create, update, delete
+**Use knowledgeBaseQuery when:**
+- User asks about Clio features, workflows, or best practices
+- User asks about legal practice management, billing, or deadlines
+- Context provided below doesn't answer the question
 
-**Clarify first (before querying):**
-- Ambiguous intent: "Tell me about Johnson" → ask if they want the contact, matter, or general info
-- Missing parameters: "Log time" → ask which matter, duration, description
+**Use clioQuery when:**
+- User asks about specific records: "Find the Johnson matter"
+- User wants filtered lists: "Open matters", "Tasks due this week"
+- User wants to create, update, or delete records
 
-## Clio Query Rules
+**Answer directly when:**
+- The context below already contains the answer
+- Simple questions about what you can do
 
-1. **ID Resolution Required.** Never use placeholder text. Always look up numeric IDs before create/update.
-   - "Log 2 hours on Johnson matter" →
-     1. clioQuery read Matter filters={"query": "Johnson"} → get ID
-     2. clioQuery create Activity data={"matter_id": <ID>, "quantity": 7200, ...}
+## Presenting Document Results
 
-2. **Write Confirmation.** ${isAdmin ? "Confirm all create/update/delete before executing." : "Inform user they lack write permissions."}
+When returning results from orgContextQuery or knowledgeBaseQuery:
+- Summarize findings in natural language, don't paste raw content
+- Reference source documents by name (e.g., "According to your billing policy...")
+- For document lists, present as a clean list with descriptions if known
+- If user wants details, offer to search for specific topics rather than dumping full content
+- Keep responses conversational and helpful
 
+${ragContext ? `## Relevant Context\n${ragContext}` : "## Note\nNo relevant context found. Use tools to search for information."}
+${customFieldsInfo ? `## Firm Custom Fields\n${customFieldsInfo}` : ""}
+
+## Clio Rules
+
+1. **ID Resolution.** Look up IDs before create/update operations.
+2. **Write Confirmation.** ${isAdmin ? "Confirm create/update/delete before executing." : "Inform user they lack write permissions."}
 3. **Connection Check.** If Clio disconnected, direct to docket.com/settings.
 
 ## Constraints
@@ -817,8 +847,12 @@ ${customFieldsInfo ? `## Firm Custom Fields\n${customFieldsInfo}` : ""}
   // Tool Definitions
   // ===========================================================================
 
-  private getClioTools(userRole: string): object[] {
-    return [getClioToolSchema(userRole)];
+  private getTools(userRole: string): object[] {
+    return [
+      getClioToolSchema(userRole),
+      getOrgContextToolSchema(),
+      getKnowledgeBaseToolSchema(),
+    ];
   }
 
   // ===========================================================================
@@ -833,10 +867,38 @@ ${customFieldsInfo ? `## Firm Custom Fields\n${customFieldsInfo}` : ""}
 
     for (const toolCall of toolCalls) {
       const result = await this.executeSingleToolCall(message, toolCall);
-      results.push(result);
+      results.push(`[${toolCall.name}]: ${result}`);
     }
 
-    return results.join("\n\n");
+    // Generate natural response from tool results
+    return this.summarizeToolResults(message, results.join("\n\n"));
+  }
+
+  private async summarizeToolResults(
+    message: ChannelMessage,
+    toolResults: string
+  ): Promise<string> {
+    const prompt = `You are Docket, a helpful assistant. The user asked: "${message.message}"
+
+You searched and found this information:
+${toolResults}
+
+Respond naturally to the user. Summarize the key points, reference source documents by name, and be conversational. Don't dump raw content - give a helpful answer.`;
+
+    try {
+      const response = await (this.env.AI.run as Function)(
+        "@cf/meta/llama-3.1-8b-instruct",
+        { prompt, max_tokens: TENANT_CONFIG.LLM.CHAT_MAX_TOKENS }
+      );
+
+      const text =
+        typeof response === "string" ? response : (response?.response ?? "");
+
+      return text || toolResults;
+    } catch {
+      // Fallback to raw results if summarization fails
+      return toolResults;
+    }
   }
 
   private async handleToolCallsWithStream(
@@ -854,19 +916,48 @@ ${customFieldsInfo ? `## Firm Custom Fields\n${customFieldsInfo}` : ""}
         emit,
         requestLog
       );
-      results.push(result);
+      results.push(`[${toolCall.name}]: ${result}`);
     }
 
-    const fullResponse = results.join("\n\n");
-    await emit("content", { text: fullResponse });
-    return fullResponse;
+    // Generate natural response from tool results
+    await emit("process", { type: "summarizing", status: "started" });
+    const summary = await this.summarizeToolResults(
+      message,
+      results.join("\n\n")
+    );
+    await emit("process", { type: "summarizing", status: "complete" });
+
+    await emit("content", { text: summary });
+    return summary;
   }
 
   private async executeSingleToolCall(
     message: ChannelMessage,
     toolCall: ToolCall
   ): Promise<string> {
-    // Only handle clioQuery tool
+    // Handle knowledge query tools
+    if (toolCall.name === "orgContextQuery") {
+      return executeOrgContextQuery(
+        this.env,
+        message.orgId,
+        toolCall.arguments as unknown as OrgContextQueryArgs
+      );
+    }
+
+    if (toolCall.name === "knowledgeBaseQuery") {
+      const orgSettings: OrgSettings = {
+        jurisdictions: message.jurisdictions,
+        practiceTypes: message.practiceTypes,
+        firmSize: message.firmSize,
+      };
+      return executeKnowledgeBaseQuery(
+        this.env,
+        orgSettings,
+        toolCall.arguments as unknown as KBQueryArgs
+      );
+    }
+
+    // Handle clioQuery tool
     if (toolCall.name !== "clioQuery") {
       return `Unknown tool: ${toolCall.name}`;
     }
@@ -930,6 +1021,52 @@ ${customFieldsInfo ? `## Firm Custom Fields\n${customFieldsInfo}` : ""}
     emit: SSEEmitter,
     requestLog?: Logger
   ): Promise<string> {
+    // Handle knowledge query tools
+    if (toolCall.name === "orgContextQuery") {
+      const args = toolCall.arguments as unknown as OrgContextQueryArgs;
+      await emit("process", {
+        type: "org_context_query",
+        operation: args.operation,
+        query: args.query,
+        source: args.source,
+      });
+
+      const result = await executeOrgContextQuery(this.env, message.orgId, args);
+
+      await emit("process", {
+        type: "org_context_result",
+        operation: args.operation,
+      });
+
+      return result;
+    }
+
+    if (toolCall.name === "knowledgeBaseQuery") {
+      const args = toolCall.arguments as unknown as KBQueryArgs;
+      const orgSettings: OrgSettings = {
+        jurisdictions: message.jurisdictions,
+        practiceTypes: message.practiceTypes,
+        firmSize: message.firmSize,
+      };
+
+      await emit("process", {
+        type: "kb_query",
+        operation: args.operation,
+        query: args.query,
+        category: args.category,
+      });
+
+      const result = await executeKnowledgeBaseQuery(this.env, orgSettings, args);
+
+      await emit("process", {
+        type: "kb_result",
+        operation: args.operation,
+      });
+
+      return result;
+    }
+
+    // Handle clioQuery tool
     if (toolCall.name !== "clioQuery") {
       return `Unknown tool: ${toolCall.name}`;
     }

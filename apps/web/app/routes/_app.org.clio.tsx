@@ -133,23 +133,7 @@ export default function ClioPage({ loaderData }: Route.ComponentProps) {
 
   return (
     <>
-      <PageLayout
-        title="Clio Connection"
-        actions={
-          clioStatus.connected ? (
-            <>
-              <ConnectionStatus />
-              <button
-                onClick={navigateToClioOAuth}
-                className="btn btn-secondary btn-sm"
-              >
-                <RotateCw strokeWidth={1.75} size={16} />
-                Reconnect
-              </button>
-            </>
-          ) : undefined
-        }
-      >
+      <PageLayout title="Clio Connection">
         {loadError && (
           <div className="alert alert-error">
             {loadError}{" "}
@@ -197,7 +181,41 @@ export default function ClioPage({ loaderData }: Route.ComponentProps) {
           <section className="section">
             <h2 className="text-title-3">Clio Configuration</h2>
 
-            <div className="info-card">
+            <div
+              className="info-card"
+              style={{
+                marginBottom: "-17px",
+                borderBottomRightRadius: "0px",
+                borderBottomLeftRadius: "0px",
+              }}
+            >
+              <div className="info-card-content">
+                <h3 className="text-subhead">Connection Status</h3>
+                <p className="text-secondary">
+                  Your Clio account is connected to Docket.
+                </p>
+              </div>
+
+              <button
+                onClick={navigateToClioOAuth}
+                className="btn btn-sm btn-secondary"
+              >
+                <RotateCw
+                  strokeWidth={2.25}
+                  size={13}
+                  style={{ margin: "3px", marginLeft: "0px" }}
+                />
+                Refresh
+              </button>
+            </div>
+
+            <div
+              className="info-card"
+              style={{
+                borderTopRightRadius: "0px",
+                borderTopLeftRadius: "0px",
+              }}
+            >
               <div className="info-card-content">
                 <h3 className="text-subhead">Sync Clio</h3>
                 <p className="text-secondary">
@@ -251,19 +269,6 @@ export default function ClioPage({ loaderData }: Route.ComponentProps) {
         />
       )}
     </>
-  );
-}
-
-// ============================================================================
-// Helper Components
-// ============================================================================
-
-function ConnectionStatus() {
-  return (
-    <div className="status-indicator btn btn-sm btn-secondary">
-      <span className="status-dot status-dot-success" />
-      Connected
-    </div>
   );
 }
 
