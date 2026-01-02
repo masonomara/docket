@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
-import { useSearchParams, useRevalidator } from "react-router";
-import type { Route } from "./+types/org.clio";
+import { useSearchParams, useRevalidator, useNavigate } from "react-router";
+import type { Route } from "./+types/_app.org.clio";
 import { ENDPOINTS } from "~/lib/api";
 import { API_URL } from "~/lib/auth-client";
 import { ExternalLink, RotateCw } from "lucide-react";
-import { orgLoader } from "~/lib/loader-auth";
-import { AppLayout } from "~/components/AppLayout";
+import { childLoader } from "~/lib/loader-auth";
+import { useAppContext } from "~/lib/use-app-context";
 import { PageLayout } from "~/components/PageLayout";
 
 interface ClioStatus {
@@ -22,7 +22,7 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   exchange_failed: "Authorization failed.",
 };
 
-export const loader = orgLoader(async ({ user, org, fetch }) => {
+export const loader = childLoader(async ({ fetch }) => {
   const res = await fetch(ENDPOINTS.clio.status);
 
   const clioStatus: ClioStatus = res.ok
@@ -31,11 +31,13 @@ export const loader = orgLoader(async ({ user, org, fetch }) => {
 
   const loadError = res.ok ? null : "Failed to load Clio status.";
 
-  return { user, org, clioStatus, loadError };
+  return { clioStatus, loadError };
 });
 
 export default function ClioPage({ loaderData }: Route.ComponentProps) {
-  const { user, org, clioStatus, loadError } = loaderData;
+  const { clioStatus, loadError } = loaderData;
+  const { org } = useAppContext();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const revalidator = useRevalidator();
 
@@ -44,6 +46,11 @@ export default function ClioPage({ loaderData }: Route.ComponentProps) {
   const [showDisconnectModal, setShowDisconnectModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // Redirect if no org
+  useEffect(() => {
+    if (!org) navigate("/admin");
+  }, [org, navigate]);
 
   // Handle OAuth callback results from URL params
   useEffect(() => {
@@ -63,6 +70,9 @@ export default function ClioPage({ loaderData }: Route.ComponentProps) {
       setSearchParams({}, { replace: true });
     }
   }, [searchParams, setSearchParams]);
+
+  // Don't render if no org
+  if (!org) return null;
 
   function navigateToClioOAuth() {
     window.location.href = `${API_URL}${ENDPOINTS.clio.connect}`;
@@ -122,7 +132,7 @@ export default function ClioPage({ loaderData }: Route.ComponentProps) {
   const isAdmin = org.role === "admin";
 
   return (
-    <AppLayout org={org} currentPath="/org/clio">
+    <>
       <PageLayout
         title="Clio Connection"
         actions={
@@ -240,7 +250,7 @@ export default function ClioPage({ loaderData }: Route.ComponentProps) {
           onCancel={() => setShowDisconnectModal(false)}
         />
       )}
-    </AppLayout>
+    </>
   );
 }
 

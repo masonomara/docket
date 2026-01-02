@@ -439,7 +439,7 @@
 }
 
 .chatInput:focus {
-  outline: 1px solid var(--border-dark);
+  outline: 1px solid var(--border-input-hover);
   outline-offset: 0px;
   border: none;
 }

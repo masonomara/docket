@@ -245,7 +245,7 @@ textarea {
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: var(--surface-1);
+  background: var(--surface-2);
 }
 
 .btn-danger {
@@ -641,11 +641,11 @@ textarea {
 .modal-option-card,
 .modal-size-card {
   padding: 0 16px;
-  background: var(--surface-1);
+  background: var(--surface-input);
   font-size: 16px;
   line-height: 21px;
   height: 64px;
-  border: 1px solid var(--border-default);
+  border: 1px solid var(--border-input);
   border-radius: 8px;
   cursor: pointer;
   color: var(--text-secondary);
@@ -653,8 +653,9 @@ textarea {
 
 .modal-option-card:hover,
 .modal-size-card:hover {
-  border-color: var(--border-dark);
+  border-color: var(--border-input-hover);
   color: var(--text-primary);
+  background: var(--surface-input-hover);
 }
 
 .modal-option-card.selected,
@@ -686,8 +687,8 @@ textarea {
   height: 36px;
   font-size: 14px;
   line-height: 19px;
-  background: transparent;
-  border: 1px solid var(--border-default);
+  background: var(--surface-input);
+  border: 1px solid var(--border-input);
   border-radius: 6px;
   cursor: pointer;
   color: var(--text-secondary);
@@ -695,15 +696,15 @@ textarea {
 
 .modal-checkbox-item:hover,
 .chip:hover {
-  border-color: var(--border-dark);
+  border-color: var(--border-input-hover);
   color: var(--text-primary);
-  background: var(--surface-1);
+  background: var(--surface-input-hover);
 }
 
 .modal-checkbox-item.selected,
 .chip-selected {
-  border-color: var(--border-solid);
-  background: var(--surface-2);
+  border-color: var(--text-primary) !important;
+  background: var(--surface-input-hover);
   color: var(--text-primary);
 }
 

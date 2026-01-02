@@ -1,43 +1,42 @@
-import { useState } from "react";
-import { useRevalidator } from "react-router";
-import type { Route } from "./+types/org.members";
+import { useState, useEffect } from "react";
+import { useRevalidator, useNavigate } from "react-router";
+import type { Route } from "./+types/_app.org.members";
 import { ENDPOINTS } from "~/lib/api";
 import { API_URL } from "~/lib/auth-client";
-import { orgLoader } from "~/lib/loader-auth";
+import { childLoader } from "~/lib/loader-auth";
+import { useAppContext } from "~/lib/use-app-context";
 import type { OrgMember, PendingInvitation } from "~/lib/types";
-import { AppLayout } from "~/components/AppLayout";
 import { PageLayout } from "~/components/PageLayout";
 import { Plus } from "lucide-react";
 
-export const loader = orgLoader(
-  async ({ user, org, fetch }) => {
-    const [membersRes, invitationsRes] = await Promise.all([
-      fetch(ENDPOINTS.org.members),
-      fetch(ENDPOINTS.org.invitations),
-    ]);
+export const loader = childLoader(async ({ fetch }) => {
+  const [membersRes, invitationsRes] = await Promise.all([
+    fetch(ENDPOINTS.org.members),
+    fetch(ENDPOINTS.org.invitations),
+  ]);
 
-    const members = membersRes.ok
-      ? ((await membersRes.json()) as OrgMember[])
-      : [];
+  const members = membersRes.ok
+    ? ((await membersRes.json()) as OrgMember[])
+    : [];
 
-    const invitations = invitationsRes.ok
-      ? ((await invitationsRes.json()) as PendingInvitation[])
-      : [];
+  const invitations = invitationsRes.ok
+    ? ((await invitationsRes.json()) as PendingInvitation[])
+    : [];
 
-    let loadError: string | null = null;
-    if (!membersRes.ok) {
-      loadError = "Failed to load members.";
-    } else if (!invitationsRes.ok) {
-      loadError = "Failed to load invitations.";
-    }
+  let loadError: string | null = null;
+  if (!membersRes.ok) {
+    loadError = "Failed to load members.";
+  } else if (!invitationsRes.ok) {
+    loadError = "Failed to load invitations.";
+  }
 
-    return { user, org, members, invitations, loadError };
-  },
-  { requireAdmin: true }
-);
+  return { members, invitations, loadError };
+});
 
 export default function MembersPage({ loaderData }: Route.ComponentProps) {
-  const { user, org, members, invitations, loadError } = loaderData;
+  const { members, invitations, loadError } = loaderData;
+  const { user, org } = useAppContext();
+  const navigate = useNavigate();
   const revalidator = useRevalidator();
 
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -45,6 +44,18 @@ export default function MembersPage({ loaderData }: Route.ComponentProps) {
   const [transferTarget, setTransferTarget] = useState<OrgMember | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // Redirect if no org or not admin
+  useEffect(() => {
+    if (!org) {
+      navigate("/admin");
+    } else if (org.role !== "admin") {
+      navigate("/chat");
+    }
+  }, [org, navigate]);
+
+  // Don't render if no org
+  if (!org) return null;
 
   async function makeApiRequest(url: string, method: string, body?: object) {
     const res = await fetch(`${API_URL}${url}`, {
@@ -130,7 +141,7 @@ export default function MembersPage({ loaderData }: Route.ComponentProps) {
   }
 
   return (
-    <AppLayout org={org} currentPath="/org/members">
+    <>
       <PageLayout
         title="Members"
         actions={
@@ -192,7 +203,7 @@ export default function MembersPage({ loaderData }: Route.ComponentProps) {
           />
         )}
       </PageLayout>
-    </AppLayout>
+    </>
   );
 }
 

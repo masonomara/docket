@@ -1,10 +1,8 @@
-import { useState } from "react";
-import { redirect, useRevalidator } from "react-router";
-import type { Route } from "./+types/admin";
+import { useState, useEffect } from "react";
+import { useNavigate, useRevalidator } from "react-router";
 import { ENDPOINTS } from "~/lib/api";
 import { API_URL } from "~/lib/auth-client";
-import { protectedLoader } from "~/lib/loader-auth";
-import { AppLayout } from "~/components/AppLayout";
+import { useAppContext } from "~/lib/use-app-context";
 import { PageLayout } from "~/components/PageLayout";
 import {
   ORGANIZATION_TYPES,
@@ -37,16 +35,9 @@ const WIZARD_STEPS = [
   { title: "Practice Areas", subtitle: "Select your areas of practice" },
 ];
 
-export const loader = protectedLoader(({ org }) => {
-  // Redirect to chat if user has an org
-  if (org !== null) {
-    throw redirect("/chat");
-  }
-  return { org };
-});
-
-export default function Admin({ loaderData }: Route.ComponentProps) {
-  const { org } = loaderData;
+export default function Admin() {
+  const { org } = useAppContext();
+  const navigate = useNavigate();
   const revalidator = useRevalidator();
 
   const [showModal, setShowModal] = useState(false);
@@ -54,6 +45,13 @@ export default function Admin({ loaderData }: Route.ComponentProps) {
   const [formData, setFormData] = useState<FormData>(INITIAL_FORM_DATA);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Redirect to chat if user has an org
+  useEffect(() => {
+    if (org !== null) {
+      navigate("/chat");
+    }
+  }, [org, navigate]);
 
   function openModal() {
     setShowModal(true);
@@ -146,27 +144,30 @@ export default function Admin({ loaderData }: Route.ComponentProps) {
 
   const isLastStep = currentStep === 4;
 
-  return (
-    <AppLayout org={org} currentPath="/admin">
-      <PageLayout title="Get Started">
-        {org === null && (
-          <section className="section">
-            <h2 className="text-title-3">Legal Organziation</h2>
+  // Don't render content if redirecting
+  if (org !== null) {
+    return null;
+  }
 
-            <div className="info-card">
-              <div className="info-card-content">
-                <h3 className="text-subhead">Create an organization</h3>
-                <p className="text-secondary">
-                  Set up your legal organziation to start using Docket.
-                </p>
-              </div>
-              <button onClick={openModal} className="btn btn-sm btn-primary">
-                <Plus strokeWidth={2.25} size={13} style={{ margin: "3px", marginLeft: "0px" }} />
-                Create organization
-              </button>
+  return (
+    <>
+      <PageLayout title="Get Started">
+        <section className="section">
+          <h2 className="text-title-3">Legal Organziation</h2>
+
+          <div className="info-card">
+            <div className="info-card-content">
+              <h3 className="text-subhead">Create an organization</h3>
+              <p className="text-secondary">
+                Set up your legal organziation to start using Docket.
+              </p>
             </div>
-          </section>
-        )}
+            <button onClick={openModal} className="btn btn-sm btn-primary">
+              <Plus strokeWidth={2.25} size={13} style={{ margin: "3px", marginLeft: "0px" }} />
+              Create organization
+            </button>
+          </div>
+        </section>
       </PageLayout>
 
       {showModal && (
@@ -185,7 +186,7 @@ export default function Admin({ loaderData }: Route.ComponentProps) {
           onToggleArrayField={toggleArrayField}
         />
       )}
-    </AppLayout>
+    </>
   );
 }
 

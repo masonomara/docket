@@ -1,10 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import type { Route } from "./+types/account.settings";
 import { API_URL, signOut } from "~/lib/auth-client";
 import { ENDPOINTS } from "~/lib/api";
-import { protectedLoader } from "~/lib/loader-auth";
-import { AppLayout } from "~/components/AppLayout";
+import { useAppContext } from "~/lib/use-app-context";
 import { PageLayout } from "~/components/PageLayout";
 
 interface DeletionPreview {
@@ -13,12 +11,8 @@ interface DeletionPreview {
   orgMemberships: number;
 }
 
-export const loader = protectedLoader(({ user, org }) => ({ user, org }));
-
-export default function AccountSettingsPage({
-  loaderData,
-}: Route.ComponentProps) {
-  const { user, org } = loaderData;
+export default function AccountSettingsPage() {
+  const { user, org } = useAppContext();
   const navigate = useNavigate();
 
   // Name editing state
@@ -139,7 +133,7 @@ export default function AccountSettingsPage({
   }
 
   return (
-    <AppLayout org={org} currentPath="/account/settings">
+    <>
       <PageLayout title="Account Settings">
         {error && <div className="alert alert-error">{error}</div>}
 
@@ -249,7 +243,7 @@ export default function AccountSettingsPage({
           />
         )}
       </PageLayout>
-    </AppLayout>
+    </>
   );
 }
 

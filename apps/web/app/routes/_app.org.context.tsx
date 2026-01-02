@@ -1,12 +1,12 @@
-import { useState, useRef } from "react";
-import { useRevalidator } from "react-router";
-import type { Route } from "./+types/org.context";
+import { useState, useRef, useEffect } from "react";
+import { useRevalidator, useNavigate } from "react-router";
+import type { Route } from "./+types/_app.org.context";
 import { ENDPOINTS } from "~/lib/api";
 import { API_URL } from "~/lib/auth-client";
 import { validateFile, formatFileSize } from "~/lib/file-validation";
-import { orgLoader } from "~/lib/loader-auth";
+import { childLoader } from "~/lib/loader-auth";
+import { useAppContext } from "~/lib/use-app-context";
 import type { OrgContextDocument } from "~/lib/types";
-import { AppLayout } from "~/components/AppLayout";
 import { PageLayout } from "~/components/PageLayout";
 import styles from "~/styles/org-context.module.css";
 import { FileUp, Info } from "lucide-react";
@@ -14,26 +14,33 @@ import { FileUp, Info } from "lucide-react";
 const ACCEPTED_FILE_TYPES =
   ".pdf,.docx,.xlsx,.pptx,.odt,.ods,.numbers,.md,.txt,.html,.csv,.xml";
 
-export const loader = orgLoader(
-  async ({ user, org, fetch }) => {
-    const res = await fetch(ENDPOINTS.org.context);
+export const loader = childLoader(async ({ fetch }) => {
+  const res = await fetch(ENDPOINTS.org.context);
 
-    const documents = res.ok
-      ? ((await res.json()) as OrgContextDocument[])
-      : [];
+  const documents = res.ok
+    ? ((await res.json()) as OrgContextDocument[])
+    : [];
 
-    const loadError = res.ok ? null : "Failed to load documents.";
+  const loadError = res.ok ? null : "Failed to load documents.";
 
-    return { user, org, documents, loadError };
-  },
-  { requireAdmin: true }
-);
+  return { documents, loadError };
+});
 
 export default function DocumentsPage({ loaderData }: Route.ComponentProps) {
-  const { org, documents: initialDocuments, loadError } = loaderData;
-  const pageTitle = org.org.orgType === "legal-clinic" ? "Clinic Documents" : "Firm Documents";
+  const { documents: initialDocuments, loadError } = loaderData;
+  const { org } = useAppContext();
+  const navigate = useNavigate();
   const revalidator = useRevalidator();
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Redirect if no org or not admin
+  useEffect(() => {
+    if (!org) {
+      navigate("/admin");
+    } else if (org.role !== "admin") {
+      navigate("/chat");
+    }
+  }, [org, navigate]);
 
   const [documents, setDocuments] =
     useState<OrgContextDocument[]>(initialDocuments);
@@ -41,6 +48,11 @@ export default function DocumentsPage({ loaderData }: Route.ComponentProps) {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isDragOver, setIsDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Don't render if no org
+  if (!org) return null;
+
+  const pageTitle = org.org.orgType === "legal-clinic" ? "Clinic Documents" : "Firm Documents";
 
   async function uploadFile(file: File) {
     const validation = validateFile(file);
@@ -154,7 +166,7 @@ export default function DocumentsPage({ loaderData }: Route.ComponentProps) {
   }
 
   return (
-    <AppLayout org={org} currentPath="/org/context">
+    <>
       <PageLayout title={pageTitle}>
         <section className="section warning-section">
           <Info
@@ -218,7 +230,7 @@ export default function DocumentsPage({ loaderData }: Route.ComponentProps) {
 
         <DocumentsTable documents={documents} onDelete={handleDelete} />
       </PageLayout>
-    </AppLayout>
+    </>
   );
 }
 

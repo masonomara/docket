@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback, useContext } from "react";
 import { useParams, useRevalidator } from "react-router";
-import type { Route } from "./+types/chat.$conversationId";
+import type { Route } from "./+types/_app.chat.$conversationId";
 import { ENDPOINTS } from "~/lib/api";
-import { orgLoader } from "~/lib/loader-auth";
+import { childLoader } from "~/lib/loader-auth";
 import {
   useChat,
   type Message,
@@ -16,7 +16,6 @@ import {
   ArrowUp,
   Menu,
   MessageSquare,
-  X,
   ChevronRight,
   ArrowRightFromLine,
 } from "lucide-react";
@@ -25,7 +24,7 @@ import {
 // Loader - fetches the specific conversation's messages
 // =============================================================================
 
-export const loader = orgLoader(async ({ fetch }, { params }) => {
+export const loader = childLoader(async ({ fetch, params }) => {
   const conversationId = params.conversationId;
 
   let messages: Message[] = [];
@@ -69,7 +68,6 @@ export default function ChatConversation({ loaderData }: Route.ComponentProps) {
     sendMessage,
     acceptConfirmation,
     rejectConfirmation,
-    clearError,
   } = useChat({
     initialMessages,
     initialPendingConfirmations,

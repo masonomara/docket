@@ -1,13 +1,13 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Outlet, useNavigate, useRevalidator, useParams } from "react-router";
-import type { Route } from "./+types/chat";
+import type { Route } from "./+types/_app.chat";
 import { ENDPOINTS } from "~/lib/api";
 import { API_URL } from "~/lib/auth-client";
-import { orgLoader } from "~/lib/loader-auth";
+import { childLoader } from "~/lib/loader-auth";
+import { useAppContext } from "~/lib/use-app-context";
 import styles from "~/styles/chat.module.css";
-import { AppLayout } from "~/components/AppLayout";
 import { ChatSidebarContext } from "~/lib/chat-context";
-import { ArrowLeftFromLine, SquarePen, X } from "lucide-react";
+import { ArrowLeftFromLine, SquarePen } from "lucide-react";
 
 // =============================================================================
 // Types (exported for use by child routes)
@@ -24,7 +24,7 @@ export interface Conversation {
 // Loader - fetches conversations list (shared by all child routes)
 // =============================================================================
 
-export const loader = orgLoader(async ({ user, org, fetch }) => {
+export const loader = childLoader(async ({ fetch }) => {
   const response = await fetch(ENDPOINTS.chat.conversations);
 
   let conversations: Conversation[] = [];
@@ -33,7 +33,7 @@ export const loader = orgLoader(async ({ user, org, fetch }) => {
     conversations = data.conversations;
   }
 
-  return { user, org, conversations };
+  return { conversations };
 });
 
 // =============================================================================
@@ -41,11 +41,17 @@ export const loader = orgLoader(async ({ user, org, fetch }) => {
 // =============================================================================
 
 export default function ChatLayout({ loaderData }: Route.ComponentProps) {
-  const { conversations: initialConversations, org } = loaderData;
+  const { conversations: initialConversations } = loaderData;
+  const { org } = useAppContext();
 
   const navigate = useNavigate();
   const revalidator = useRevalidator();
   const params = useParams();
+
+  // Redirect if no org
+  useEffect(() => {
+    if (!org) navigate("/admin");
+  }, [org, navigate]);
 
   // Conversations state (can be updated by children via revalidation)
   const [conversations, setConversations] =
@@ -67,6 +73,9 @@ export default function ChatLayout({ loaderData }: Route.ComponentProps) {
   useEffect(() => {
     setConversations(initialConversations);
   }, [initialConversations]);
+
+  // Don't render if no org
+  if (!org) return null;
 
   // Get current conversation ID from route params
   const currentConversationId = params.conversationId || null;
@@ -116,38 +125,36 @@ export default function ChatLayout({ loaderData }: Route.ComponentProps) {
   );
 
   return (
-    <AppLayout org={org} currentPath="/chat">
-      <div className={styles.chatLayout}>
-        {/* Mobile overlay - click to close sidebar */}
-        {sidebarOpen && (
-          <div
-            className={styles.chatSidebarOverlay}
-            onClick={closeSidebar}
-            aria-hidden="true"
-          />
-        )}
-
-        <ChatSidebar
-          conversations={conversations}
-          currentId={currentConversationId}
-          onSelect={(id) => {
-            handleSelectConversation(id);
-            closeSidebar();
-          }}
-          onNew={() => {
-            handleNewChat();
-            closeSidebar();
-          }}
-          onDelete={handleDeleteConversation}
-          isOpen={sidebarOpen}
-          onClose={closeSidebar}
+    <div className={styles.chatLayout}>
+      {/* Mobile overlay - click to close sidebar */}
+      {sidebarOpen && (
+        <div
+          className={styles.chatSidebarOverlay}
+          onClick={closeSidebar}
+          aria-hidden="true"
         />
+      )}
 
-        <ChatSidebarContext.Provider value={sidebarContextValue}>
-          <Outlet />
-        </ChatSidebarContext.Provider>
-      </div>
-    </AppLayout>
+      <ChatSidebar
+        conversations={conversations}
+        currentId={currentConversationId}
+        onSelect={(id) => {
+          handleSelectConversation(id);
+          closeSidebar();
+        }}
+        onNew={() => {
+          handleNewChat();
+          closeSidebar();
+        }}
+        onDelete={handleDeleteConversation}
+        isOpen={sidebarOpen}
+        onClose={closeSidebar}
+      />
+
+      <ChatSidebarContext.Provider value={sidebarContextValue}>
+        <Outlet />
+      </ChatSidebarContext.Provider>
+    </div>
   );
 }
 

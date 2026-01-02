@@ -1,11 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useRevalidator } from "react-router";
-import type { Route } from "./+types/org.settings";
 import { API_URL } from "~/lib/auth-client";
 import { ENDPOINTS } from "~/lib/api";
 import { FIRM_SIZES, US_STATES, PRACTICE_AREAS } from "~/lib/org-constants";
-import { orgLoader } from "~/lib/loader-auth";
-import { AppLayout } from "~/components/AppLayout";
+import { useAppContext } from "~/lib/use-app-context";
 import { PageLayout } from "~/components/PageLayout";
 
 interface DeletionPreview {
@@ -15,17 +13,51 @@ interface DeletionPreview {
   orgContextChunks: number;
 }
 
-export const loader = orgLoader(({ user, org }) => ({ user, org }));
-
-export default function SettingsPage({ loaderData }: Route.ComponentProps) {
-  const { user, org } = loaderData;
+export default function SettingsPage() {
+  const { org } = useAppContext();
   const navigate = useNavigate();
   const revalidator = useRevalidator();
+
+  // Redirect if no org
+  useEffect(() => {
+    if (!org) navigate("/admin");
+  }, [org, navigate]);
+
+  // Don't render if no org
+  if (!org) return null;
 
   const isAdmin = org.role === "admin";
   const originalJurisdictions = org.org.jurisdictions || [];
   const originalPracticeTypes = org.org.practiceTypes || [];
 
+  return (
+    <SettingsPageContent
+      org={org}
+      isAdmin={isAdmin}
+      originalJurisdictions={originalJurisdictions}
+      originalPracticeTypes={originalPracticeTypes}
+      navigate={navigate}
+      revalidator={revalidator}
+    />
+  );
+}
+
+// Separate component to avoid hooks after conditional return
+function SettingsPageContent({
+  org,
+  isAdmin,
+  originalJurisdictions,
+  originalPracticeTypes,
+  navigate,
+  revalidator,
+}: {
+  org: NonNullable<ReturnType<typeof useAppContext>["org"]>;
+  isAdmin: boolean;
+  originalJurisdictions: string[];
+  originalPracticeTypes: string[];
+  navigate: ReturnType<typeof useNavigate>;
+  revalidator: ReturnType<typeof useRevalidator>;
+}) {
   // Form state
   const [editName, setEditName] = useState(org.org.name);
   const [editFirmSize, setEditFirmSize] = useState(org.org.firmSize || "");
@@ -179,7 +211,7 @@ export default function SettingsPage({ loaderData }: Route.ComponentProps) {
   }
 
   return (
-    <AppLayout org={org} currentPath="/org/settings">
+    <>
       <PageLayout title="Firm Settings">
         {error && <div className="alert alert-error">{error}</div>}
         {success && <div className="alert alert-success">{success}</div>}
@@ -256,26 +288,25 @@ export default function SettingsPage({ loaderData }: Route.ComponentProps) {
               </div>
             </div>
           </div>
+          {hasChanges && (
+            <div className="btn-group">
+              <button
+                onClick={handleCancelChanges}
+                disabled={isSaving}
+                className="btn btn-lg btn-secondary btn-lg-fit"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={isSaving}
+                className="btn btn-lg btn-primary btn-lg-fit"
+              >
+                {isSaving ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          )}
         </section>
-
-        {hasChanges && (
-          <div className="btn-group">
-            <button
-              onClick={handleCancelChanges}
-              disabled={isSaving}
-              className="btn btn-lg btn-secondary btn-lg-fit"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={isSaving}
-              className="btn btn-lg btn-primary btn-lg-fit"
-            >
-              {isSaving ? "Saving..." : "Save Changes"}
-            </button>
-          </div>
-        )}
 
         {org.isOwner && (
           <section className="section">
@@ -311,7 +342,7 @@ export default function SettingsPage({ loaderData }: Route.ComponentProps) {
           />
         )}
       </PageLayout>
-    </AppLayout>
+    </>
   );
 }
 
@@ -354,9 +385,7 @@ function DeleteFirmModal({
         <ul className="text-secondary text-callout">
           <strong>{deletionPreview.org?.name}</strong>
           <li>{deletionPreview.members} member(s)</li>
-          <linearGradient>
-            {deletionPreview.invitations} pending invitation(s)
-          </linearGradient>
+          <li>{deletionPreview.invitations} pending invitation(s)</li>
           <li>{deletionPreview.orgContextChunks} document(s)</li>
           <li>All conversations, Clio connections, and audit logs</li>
         </ul>
