@@ -91,7 +91,6 @@
 }
 
 .inputDisabled {
-  background-color: var(--surface-3);
   cursor: not-allowed;
 }
 

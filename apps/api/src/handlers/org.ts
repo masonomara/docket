@@ -52,6 +52,7 @@ export async function handleCreateOrg(
     firmSize?: string;
     jurisdictions?: string[];
     practiceTypes?: string[];
+    orgType?: string;
   };
 
   try {
@@ -79,14 +80,15 @@ export async function handleCreateOrg(
   try {
     // Create org and membership in a single transaction
     const createOrgStatement = env.DB.prepare(
-      `INSERT INTO org (id, name, jurisdictions, practice_types, firm_size, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO org (id, name, jurisdictions, practice_types, firm_size, org_type, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       orgId,
       orgName,
       body.jurisdictions ? JSON.stringify(body.jurisdictions) : null,
       body.practiceTypes ? JSON.stringify(body.practiceTypes) : null,
       body.firmSize || null,
+      body.orgType || "law-firm",
       now,
       now
     );
@@ -123,7 +125,8 @@ export async function handleGetUserOrg(
       o.name as org_name,
       o.jurisdictions as org_jurisdictions,
       o.practice_types as org_practice_types,
-      o.firm_size as org_firm_size
+      o.firm_size as org_firm_size,
+      o.org_type as org_type
     FROM org_members om
     JOIN org o ON o.id = om.org_id
     WHERE om.user_id = ?
@@ -134,6 +137,7 @@ export async function handleGetUserOrg(
     org_jurisdictions: string | null;
     org_practice_types: string | null;
     org_firm_size: string | null;
+    org_type: string | null;
   };
 
   const row = await env.DB.prepare(query)
@@ -154,6 +158,7 @@ export async function handleGetUserOrg(
       jurisdictions: safeParseJsonArray(row.org_jurisdictions),
       practiceTypes: safeParseJsonArray(row.org_practice_types),
       firmSize: row.org_firm_size || undefined,
+      orgType: row.org_type || "law-firm",
     },
     role: membership.role,
     isOwner: membership.isOwner,
@@ -174,6 +179,7 @@ export async function handleUpdateOrg(
     jurisdictions?: string[];
     practiceTypes?: string[];
     firmSize?: string;
+    orgType?: string;
   };
 
   try {
@@ -210,6 +216,12 @@ export async function handleUpdateOrg(
   if (body.firmSize !== undefined) {
     updates.push("firm_size = ?");
     values.push(body.firmSize || null);
+  }
+
+  // Add org type update
+  if (body.orgType !== undefined) {
+    updates.push("org_type = ?");
+    values.push(body.orgType || "law-firm");
   }
 
   if (updates.length === 0) {

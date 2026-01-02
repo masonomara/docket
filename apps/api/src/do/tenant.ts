@@ -547,9 +547,7 @@ export class TenantDO extends DurableObject<Env> {
     return text.slice(0, maxLength - 3) + "...";
   }
 
-  private formatFiltersForDisplay(
-    filters?: Record<string, unknown>
-  ): string {
+  private formatFiltersForDisplay(filters?: Record<string, unknown>): string {
     if (!filters || Object.keys(filters).length === 0) {
       return "";
     }
@@ -610,55 +608,50 @@ export class TenantDO extends DurableObject<Env> {
 
   private buildSystemPrompt(ragContext: string, userRole: string): string {
     const customFieldsInfo = formatCustomFieldsForLLM(this.customFieldsCache);
+    const isAdmin = userRole === "admin";
 
-    const roleDescription =
-      userRole === "admin"
-        ? "This user is an Admin and can perform create/update/delete operations with confirmation."
-        : "This user is a Member with read-only access to Clio.";
+    return `You are Docket, a case management assistant for Clio.
 
-    return `You are Docket, a case management assistant for legal teams using Clio.
+## User Role
+${isAdmin ? "Admin. Can create, update, delete with confirmation." : "Member. Read-only."}
 
-**Tone:** Helpful, competent, deferential. You assist—you don't lead.
+## Knowledge Hierarchy (strict priority order)
+1. **Org Context** (firm documents, procedures): Authoritative. Use first.
+2. **Shared Knowledge Base**: Use only if org context lacks answer.
+3. **Clio Query**: Use only for specific records, filtered lists, or write operations.
 
-**User Role:** ${userRole}
-${roleDescription}
+${ragContext ? `## Org Context\n${ragContext}` : ""}
+${customFieldsInfo ? `## Firm Custom Fields\n${customFieldsInfo}` : ""}
 
-**Knowledge Base Context:**
-${ragContext || "No relevant context found."}
+## Decision Logic
 
-${customFieldsInfo ? `**Firm Custom Fields:**\n${customFieldsInfo}` : ""}
+**Answer from knowledge (no clioQuery):**
+- Definitions, procedures, policies, best practices
+- Anything answerable from Org Context or Shared KB
 
-**Instructions:**
-- For greetings, general questions, or explanations: respond directly WITHOUT using any tools
-- When the user mentions a specific case, matter, contact, or task BY NAME, use clioQuery to search for it
-- Use Knowledge Base context to answer questions about firm procedures and case management
-- For write operations (create, update, delete), always confirm first
-- NEVER give legal advice—you manage cases, not law
-- Stay in scope: case management, Clio operations, firm procedures
-- If Clio is not connected, guide user to connect at docket.com/settings
+**Query Clio (clioQuery required):**
+- Specific records by name: "Find the Johnson matter"
+- Filtered lists: "Open matters", "Tasks due this week"
+- Write operations: create, update, delete
 
-**When to use clioQuery:**
-- "Show me my recent matters" → clioQuery with objectType="Matter"
-- "Find John Smith" → clioQuery with objectType="Contact", filters={"query": "John Smith"}
-- "Tell me about the Smith case" → clioQuery with objectType="Matter", filters={"query": "Smith"}
-- "What tasks are due this week?" → clioQuery with objectType="Task"
-- "Log my time" → clioQuery with objectType="Activity"
+**Clarify first (before querying):**
+- Ambiguous intent: "Tell me about Johnson" → ask if they want the contact, matter, or general info
+- Missing parameters: "Log time" → ask which matter, duration, description
 
-**For create/update operations - ALWAYS look up IDs first:**
-When creating or updating records that reference other objects (matters, contacts, users), you MUST:
-1. First search for the referenced object to get its real ID
-2. Then create/update using that numeric ID
+## Clio Query Rules
 
-Example - "Log 2 hours on the Johnson matter":
-1. First: clioQuery read Matter with filters={"query": "Johnson"} → get matter_id (e.g., 12345)
-2. Then: clioQuery create Activity with data={"matter_id": 12345, "quantity": 7200, ...}
+1. **ID Resolution Required.** Never use placeholder text. Always look up numeric IDs before create/update.
+   - "Log 2 hours on Johnson matter" →
+     1. clioQuery read Matter filters={"query": "Johnson"} → get ID
+     2. clioQuery create Activity data={"matter_id": <ID>, "quantity": 7200, ...}
 
-NEVER use placeholder text like "Johnson matter ID" - always look up the real numeric ID first.
+2. **Write Confirmation.** ${isAdmin ? "Confirm all create/update/delete before executing." : "Inform user they lack write permissions."}
 
-**When NOT to use clioQuery:**
-- "Hello" → Greet the user back
-- "What can you do?" → Explain your capabilities
-- "What is a matter?" → Explain what a matter is in legal practice`;
+3. **Connection Check.** If Clio disconnected, direct to docket.com/settings.
+
+## Constraints
+- No legal advice. You manage cases, not law.
+- Scope: case management, Clio operations, firm procedures only.`;
   }
 
   // ===========================================================================
@@ -734,7 +727,11 @@ NEVER use placeholder text like "Johnson matter ID" - always look up the real nu
 
     try {
       const parsed = JSON.parse(trimmed);
-      if (parsed.name && parsed.arguments && typeof parsed.arguments === "object") {
+      if (
+        parsed.name &&
+        parsed.arguments &&
+        typeof parsed.arguments === "object"
+      ) {
         return {
           name: parsed.name,
           arguments: parsed.arguments,
@@ -883,12 +880,17 @@ NEVER use placeholder text like "Johnson matter ID" - always look up the real nu
       const validation = validateFilters(objectType, filters);
 
       if (!validation.valid) {
-        if (validation.correctedValue && validation.invalidKey && correctedFilters) {
+        if (
+          validation.correctedValue &&
+          validation.invalidKey &&
+          correctedFilters
+        ) {
           // Auto-correct enum errors
           correctedFilters[validation.invalidKey] = validation.correctedValue;
         } else {
           // Can't auto-correct
-          const friendlyTypes = "matters, contacts, tasks, calendar entries, or activities (time entries)";
+          const friendlyTypes =
+            "matters, contacts, tasks, calendar entries, or activities (time entries)";
           return `I can't search for that directly. I can look up ${friendlyTypes}. Which would you like?`;
         }
       }
@@ -903,7 +905,11 @@ NEVER use placeholder text like "Johnson matter ID" - always look up the real nu
 
     // Handle read operations directly
     if (operation === "read") {
-      return this.executeClioRead(message.userId, { objectType, id, filters: normalizedFilters });
+      return this.executeClioRead(message.userId, {
+        objectType,
+        id,
+        filters: normalizedFilters,
+      });
     }
 
     // Handle write operations (require confirmation)
@@ -945,7 +951,11 @@ NEVER use placeholder text like "Johnson matter ID" - always look up the real nu
 
       if (!validation.valid) {
         // If we can auto-correct (enum error), do so and notify user
-        if (validation.correctedValue && validation.invalidKey && correctedFilters) {
+        if (
+          validation.correctedValue &&
+          validation.invalidKey &&
+          correctedFilters
+        ) {
           const invalidValue = correctedFilters[validation.invalidKey];
           correctedFilters[validation.invalidKey] = validation.correctedValue;
 
@@ -955,7 +965,8 @@ NEVER use placeholder text like "Johnson matter ID" - always look up the real nu
           });
         } else {
           // Can't auto-correct (e.g., unknown objectType) - return friendly error
-          const friendlyTypes = "matters, contacts, tasks, calendar entries, or activities (time entries)";
+          const friendlyTypes =
+            "matters, contacts, tasks, calendar entries, or activities (time entries)";
           return `I can't search for that directly. I can look up ${friendlyTypes}. Which would you like?`;
         }
       }
@@ -1248,7 +1259,10 @@ Only include modifiedRequest if intent is "modify".`;
           result: "error",
           error_message: result.details,
         });
-        return result.details || `Failed to ${confirmation.action} the ${confirmation.objectType}.`;
+        return (
+          result.details ||
+          `Failed to ${confirmation.action} the ${confirmation.objectType}.`
+        );
       }
 
       await this.appendAuditLog({

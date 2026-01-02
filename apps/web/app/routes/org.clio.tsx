@@ -3,7 +3,7 @@ import { useSearchParams, useRevalidator } from "react-router";
 import type { Route } from "./+types/org.clio";
 import { ENDPOINTS } from "~/lib/api";
 import { API_URL } from "~/lib/auth-client";
-import { Plus, RotateCw } from "lucide-react";
+import { ExternalLink, RotateCw } from "lucide-react";
 import { orgLoader } from "~/lib/loader-auth";
 import { AppLayout } from "~/components/AppLayout";
 import { PageLayout } from "~/components/PageLayout";
@@ -125,11 +125,10 @@ export default function ClioPage({ loaderData }: Route.ComponentProps) {
     <AppLayout org={org} currentPath="/org/clio">
       <PageLayout
         title="Clio Connection"
-        subtitle="Connect your Clio account to query matters, contacts, and calendar data."
         actions={
-          <>
-            <ConnectionStatus isConnected={clioStatus.connected} />
-            {clioStatus.connected && (
+          clioStatus.connected ? (
+            <>
+              <ConnectionStatus />
               <button
                 onClick={navigateToClioOAuth}
                 className="btn btn-secondary btn-sm"
@@ -137,8 +136,8 @@ export default function ClioPage({ loaderData }: Route.ComponentProps) {
                 <RotateCw strokeWidth={1.75} size={16} />
                 Reconnect
               </button>
-            )}
-          </>
+            </>
+          ) : undefined
         }
       >
         {loadError && (
@@ -157,21 +156,80 @@ export default function ClioPage({ loaderData }: Route.ComponentProps) {
         {success && <div className="alert alert-success">{success}</div>}
 
         {!clioStatus.connected && (
-          <ConnectToClioSection onConnect={navigateToClioOAuth} />
+          <section className="section">
+            <h2 className="text-title-3">Clio Status</h2>
+
+            <div className="info-card">
+              <div className="info-card-content">
+                <h3 className="text-subhead">Clio Setup</h3>
+
+                <p className="text-secondary">
+                  Connect your personal Clio account to Docket
+                </p>
+              </div>
+
+              <button
+                onClick={navigateToClioOAuth}
+                className="btn btn-sm btn-primary"
+              >
+                <ExternalLink
+                  strokeWidth={2.25}
+                  size={13}
+                  style={{ margin: "3px", marginLeft: "0px" }}
+                />
+                Connect to Clio
+              </button>
+            </div>
+          </section>
         )}
 
         {isAdmin && clioStatus.connected && (
-          <SyncConfigSection
-            lastSyncedAt={clioStatus.lastSyncedAt}
-            isRefreshing={isRefreshing}
-            onSync={handleSync}
-          />
+          <section className="section">
+            <h2 className="text-title-3">Clio Configuration</h2>
+
+            <div className="info-card">
+              <div className="info-card-content">
+                <h3 className="text-subhead">Sync Clio</h3>
+                <p className="text-secondary">
+                  For custom fields or changed your Clio configuration. Re-syncs
+                  hourly.{" "}
+                  {clioStatus.lastSyncedAt
+                    ? `Last synced ${new Date(clioStatus.lastSyncedAt).toLocaleDateString()}`
+                    : ""}
+                </p>
+              </div>
+
+              <button
+                onClick={handleSync}
+                disabled={isRefreshing}
+                className="btn btn-sm btn-secondary"
+              >
+                {isRefreshing ? "Syncing..." : "Sync Now"}
+              </button>
+            </div>
+          </section>
         )}
 
         {clioStatus.connected && (
-          <DangerZoneSection
-            onDisconnect={() => setShowDisconnectModal(true)}
-          />
+          <section className="section">
+            <h2 className="text-title-3">Danger Zone</h2>
+
+            <div className="info-card">
+              <div className="info-card-content">
+                <h3 className="text-subhead">Disconnect Clio</h3>
+                <p className="text-secondary">
+                  Revokes Docket&apos;s access. You can reconnect anytime.
+                </p>
+              </div>
+
+              <button
+                onClick={() => setShowDisconnectModal(true)}
+                className="btn btn-sm btn-danger"
+              >
+                Disconnect
+              </button>
+            </div>
+          </section>
         )}
       </PageLayout>
 
@@ -190,114 +248,12 @@ export default function ClioPage({ loaderData }: Route.ComponentProps) {
 // Helper Components
 // ============================================================================
 
-interface ConnectionStatusProps {
-  isConnected: boolean;
-}
-
-function ConnectionStatus({ isConnected }: ConnectionStatusProps) {
-  const statusDotClass = isConnected
-    ? "status-dot status-dot-success"
-    : "status-dot status-dot-error";
-  const statusText = isConnected ? "Connected" : "Not Connected";
-
+function ConnectionStatus() {
   return (
     <div className="status-indicator btn btn-sm btn-secondary">
-      <span className={statusDotClass} />
-      {statusText}
+      <span className="status-dot status-dot-success" />
+      Connected
     </div>
-  );
-}
-
-interface ConnectToClioSectionProps {
-  onConnect: () => void;
-}
-
-function ConnectToClioSection({ onConnect }: ConnectToClioSectionProps) {
-  return (
-    <section className="section">
-      <h2 className="text-title-3">Connect to Clio</h2>
-
-      <div className="info-card">
-        <div>
-          <h3 className="text-headline">Clio Integration</h3>
-
-          <p className="section-description">
-            Query matters, contacts, tasks, and calendar entries. Access is
-            encrypted and limited to your Clio permissions.
-          </p>
-        </div>
-
-        <button onClick={onConnect} className="btn btn-sm btn-primary">
-          <Plus strokeWidth={1.75} size={16} />
-          Connect to Clio
-        </button>
-      </div>
-    </section>
-  );
-}
-
-interface SyncConfigSectionProps {
-  lastSyncedAt?: number;
-  isRefreshing: boolean;
-  onSync: () => void;
-}
-
-function SyncConfigSection({
-  lastSyncedAt,
-  isRefreshing,
-  onSync,
-}: SyncConfigSectionProps) {
-  const lastSyncText = lastSyncedAt
-    ? `Last synced ${new Date(lastSyncedAt).toLocaleDateString()}`
-    : "";
-
-  return (
-    <section className="section">
-      <h2 className="text-title-3">Clio Configuration</h2>
-
-      <div className="info-card">
-        <div>
-          <h3 className="text-headline">Sync Clio</h3>
-          <p className="section-description">
-            For custom fields or changed your Clio configuration. Re-syncs
-            hourly. {lastSyncText}
-          </p>
-        </div>
-
-        <button
-          onClick={onSync}
-          disabled={isRefreshing}
-          className="btn btn-sm btn-secondary"
-        >
-          {isRefreshing ? "Syncing..." : "Sync Now"}
-        </button>
-      </div>
-    </section>
-  );
-}
-
-interface DangerZoneSectionProps {
-  onDisconnect: () => void;
-}
-
-function DangerZoneSection({ onDisconnect }: DangerZoneSectionProps) {
-  return (
-    <section className="section">
-      <h2 className="text-title-3">Danger Zone</h2>
-
-      <div className="info-card">
-        <div>
-          <h3 className="text-headline">Disconnect Clio</h3>
-          <p className="section-description">
-            Revokes Docket&apos;s access. You can reconnect anytime.
-          </p>
-        </div>
-
-        <button onClick={onDisconnect} className="btn btn-sm btn-danger">
-          Disconnect
-        </button>
-      </div>
-    </section>
   );
 }
 
@@ -319,7 +275,7 @@ function DisconnectModal({
   return (
     <div className="modal-overlay" onClick={onCancel}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-title-3">Disconnect Clio?</h2>
+        <h2 className="modal-title">Disconnect Clio?</h2>
 
         <p className="text-secondary">
           This will revoke Docket&apos;s access to your Clio account. You can
@@ -329,14 +285,14 @@ function DisconnectModal({
         <div className="modal-actions">
           <button
             onClick={onCancel}
-            className="btn btn-secondary btn-sm"
+            className="btn btn-secondary btn-lg btn-lg-fit"
             disabled={isDisconnecting}
           >
             Cancel
           </button>
           <button
             onClick={onConfirm}
-            className="btn btn-danger btn-sm"
+            className="btn btn-danger btn-lg btn-lg-fit"
             disabled={isDisconnecting}
           >
             {isDisconnecting ? "Disconnecting..." : "Disconnect"}

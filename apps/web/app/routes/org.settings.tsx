@@ -184,17 +184,79 @@ export default function SettingsPage({ loaderData }: Route.ComponentProps) {
         {error && <div className="alert alert-error">{error}</div>}
         {success && <div className="alert alert-success">{success}</div>}
 
-        <FirmDetailsSection
-          name={editName}
-          firmSize={editFirmSize}
-          jurisdictions={editJurisdictions}
-          practiceTypes={editPracticeTypes}
-          isAdmin={isAdmin}
-          onNameChange={setEditName}
-          onFirmSizeChange={setEditFirmSize}
-          onJurisdictionToggle={handleJurisdictionToggle}
-          onPracticeTypeToggle={handlePracticeTypeToggle}
-        />
+        <section className="section">
+          <h2 className="text-title-3">Firm</h2>
+
+          <div className="form-card">
+            <div className="form-group">
+              <label htmlFor="orgName" className="form-label">
+                Firm Name
+              </label>
+              <input
+                id="orgName"
+                type="text"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                disabled={!isAdmin}
+                className={`form-input${isAdmin ? "" : " input-disabled"}`}
+              />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="firmSize" className="form-label">
+                Firm Size
+              </label>
+              <select
+                id="firmSize"
+                value={editFirmSize}
+                onChange={(e) => setEditFirmSize(e.target.value)}
+                disabled={!isAdmin}
+                className={`form-select${isAdmin ? "" : " input-disabled"}`}
+              >
+                <option value="">Select size...</option>
+                {FIRM_SIZES.map((size) => (
+                  <option key={size.id} value={size.id}>
+                    {size.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group" style={{ gridColumn: "span 2" }}>
+              <label className="form-label">Jurisdictions</label>
+              <div className="chip-grid">
+                {US_STATES.map((state) => (
+                  <button
+                    key={state}
+                    type="button"
+                    onClick={() => handleJurisdictionToggle(state)}
+                    disabled={!isAdmin}
+                    className={`chip${editJurisdictions.includes(state) ? " chip-selected" : ""}`}
+                  >
+                    {state}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="form-group" style={{ gridColumn: "span 2" }}>
+              <label className="form-label">Practice Areas</label>
+              <div className="chip-grid">
+                {PRACTICE_AREAS.map((area) => (
+                  <button
+                    key={area.id}
+                    type="button"
+                    onClick={() => handlePracticeTypeToggle(area.id)}
+                    disabled={!isAdmin}
+                    className={`chip${editPracticeTypes.includes(area.id) ? " chip-selected" : ""}`}
+                  >
+                    {area.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
 
         {hasChanges && (
           <div className="btn-group">
@@ -216,7 +278,24 @@ export default function SettingsPage({ loaderData }: Route.ComponentProps) {
         )}
 
         {org.isOwner && (
-          <DangerZoneSection onDeleteClick={handleShowDeleteModal} />
+          <section className="section">
+            <h2 className="text-title-3">Danger Zone</h2>
+
+            <div className="info-card">
+              <div className="info-card-content">
+                <h3 className="text-subhead">Delete Firm</h3>
+                <p className="text-secondary">
+                  Permanently delete this firm and all its data.
+                </p>
+              </div>
+              <button
+                onClick={handleShowDeleteModal}
+                className="btn btn-sm btn-danger"
+              >
+                Delete Firm
+              </button>
+            </div>
+          </section>
         )}
 
         {showDeleteModal && deletionPreview && (
@@ -233,141 +312,6 @@ export default function SettingsPage({ loaderData }: Route.ComponentProps) {
         )}
       </PageLayout>
     </AppLayout>
-  );
-}
-
-// ============================================================================
-// Firm Details Section
-// ============================================================================
-
-interface FirmDetailsSectionProps {
-  name: string;
-  firmSize: string;
-  jurisdictions: string[];
-  practiceTypes: string[];
-  isAdmin: boolean;
-  onNameChange: (value: string) => void;
-  onFirmSizeChange: (value: string) => void;
-  onJurisdictionToggle: (state: string) => void;
-  onPracticeTypeToggle: (practiceTypeId: string) => void;
-}
-
-function FirmDetailsSection({
-  name,
-  firmSize,
-  jurisdictions,
-  practiceTypes,
-  isAdmin,
-  onNameChange,
-  onFirmSizeChange,
-  onJurisdictionToggle,
-  onPracticeTypeToggle,
-}: FirmDetailsSectionProps) {
-  const inputDisabledClass = isAdmin ? "" : " input-disabled";
-
-  return (
-    <section className="section">
-      <h2 className="text-title-3">Firm</h2>
-
-      <div className="form-card">
-        <div className="form-group">
-          <label htmlFor="orgName" className="form-label">
-            Firm Name
-          </label>
-          <input
-            id="orgName"
-            type="text"
-            value={name}
-            onChange={(e) => onNameChange(e.target.value)}
-            disabled={!isAdmin}
-            className={`form-input${inputDisabledClass}`}
-          />
-        </div>
-
-        <div className="form-group">
-          <label htmlFor="firmSize" className="form-label">
-            Firm Size
-          </label>
-          <select
-            id="firmSize"
-            value={firmSize}
-            onChange={(e) => onFirmSizeChange(e.target.value)}
-            disabled={!isAdmin}
-            className={`form-select${inputDisabledClass}`}
-          >
-            <option value="">Select size...</option>
-            {FIRM_SIZES.map((size) => (
-              <option key={size.id} value={size.id}>
-                {size.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="form-group" style={{ gridColumn: "span 2" }}>
-          <label className="form-label">Jurisdictions</label>
-          <div className="chip-grid">
-            {US_STATES.map((state) => (
-              <button
-                key={state}
-                type="button"
-                onClick={() => onJurisdictionToggle(state)}
-                disabled={!isAdmin}
-                className={`chip${jurisdictions.includes(state) ? " chip-selected" : ""}`}
-              >
-                {state}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="form-group" style={{ gridColumn: "span 2" }}>
-          <label className="form-label">Practice Areas</label>
-          <div className="chip-grid">
-            {PRACTICE_AREAS.map((area) => (
-              <button
-                key={area.id}
-                type="button"
-                onClick={() => onPracticeTypeToggle(area.id)}
-                disabled={!isAdmin}
-                className={`chip${practiceTypes.includes(area.id) ? " chip-selected" : ""}`}
-              >
-                {area.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ============================================================================
-// Danger Zone Section
-// ============================================================================
-
-interface DangerZoneSectionProps {
-  onDeleteClick: () => void;
-}
-
-function DangerZoneSection({ onDeleteClick }: DangerZoneSectionProps) {
-  return (
-    <section className="section">
-      <h2 className="text-title-3">Danger Zone</h2>
-
-      <div className="info-card">
-        <div>
-          <h3 className="text-headline">Delete Firm</h3>
-          <p className="text-secondary">
-            Permanently delete this firm and all its data. This action cannot be
-            undone.
-          </p>
-        </div>
-        <button onClick={onDeleteClick} className="btn btn-sm btn-danger">
-          Delete Firm
-        </button>
-      </div>
-    </section>
   );
 }
 
@@ -409,18 +353,12 @@ function DeleteFirmModal({
 
         <ul className="text-secondary text-callout">
           <strong>{deletionPreview.org?.name}</strong>
-          <li style={{ marginLeft: "1em" }}>
-            {deletionPreview.members} member(s)
-          </li>
-          <li style={{ marginLeft: "1em" }}>
+          <li>{deletionPreview.members} member(s)</li>
+          <linearGradient>
             {deletionPreview.invitations} pending invitation(s)
-          </li>
-          <li style={{ marginLeft: "1em" }}>
-            {deletionPreview.orgContextChunks} document(s)
-          </li>
-          <li style={{ marginLeft: "1em" }}>
-            All conversations, Clio connections, and audit logs
-          </li>
+          </linearGradient>
+          <li>{deletionPreview.orgContextChunks} document(s)</li>
+          <li>All conversations, Clio connections, and audit logs</li>
         </ul>
 
         <div className="form-group">

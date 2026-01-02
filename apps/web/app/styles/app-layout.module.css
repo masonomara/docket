@@ -23,7 +23,7 @@
 .sidebar {
   width: 255px;
   flex-shrink: 0;
-  background: var(--surface-2);
+  background: var(--container);
   border-right: 1px solid var(--border-default);
   padding: 22px 12px 12px;
   display: flex;
@@ -74,10 +74,9 @@
 .sectionLabel {
   font-size: 12px;
   line-height: 16px;
-  font-weight: 500;
-  text-transform: uppercase;
+  font-weight: 400;
   color: var(--text-tertiary);
-  padding: 16px 8px 0;
+  padding: 12px 8px 2px;
   border-top: 1px solid var(--border-default);
 }
 
@@ -94,41 +93,41 @@
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 
 .navItem {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 36px;
+  height: 32px;
   padding: 0 8px;
   border-radius: 6px;
   color: var(--text-secondary);
   text-decoration: none;
   font-size: 14px;
+  font-weight: 400;
   line-height: 19px;
-  transition: background var(--transition-fast);
 }
-
-.navItem:hover,
-.navItemActive {
+.navItem:hover {
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+.navItem:hover .navIcon {
   color: var(--text-primary);
 }
 
 .navItemActive {
-  background: var(--surface-3);
+  color: var(--text-primary);
+  background: var(--surface-2);
 }
 
 /* Nav icons */
 .navIcon {
-  width: 20px;
-  height: 20px;
   flex-shrink: 0;
   color: var(--text-secondary);
 }
 
-.navItem:hover .navIcon,
 .navItemActive .navIcon {
   color: var(--text-primary);
 }
@@ -163,7 +162,7 @@
   align-items: center;
   justify-content: center;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 550;
   color: var(--text-secondary);
   flex-shrink: 0;
 }
@@ -179,6 +178,7 @@
   line-height: 19px;
   color: var(--text-secondary);
   white-space: nowrap;
+  font-weight: 550;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -190,16 +190,20 @@
 }
 
 /* Hover states */
-.orgInfo:hover .orgName {
+.orgInfo:hover .orgName, .orgInfoActive .orgName  {
   color: var(--text-primary);
 }
 
-.orgInfo:hover .orgRole {
+.orgInfo:hover .orgRole, .orgInfoActive .orgRole {
   color: var(--text-secondary);
 }
 
+.orgInfo:hover {
+  background-color: var(--surface-2)
+}
+
 .orgInfoActive {
-  background-color: var(--surface-3);
+  background-color: var(--surface-2);
 }
 
 /* ==========================================================================
@@ -217,7 +221,7 @@
 }
 
 .contentInner {
-  padding: 22px 22px 44px;
+  padding: 20px 20px 40px;
   display: flex;
   align-items: flex-start;
   justify-content: center;

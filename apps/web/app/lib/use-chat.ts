@@ -261,7 +261,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
                   action: eventData.action as string,
                   objectType: eventData.objectType as string,
                   params: eventData.params as Record<string, unknown>,
-                  expiresAt: Date.now() + 5 * 60 * 1000,
+                  expiresAt: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
                 },
               ]);
               break;

@@ -97,7 +97,10 @@ export function protectedLoader<T>(
  *   }, { requireAdmin: true });
  */
 export function orgLoader<T>(
-  loader: (ctx: OrgLoaderContext, args: { params: Record<string, string | undefined> }) => Promise<T> | T,
+  loader: (
+    ctx: OrgLoaderContext,
+    args: { params: Record<string, string | undefined> }
+  ) => Promise<T> | T,
   options: { requireAdmin?: boolean } = {}
 ) {
   return async ({ request, context, params }: LoaderArgs): Promise<T> => {
@@ -146,39 +149,31 @@ async function checkAuthRequireOrg(
   requestId: string,
   options: { requireAdmin?: boolean }
 ): Promise<{ user: AuthenticatedUser; org: OrgMembership }> {
-  // Step 1: Check session
-  const sessionResponse = await apiFetch(
-    context,
-    "/api/auth/get-session",
-    cookie,
-    requestId
-  );
+  // Fetch session and org in parallel (no dependency between them)
+  const [sessionResponse, orgResponse] = await Promise.all([
+    apiFetch(context, "/api/auth/get-session", cookie, requestId),
+    apiFetch(context, "/api/user/org", cookie, requestId),
+  ]);
+
+  // Check session
   if (!sessionResponse.ok) {
     throw redirect("/auth");
   }
-
   const session = (await sessionResponse.json()) as SessionResponse | null;
   if (!session?.user) {
     throw redirect("/auth");
   }
 
-  // Step 2: Check org membership
-  const orgResponse = await apiFetch(
-    context,
-    "/api/user/org",
-    cookie,
-    requestId
-  );
+  // Check org membership
   if (!orgResponse.ok) {
     throw redirect("/admin");
   }
-
   const org = (await orgResponse.json()) as OrgMembership | null;
   if (!org?.org) {
     throw redirect("/admin");
   }
 
-  // Step 3: Check admin requirement
+  // Check admin requirement
   if (options.requireAdmin && org.role !== "admin") {
     throw redirect("/admin");
   }
@@ -194,30 +189,22 @@ async function checkAuthOptionalOrg(
   cookie: string,
   requestId: string
 ): Promise<{ user: AuthenticatedUser; org: OrgMembership | null }> {
-  // Step 1: Check session
-  const sessionResponse = await apiFetch(
-    context,
-    "/api/auth/get-session",
-    cookie,
-    requestId
-  );
+  // Fetch session and org in parallel (no dependency between them)
+  const [sessionResponse, orgResponse] = await Promise.all([
+    apiFetch(context, "/api/auth/get-session", cookie, requestId),
+    apiFetch(context, "/api/user/org", cookie, requestId),
+  ]);
+
+  // Check session (required)
   if (!sessionResponse.ok) {
     throw redirect("/auth");
   }
-
   const session = (await sessionResponse.json()) as SessionResponse | null;
   if (!session?.user) {
     throw redirect("/auth");
   }
 
-  // Step 2: Try to get org (optional)
-  const orgResponse = await apiFetch(
-    context,
-    "/api/user/org",
-    cookie,
-    requestId
-  );
-
+  // Check org (optional)
   let org: OrgMembership | null = null;
   if (orgResponse.ok) {
     const orgData = (await orgResponse.json()) as OrgMembership | null;

@@ -126,6 +126,7 @@ export default function Admin({ loaderData }: Route.ComponentProps) {
           firmSize: formData.firmSize,
           jurisdictions: formData.jurisdictions,
           practiceTypes: formData.practiceAreas,
+          orgType: formData.orgType,
         }),
       });
 
@@ -147,11 +148,25 @@ export default function Admin({ loaderData }: Route.ComponentProps) {
 
   return (
     <AppLayout org={org} currentPath="/admin">
-      <PageLayout
-        title="Get Started"
-        subtitle="Create or join a firm or clinic to start using Docket"
-      >
-        {org === null && <GetStartedSection onCreateFirm={openModal} />}
+      <PageLayout title="Get Started">
+        {org === null && (
+          <section className="section">
+            <h2 className="text-title-3">Legal Organziation</h2>
+
+            <div className="info-card">
+              <div className="info-card-content">
+                <h3 className="text-subhead">Create an organization</h3>
+                <p className="text-secondary">
+                  Set up your legal organziation to start using Docket.
+                </p>
+              </div>
+              <button onClick={openModal} className="btn btn-sm btn-primary">
+                <Plus strokeWidth={2.25} size={13} style={{ margin: "3px", marginLeft: "0px" }} />
+                Create organization
+              </button>
+            </div>
+          </section>
+        )}
       </PageLayout>
 
       {showModal && (
@@ -171,33 +186,6 @@ export default function Admin({ loaderData }: Route.ComponentProps) {
         />
       )}
     </AppLayout>
-  );
-}
-
-// ============================================================================
-// Get Started Section
-// ============================================================================
-
-interface GetStartedSectionProps {
-  onCreateFirm: () => void;
-}
-
-function GetStartedSection({ onCreateFirm }: GetStartedSectionProps) {
-  return (
-    <section className="section">
-      <div className="info-card">
-        <div>
-          <h3 className="text-headline">Create your organization</h3>
-          <p className="text-secondary">
-            Set up your firm or clinic to start using Docketbot.
-          </p>
-        </div>
-        <button onClick={onCreateFirm} className="btn btn-sm btn-primary">
-          <Plus strokeWidth={1.75} size={16} />
-          Create organization
-        </button>
-      </div>
-    </section>
   );
 }
 

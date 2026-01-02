@@ -138,7 +138,9 @@ export default function MembersPage({ loaderData }: Route.ComponentProps) {
             onClick={() => setShowInviteModal(true)}
             className="btn btn-primary btn-sm"
           >
-            <Plus strokeWidth={1.75} size={16} />
+            <Plus   strokeWidth={2.25}
+                  size={13}
+                  style={{ margin: "3px", marginLeft: "0px" }} />
             Invite Member
           </button>
         }
@@ -217,9 +219,7 @@ function MembersTable({
 }: MembersTableProps) {
   return (
     <section className="section">
-      <div className="section-header">
-        <h2 className="text-title-3">Current Members ({members.length})</h2>
-      </div>
+      <h2 className="text-title-3">Current Members ({members.length})</h2>
 
       {members.length === 0 ? (
         <div className="empty-state">No members found</div>
@@ -316,7 +316,10 @@ function MemberRow({
       <td>
         <div className="btn-group-td">
           {canTransferOwnership && (
-            <button className="btn-primary" onClick={() => onTransfer(member)}>
+            <button
+              className="btn btn-sm btn-secondary"
+              onClick={() => onTransfer(member)}
+            >
               Transfer Ownership
             </button>
           )}
@@ -397,9 +400,9 @@ function InvitationRow({ invitation, onRevoke }: InvitationRowProps) {
         {expiresDate.toLocaleDateString()}
         {expiresSoon && " (soon)"}
       </td>
-      <td>
+      <td style={{ textAlign: "right" }}>
         <button
-          className="btn-primary btn-primary-danger"
+          className="btn btn-sm btn-danger"
           onClick={() => onRevoke(invitation)}
         >
           Revoke
@@ -578,7 +581,7 @@ function TransferOwnershipModal({
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         <h2 className="modal-title">Transfer Ownership</h2>
 
-        <div className="alert alert-error" style={{ marginBottom: "-11px" }}>
+        <div className="text-subhead" style={{ marginBottom: "-11px" }}>
           Transfer ownership to <strong>{targetMember.name}</strong> (
           {targetMember.email}). This action cannot be undone.
         </div>

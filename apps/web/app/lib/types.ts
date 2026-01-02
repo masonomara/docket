@@ -32,6 +32,7 @@ export interface OrgMembership {
     jurisdictions?: string[];
     practiceTypes?: string[];
     firmSize?: string;
+    orgType?: string;
   };
   role: OrgRole;
   isOwner: boolean;

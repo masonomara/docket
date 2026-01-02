@@ -9,7 +9,7 @@ import type { OrgContextDocument } from "~/lib/types";
 import { AppLayout } from "~/components/AppLayout";
 import { PageLayout } from "~/components/PageLayout";
 import styles from "~/styles/org-context.module.css";
-import { FilePlusCorner, FileUp, Info, Plus } from "lucide-react";
+import { FileUp, Info } from "lucide-react";
 
 const ACCEPTED_FILE_TYPES =
   ".pdf,.docx,.xlsx,.pptx,.odt,.ods,.numbers,.md,.txt,.html,.csv,.xml";
@@ -30,7 +30,8 @@ export const loader = orgLoader(
 );
 
 export default function DocumentsPage({ loaderData }: Route.ComponentProps) {
-  const { user, org, documents: initialDocuments, loadError } = loaderData;
+  const { org, documents: initialDocuments, loadError } = loaderData;
+  const pageTitle = org.org.orgType === "legal-clinic" ? "Clinic Documents" : "Firm Documents";
   const revalidator = useRevalidator();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -154,11 +155,19 @@ export default function DocumentsPage({ loaderData }: Route.ComponentProps) {
 
   return (
     <AppLayout org={org} currentPath="/org/context">
-      <PageLayout
-        title="Knowledge Base"
-        subtitle="Upload internal procedures and policies for Docket to reference when answering questions."
-      >
-        <InfoBanner />
+      <PageLayout title={pageTitle}>
+        <section className="section warning-section">
+          <Info
+            strokeWidth={2.25}
+            size={16}
+            style={{ marginTop: "1.5px", minHeight: "16px", minWidth: "16px" }}
+          />
+          <div>
+            <p className="text-subhead">
+              Available to all members. Avoid uploading sensitive client data.
+            </p>
+          </div>
+        </section>
 
         {loadError && (
           <div className="alert alert-error">
@@ -176,6 +185,10 @@ export default function DocumentsPage({ loaderData }: Route.ComponentProps) {
 
         <section className="section">
           <h2 className="text-title-3">Upload Documents</h2>
+          <div className="text-subhead text-secondary">
+            Upload internal procedures and policies for Docket to reference when
+            answering questions.
+          </div>
 
           <div
             className={getUploadAreaClassName()}
@@ -213,27 +226,14 @@ export default function DocumentsPage({ loaderData }: Route.ComponentProps) {
 // Helper Components
 // ============================================================================
 
-function InfoBanner() {
-  return (
-    <section className="section info-section">
-      <Info
-        strokeWidth={2.25}
-        size={16}
-        style={{ marginTop: "1.5px", minHeight: "16px", minWidth: "16px" }}
-      />
-      <div>
-        <h3 className="text-headline">
-          Available to all members. Avoid uploading sensitive client data.
-        </h3>
-      </div>
-    </section>
-  );
-}
-
 function UploadPrompt() {
   return (
     <>
-      <FileUp strokeWidth={1.33} className={styles.uploadPlus} color="var(--text-primary)" />
+      <FileUp
+        strokeWidth={1.33}
+        className={styles.uploadPlus}
+        color="var(--text-primary)"
+      />
       <span className={styles.uploadText}>Drag or click to upload</span>
       <span className={styles.uploadHint}>
         PDF, Word, Excel, or text files (max 25MB)
@@ -271,12 +271,10 @@ interface DocumentsTableProps {
 
 function DocumentsTable({ documents, onDelete }: DocumentsTableProps) {
   return (
-    <section className="section">
-      <h2 className="text-title-3">Manage Documents ({documents.length})</h2>
+    documents.length > 0 && (
+      <section className="section">
+        <h2 className="text-title-3">Manage Documents ({documents.length})</h2>
 
-      {documents.length === 0 ? (
-        <p className="empty-state">No documents uploaded yet.</p>
-      ) : (
         <div className="table-wrapper">
           <table className="table">
             <thead>
@@ -294,8 +292,8 @@ function DocumentsTable({ documents, onDelete }: DocumentsTableProps) {
             </tbody>
           </table>
         </div>
-      )}
-    </section>
+      </section>
+    )
   );
 }
 

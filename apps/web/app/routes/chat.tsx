@@ -200,7 +200,7 @@ function ChatSidebar({
             strokeWidth={1.75}
             className={styles.newChatButtonIcon}
           />
-          New Chat
+          New Conversation
         </button>
       </div>
       <div className={styles.sectionLabel}>

@@ -143,19 +143,98 @@ export default function AccountSettingsPage({
       <PageLayout title="Account Settings">
         {error && <div className="alert alert-error">{error}</div>}
 
-        <AccountSection
-          name={name}
-          email={user.email}
-          hasChanges={hasNameChanged}
-          isSaving={isSaving}
-          onNameChange={setName}
-          onSave={handleSaveName}
-          onCancel={handleCancelNameChange}
-        />
+        <section className="section">
+          <h2 className="text-title-3">Account</h2>
 
-        <SessionSection onSignOut={handleSignOut} />
+          <div className="form-card">
+            <div className="form-group">
+              <label htmlFor="name" className="form-label">
+                Name
+              </label>
+              <input
+                id="name"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="form-input"
+              />
+            </div>
 
-        <DangerZoneSection onDeleteClick={handleShowDeleteModal} />
+            <div className="form-group">
+              <label htmlFor="email" className="form-label">
+                Email
+              </label>
+              <input
+                id="email"
+                type="email"
+                value={user.email}
+                disabled
+                className="form-input input-disabled"
+              />
+            </div>
+          </div>
+
+          {hasNameChanged && (
+            <div className="btn-group">
+              <button
+                onClick={handleCancelNameChange}
+                disabled={isSaving}
+                className="btn btn-lg btn-secondary btn-lg-fit"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveName}
+                disabled={isSaving}
+                className="btn btn-lg btn-primary btn-lg-fit"
+              >
+                {isSaving ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          )}
+        </section>
+
+        <section className="section">
+          <h2 className="text-title-3">Danger Zone</h2>
+          <div
+            className="info-card"
+            style={{
+              marginBottom: "-17px",
+              borderBottomRightRadius: "0px",
+              borderBottomLeftRadius: "0px",
+            }}
+          >
+            <div className="info-card-content">
+              <h3 className="text-subhead">Sign Out</h3>
+              <p className="text-secondary">
+                Sign out of your account on this device.
+              </p>
+            </div>
+            <button
+              onClick={handleSignOut}
+              className="btn btn-sm btn-secondary"
+            >
+              Sign Out
+            </button>
+          </div>
+          <div
+            className="info-card"
+            style={{ borderTopRightRadius: "0px", borderTopLeftRadius: "0px" }}
+          >
+            <div className="info-card-content">
+              <h3 className="text-subhead">Delete Account</h3>
+              <p className="text-secondary">
+                Permanently delete your account and all associated data.
+              </p>
+            </div>
+            <button
+              onClick={handleShowDeleteModal}
+              className="btn btn-sm btn-danger"
+            >
+              Delete Account
+            </button>
+          </div>
+        </section>
 
         {showDeleteModal && deletionPreview && (
           <DeleteAccountModal
@@ -171,140 +250,6 @@ export default function AccountSettingsPage({
         )}
       </PageLayout>
     </AppLayout>
-  );
-}
-
-// ============================================================================
-// Account Section
-// ============================================================================
-
-interface AccountSectionProps {
-  name: string;
-  email: string;
-  hasChanges: boolean;
-  isSaving: boolean;
-  onNameChange: (value: string) => void;
-  onSave: () => void;
-  onCancel: () => void;
-}
-
-function AccountSection({
-  name,
-  email,
-  hasChanges,
-  isSaving,
-  onNameChange,
-  onSave,
-  onCancel,
-}: AccountSectionProps) {
-  return (
-    <section className="section">
-      <h2 className="text-title-3">Account</h2>
-
-      <div className="form-card">
-        <div className="form-group">
-          <label htmlFor="name" className="form-label">
-            Name
-          </label>
-          <input
-            id="name"
-            type="text"
-            value={name}
-            onChange={(e) => onNameChange(e.target.value)}
-            className="form-input"
-          />
-        </div>
-
-        <div className="form-group">
-          <label htmlFor="email" className="form-label">
-            Email
-          </label>
-          <input
-            id="email"
-            type="email"
-            value={email}
-            disabled
-            className="form-input input-disabled"
-          />
-        </div>
-      </div>
-
-      {hasChanges && (
-        <div className="btn-group">
-          <button
-            onClick={onCancel}
-            disabled={isSaving}
-            className="btn btn-lg btn-secondary btn-lg-fit"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onSave}
-            disabled={isSaving}
-            className="btn btn-lg btn-primary btn-lg-fit"
-          >
-            {isSaving ? "Saving..." : "Save Changes"}
-          </button>
-        </div>
-      )}
-    </section>
-  );
-}
-
-// ============================================================================
-// Session Section
-// ============================================================================
-
-interface SessionSectionProps {
-  onSignOut: () => void;
-}
-
-function SessionSection({ onSignOut }: SessionSectionProps) {
-  return (
-    <section className="section">
-      <h2 className="text-title-3">Session</h2>
-
-      <div className="info-card">
-        <div>
-          <h3 className="text-headline">Sign Out</h3>
-          <p className="text-secondary">
-            Sign out of your account on this device.
-          </p>
-        </div>
-        <button onClick={onSignOut} className="btn btn-sm btn-secondary">
-          Sign Out
-        </button>
-      </div>
-    </section>
-  );
-}
-
-// ============================================================================
-// Danger Zone Section
-// ============================================================================
-
-interface DangerZoneSectionProps {
-  onDeleteClick: () => void;
-}
-
-function DangerZoneSection({ onDeleteClick }: DangerZoneSectionProps) {
-  return (
-    <section className="section">
-      <h2 className="text-title-3">Danger Zone</h2>
-
-      <div className="info-card">
-        <div>
-          <h3 className="text-headline">Delete Account</h3>
-          <p className="text-secondary">
-            Permanently delete your account and all associated data. This action
-            cannot be undone.
-          </p>
-        </div>
-        <button onClick={onDeleteClick} className="btn btn-sm btn-danger">
-          Delete Account
-        </button>
-      </div>
-    </section>
   );
 }
 
@@ -339,13 +284,14 @@ function DeleteAccountModal({
   return (
     <div className="modal-overlay" onClick={onCancel}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-        <h2 className="modal-title">Delete Account</h2>
+        <h2 className="text-title-3">Delete Account</h2>
 
-        <div className="alert alert-error" style={{ marginBottom: "-11px" }}>
-          This will permanently delete:
+        <div className="alert alert-error" style={{ marginBottom: "0px" }}>
+          This action cannot be undone.
         </div>
 
         <ul className="text-secondary text-callout">
+          <span>This will permantly delete:</span>
           <li>
             Your account (<strong>{deletionPreview.user?.email}</strong>)
           </li>
