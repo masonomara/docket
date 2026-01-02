@@ -1,5 +1,5 @@
 import { redirect } from "react-router";
-import { apiFetch, generateRequestId } from "./api";
+import { apiFetch, generateRequestId, ENDPOINTS } from "./api";
 import type { SessionResponse, OrgMembership } from "./types";
 
 // ============================================================================
@@ -214,4 +214,89 @@ async function checkAuthOptionalOrg(
   }
 
   return { user: session.user, org };
+}
+
+// ============================================================================
+// Layout Route Loaders (New Streaming Architecture)
+// ============================================================================
+
+/**
+ * Data returned by appLayoutLoader, available to _app layout and children.
+ */
+export interface AppLayoutData {
+  user: AuthenticatedUser;
+  org: OrgMembership | null;
+}
+
+/**
+ * Loader for the _app layout route. Fetches session and org in parallel.
+ * Redirects to /auth if not authenticated.
+ *
+ * Usage in _app.tsx:
+ *   export const loader = appLayoutLoader;
+ */
+export async function appLayoutLoader({
+  request,
+  context,
+}: LoaderArgs): Promise<AppLayoutData> {
+  const requestId = generateRequestId();
+  const cookie = request.headers.get("cookie") || "";
+
+  // Fetch session and org in parallel
+  const [sessionResponse, orgResponse] = await Promise.all([
+    apiFetch(context, ENDPOINTS.auth.session, cookie, requestId),
+    apiFetch(context, ENDPOINTS.user.org, cookie, requestId),
+  ]);
+
+  // Check session
+  if (!sessionResponse.ok) {
+    throw redirect("/auth");
+  }
+  const session = (await sessionResponse.json()) as SessionResponse | null;
+  if (!session?.user) {
+    throw redirect("/auth");
+  }
+
+  // Check org (optional)
+  let org: OrgMembership | null = null;
+  if (orgResponse.ok) {
+    const orgData = (await orgResponse.json()) as OrgMembership | null;
+    if (orgData?.org) {
+      org = orgData;
+    }
+  }
+
+  return { user: session.user, org };
+}
+
+/**
+ * Context passed to child loaders under the _app layout.
+ */
+export interface ChildLoaderContext {
+  fetch: (path: string) => Promise<Response>;
+  params: Record<string, string | undefined>;
+}
+
+/**
+ * Wrapper for child route loaders that need to fetch additional data.
+ * Auth is inherited from parent _app layout - this just provides a fetch helper.
+ *
+ * Usage:
+ *   export const loader = childLoader(async ({ fetch, params }) => {
+ *     const data = await fetch("/api/some-endpoint").then(r => r.json());
+ *     return { data };
+ *   });
+ */
+export function childLoader<T>(
+  loader: (ctx: ChildLoaderContext) => Promise<T> | T
+) {
+  return async ({ request, context, params }: LoaderArgs): Promise<T> => {
+    const requestId = generateRequestId();
+    const cookie = request.headers.get("cookie") || "";
+
+    return loader({
+      fetch: (path: string) => apiFetch(context, path, cookie, requestId),
+      params,
+    });
+  };
 }
