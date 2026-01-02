@@ -53,7 +53,9 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
   }
 
   function getKnowledgeBaseLabel() {
-    return org?.org?.orgType === "legal-clinic" ? "Clinic Documents" : "Firm Documents";
+    return org?.org?.orgType === "legal-clinic"
+      ? "Clinic Documents"
+      : "Firm Documents";
   }
 
   function openMenu() {
@@ -100,9 +102,9 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
         {/* Work section */}
         <nav className={styles.section}>
           <div className={styles.sectionLabel}>Work</div>
-          <ul className={styles.navList}>
+          <div className={styles.navList}>
             {org === null ? (
-              <li>
+              <div>
                 <Link to="/admin" className={getNavItemClass("/admin")}>
                   <Landmark
                     size={17}
@@ -111,56 +113,72 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
                   />
                   Get Started
                 </Link>
-              </li>
+              </div>
             ) : (
-              <li>
+              <div>
                 <Link to="/chat" className={getNavItemClass("/chat")}>
-                  <Bot size={17} strokeWidth={1.75} className={styles.navIcon} />
+                  <Bot
+                    size={17}
+                    strokeWidth={1.75}
+                    className={styles.navIcon}
+                  />
                   Docketbot
                 </Link>
-              </li>
+              </div>
             )}
-          </ul>
+          </div>
         </nav>
 
         {/* Admin-only management section */}
         {isAdmin && (
           <nav className={styles.section}>
             <div className={styles.sectionLabel}>Manage</div>
-            <ul className={styles.navList}>
-              <li>
+            <div className={styles.navList}>
+              <div>
                 <Link
                   to="/org/context"
                   className={getNavItemClass("/org/context")}
                 >
-                  <Scale size={17} strokeWidth={1.75} className={styles.navIcon} />
+                  <Scale
+                    size={17}
+                    strokeWidth={1.75}
+                    className={styles.navIcon}
+                  />
                   {getKnowledgeBaseLabel()}
                 </Link>
-              </li>
-              <li>
+              </div>
+              <div>
                 <Link to="/org/clio" className={getNavItemClass("/org/clio")}>
-                  <Plug size={17} strokeWidth={1.75} className={styles.navIcon} />
+                  <Plug
+                    size={17}
+                    strokeWidth={1.75}
+                    className={styles.navIcon}
+                  />
                   Clio Connection
                 </Link>
-              </li>
-              <li>
+              </div>
+              <div>
                 <Link
                   to="/org/members"
                   className={getNavItemClass("/org/members")}
                 >
-                  <Users size={17} strokeWidth={1.75} className={styles.navIcon} />
+                  <Users
+                    size={17}
+                    strokeWidth={1.75}
+                    className={styles.navIcon}
+                  />
                   Members
                 </Link>
-              </li>
-            </ul>
+              </div>
+            </div>
           </nav>
         )}
 
         {/* Account section */}
         <nav className={styles.section}>
           <div className={styles.sectionLabel}>Account</div>
-          <ul className={styles.navList}>
-            <li>
+          <div className={styles.navList}>
+            <div>
               <Link
                 to="/account/settings"
                 className={getNavItemClass("/account/settings")}
@@ -172,8 +190,8 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
                 />
                 User Settings
               </Link>
-            </li>
-          </ul>
+            </div>
+          </div>
         </nav>
 
         <div className={styles.orgInfoDivider} />
