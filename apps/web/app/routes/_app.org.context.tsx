@@ -196,10 +196,10 @@ export default function DocumentsPage({ loaderData }: Route.ComponentProps) {
 
         <section className="section">
           <h2 className="text-title-3">Upload Documents</h2>
-          <div className="text-subhead text-secondary">
+          <span className="text-subhead text-secondary">
             Upload internal procedures and policies for Docket to reference when
             answering questions.
-          </div>
+          </span>
 
           <div
             className={getUploadAreaClassName()}

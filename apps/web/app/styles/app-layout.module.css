@@ -143,10 +143,8 @@
   align-items: center;
   gap: 10px;
   border-radius: 0px;
-  position: absolute;
-  bottom: 0px;
-  left: 0px;
-  width: 254px;
+
+  margin-top: auto;
   border-top: 1px solid var(--border-default);
 }
 
