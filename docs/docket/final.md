@@ -124,7 +124,7 @@ I discovered later through testing that this should have been taken more serious
 ## technical Flow
 
 CHANNEL INTERFACE
-[ [Slack] [Microsft teams] [web ui] ]
+(Slack, Microsoft Teams, Web UI)
 
 _sends MESSAGE to_
 
@@ -148,6 +148,22 @@ The DO stores the message in SQLite
 - If needed to make a tool call, validates the user's permissions and executes the Clio API
 - if the command to Clio was a Create/Update/Delete call rather than just a read function, ask the user a follow-up question - similar to how Claude Code asks you to validate before it commits to something {{ screenshot of this }}
 
+## Example Flow
+
+A user messages "What cases do I have next week" in a channel sch as Microsoft Teams, Slack, or the Web App. That message hits the slack channel adapter in JSON format including the channel ID (Slack), the user metadata, and timestamps. The message is tranformed into a normalized format by teh Channel Adatper which queries the D1 database for the user record, the user's organization metadata (industry, jurisdiction, ID), and user's role (admin or member). The adapter sends a clean, normalized message with user and org context to the Worker.
+
+The worker routes this message deirectly to the correct Durable Object. The Durable Object wakes up from hibernation and immediatley stores the mesage in it's SQLite - this becomes the covnersation history that the LLM can access. The Durable Obejct then genretes an embedding of the message using Workers AI, a vector representation of what the user asked for RAG.
+
+That embedding is sent to the binded Vectorize databse twice in parallel - once to search the sahred Knowledge Base, the other embedding to search trhough the org's uploaded context documents. Vectorize returns chunk ID's of the semantically simialr context from the huge knowledge base and org documents libraries. The chunks themselves live in D1, where the full text is retreived from.
+
+The D1 chunks, the user's message, and the conversaton history are quiried as paramters for teh system prompt that gives the LLM guardrails and instructions. The Clio schema from the emory cahce is attatched to the prompt to the LLM knows what objects exist in each organizations Clio. All of this is packed into one context window - a conversation ont he web UI or a Slack or Teams thread.
+
+Cloudflare's Workers AI runs the LLM. If the LLM decided it shoudl call the Clio API, we valdiate that the user has permission (right orgniation, right org context). If its jsut a read oepration, its executed, if its a create/update/delete fucntion, the Worker stores a pending confirmation in the DO storage and a message is setn back to the user, "Are you sure you want to \_\_\_\_?" for them to accept or deny.
+
+The response from the LLM flows abck trhough the worker to the Channel Adapter again, which reformats the message for the respective Channel and sends it abck to the user.
+
+Durable Objects allows the whoel thing to happen in sequence, to race conditiosn. The Durable Object processes one message compeltely before touching the next one, every operation is logged.
+
 ## on Retrospective
 
 Our winning structure never really played out, I'm continuing to work on Docket in active development because I believe in the infrastructure and the goal to combine org context, knowledge base, and API calls. I think the scope needs to be majorly reduced.
@@ -155,3 +171,5 @@ Our winning structure never really played out, I'm continuing to work on Docket 
 Giving an LLM model unconstrained access to an API not controlled by you is a recipe for disaster. Patterns emerged while talking to it felt like relearning how to execute the Clio commands.
 
 reflection: note how I'm starting to realize the problems of shoehorning this technology, reflection on better applications for it (personal API that you control, big danger letting the robot run wild, even with querying parameters, it's really unchecked and creating those guardrails wasn't something I really cared to explore) - RAG was a huge success, Cloudflare parsing files and doing it was also a huge success
+
+This tool felt needless, you had to get used to describing things in a specific way to get what you want, mgiht as well learn hwo to operate clio - it was producing poor results and there would be npobody to blame.
