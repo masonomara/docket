@@ -1,5 +1,7 @@
 [docketadmin.com](https://docketadmin.com)
 
+{{ #1: hero shot }}
+
 I worked on Docket after a friend shared his organized knowledge base of operating procedures. He wanted a service that could pull from his knowledge base, access organizational context from clients, connect to their CRM, and work through Slack. He wanted to replace himself in his business and sell AI versions to clients.
 
 We both read E-Myth Revisited by Michael Gerber about a year earlier. We had hypotheses on how Gerber's system of documenting yourself could apply in the AI age, and my friend had a strong knowledge base to work from.
@@ -10,6 +12,8 @@ An AI assistant could combine three sources: a knowledge base of industry conten
 
 This meant handling OAuth between the CRM and Slack, making conversation history readable by an LLM, and letting users upload documents for the LLM to reference.
 
+{{ #6: three-source diagram }}
+
 ## Cloudflare Workers
 
 I learned Cloudflare Workers through MCP work, which helped later for tool calls. Workers AI looked promising, and Durable Objects solved the coordination problem.
@@ -17,8 +21,6 @@ I learned Cloudflare Workers through MCP work, which helped later for tool calls
 Durable Objects are isolated, single-threaded storage units with embedded SQLite. They bind to SQL, key-value storage, object storage, vector databases, and cron jobs. Durable Objects coordinate access to all databases and enforce sequential execution.
 
 I designed the Worker to create a Durable Object for each organization. To handle messages from Slack, Teams, and the web UI, I created a channel adapter that normalizes messages before passing them to the Durable Object. Each new interface needs upfront work to build the normalizer, but once normalized, the Worker doesn't care where messages came from.
-
-{{ mermaid chart showcasing my architecture }}
 
 ## Multitenant Architecture
 
@@ -36,15 +38,21 @@ Workers are stateless servers bound to Durable Objects and external services via
 
 Workers AI hosts the LLM and embedding model. The Durable Object SQLite holds conversations, messages, pending confirmations, and the custom Clio schema caches for each firm.
 
+{{ #9: storage layer diagram }}
+
 ## The Pivot
 
 My friend wanted to take it a different direction. That was fine — I continued to work on it but needed a new industry.
 
 The first version (a Slack bot) proved that API calls and OAuth between Slack and the CRM worked, the conversation history was accessible, and the LLm could reference uploaded Org Context and the Knowledge Base. The architecture was validated, and I also discovered development pain points through this first build such as Users beign abel to upload Org Context that I had to prioritze on the rebuild.
 
+{{ #5: slack fundraising assistant }}
+
 ## Why Lawyers
 
 I needed an industry-specific CRM like Salesforce. I knew lawyers and adminsitrative assistants that woudl be available to interview, and Clio was a growing CRM that users liked. I also explored what the tool would look like for legal clinics, so I set up separate logins for clinics and firms.
+
+{{ #10: clio dashboard }}
 
 Talking to lawyers revealed that jurisdictions matter more than I expected. Different jurisdictions determine how to proceed through cases, which creates complexity for lawyers handling multiple states. This meant separate knowledge bases for different jurisdictions and practice types. I didn't need the knowledge base to be precise — that would require a legaltech cofounder. I just needed to test whether the LLM could distinguish between jurisdictions.
 
@@ -66,11 +74,11 @@ I pivoted to the web app. I needed a website anyway for account creation, org ma
 
 The web made everything observable. I built a UI with conversation history, chat messages, and a process log showing which Knowledge Base and org context sources the LLM reads in real time.
 
-{{ include photos of process log }}
+{{ #2: process log panel }}
 
 The web UI runs on Server-Sent Events (SSE). Message goes in, events stream back: content tokens as the LLM generates them, process updates for the sidebar, confirmation requests when the bot wants to write to Clio.
 
-{{ confirmation messages }}
+{{ #3: confirmation modal }}
 
 Testing became easier. Instead of "configure Teams and tell me what it says," users could go to docketadmin.com, upload documents, and see how the chatbot thought and responded.
 
@@ -84,11 +92,15 @@ Vectorize doesn't support `OR` filters. If I want general `OR` federal `OR` Cali
 
 Content gets chunked at ~500 characters, stored in D1, then embedded and added to Vectorize. RAG locates relevant chunks through vector similarity, fetches full text from D1, and injects it into the system prompt. Token budget caps RAG context at ~3,000 tokens—lower-scored chunks get dropped if there's too much.
 
+{{ #8: RAG + upload pipeline }}
+
 My friend's documentation worked well with RAG because it was organized. For lawyers, I used sample textbooks I found online. I'm not a lawyer and Docket isn't meant to replace one — just administrative assistance. The textbook content didn't work as well, but it was good enough for trial.
 
 ## Org Context Uploads
 
 Admin uploads a file through the web interface. The server validates it (MIME type, magic bytes, 25MB limit) and stores the raw file in R2 at `/orgs/{org_id}/docs/{file_id}`. Workers AI's `toMarkdown()` parses PDFs, DOCX, XLSX, and other formats into text. The text gets chunked, stored in D1's `org_context_chunks` table, embedded, and upserted to Vectorize with metadata `{ type: "org", org_id, source }`. The `type: "org"` filter keeps org context separate from the shared Knowledge Base. Deletes remove chunks from D1 and Vectorize, then delete the raw file from R2. Updates are delete-then-reupload.
+
+{{ #4: org context upload }}
 
 Retrieval works the same as the Knowledge Base: Worker receives message → search Vectorize → get IDs → fetch chunks from D1 → inject into prompt.
 
@@ -119,6 +131,8 @@ Most of this was developed with Claude using spec-driven development. Test-drive
 This was unfamiliar technology. Writing specs helped me understand the high-level architecture and recognize problems earlier. I focused on writing tests first and understanding what they needed to verify before implementing. Development moved faster because of that structure. Agentic coding tools are aluable for standing up quickly, I also recongized taking time to understand failures matters.
 
 ## Technical Flow
+
+{{ #7: architecture overview }}
 
 ```mermaid
 flowchart TD
@@ -163,8 +177,6 @@ flowchart TD
     PROCESS <--> CLIO
     R2 <-.-> DO
 ```
-
-## Example Flow
 
 A user messages "What cases do I have next week" through Teams, Slack, or the web app. The message hits the channel adapter as JSON: channel ID, user metadata, timestamps. The adapter queries D1 for the user record, org metadata (industry, jurisdiction, ID), and role (admin or member). It sends a normalized message with user and org context to the Worker.
 
