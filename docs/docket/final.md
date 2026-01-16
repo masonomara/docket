@@ -1,10 +1,6 @@
 [docketadmin.com](https://docketadmin.com)
 
-Docket began as a collaboration with my friend who runs a nonprofit fundraising agency. We both read "The E-Myth Revisited" by Michael Gerber around the same time and both were completely enthralled. The book laid a gameplan on how most small businesses need another version of yourself to run. Your ultimate goal is to remove yourself from the business. Small business owners struggle with becoming too tightly absorbed within their own operations. Gerber teaches how to document what you do, identify what can be delegated, removing what is needless, and focusing on delegating remaining roles.
 
-where the idea came from (gerber's book leading to documenting what you do, reading the book sparking collaboration, mapping out knowledge base, org context, api commands, and interfaces for it)
-
-In 1998 when Gerber wrote the book, delegation meant hiring people. In 2026, we can do that with AI.
 
 Joe spent a year documenting everything he does, recording it in an organized knowledge base. He had a vision for a chatbot that would pull industry expertise from his knowledge base, pull from organizational context that users upload (operating procedures), connect directly to the Salesforce API, and then be able to use via Slack.
 
@@ -50,6 +46,17 @@ then sent to a Cloudflare Worker that had access to each tenant's Durable Object
 
 There was a processing worker that orchestrated the Durable Object, the Durable Object had its own worker for receiving messages from the entrypoint worker.
 
+## Auth Architecture
+
+For Docket accounts, I chose Better Auth because it's free and has native Cloudflare Workers + D1 support. Better Auth stores user accounts, passwords, and sessions in D1. I liked the idea of owning the data rather than an external service. For Web, Better Auth could handle session cookies, I knew linking Slack and Teams wouldnt be as simple - so being able to hold all the data seemed limpler and we could focus on linking up Teams and Slack
+
+To set up the link with Teams, I used Microfosts pre-built bot framework's `OAuthCard` component. This generated ana ccess token and the user profile (inlcudinf their microsoft email). The worker would eceive this from the Bot Framework and added the user email to D1 records for unitnerupted cpnversations moving forward.
+
+Slack didnt have a built-in SSO helper like Teams did, so I had the Slack bot use a better Auth magic link - the Slack Bot woudl send back a URL if they didnt recngize the user, the magic link provided by better auth would send the user's slack id to the worker where it was stored simialrly to the teams email.
+
+Adding a new channel required soem intial setup, but after the auth was creatd, the messages were normalized by teh Channel Interface Adapter before going to the Worker - interface-specific troubles were caught at the Adapter component, the worker remained interface agnostic
+
+
 ## Working with RAG
 
 Joe's documentation was organized and worked really well with Retrieval Augmented Generation (RAG). The knowledge base was processed into Cloudflare's Vector Storage, essentially "training" the data as AI could preprocess the data while warming up.
@@ -66,7 +73,15 @@ the first version of this proejct was done exclusively for slack, it validated t
 
 During development, I pivote dto focsuing on the web app. I had to create a website anyway for users to create accounts, add and remove memebrs from their orgnaization, upload organizational context, and manage their payment palns int he future., the framework of thsite was built, Teams had a high onbaroding friction for getting users to test it, and Teams felt liek a black box.
 
-It was easier to make the web chat observable, for myself ont he abckend, and for users. I even added some fun UI so users could see the process that the AI infestructure was taking with their messages, soruces for waht the Docket Bot was reading. This was laso much less onbaording friction fo rusers to come in and test the bot. I didnt envision the Web Ap to be the main interface moving forward, but a great first step for the proof of concept and testing.
+It was easier to make the web chat observable, for myself on the backend, and for users. I built a web UI with conversation history, the chat messages, and a process log showing sources that the LLm reads from in the Knowledge base and org context inr eal time. The process log was the fun part
+
+{{ include photos of process log }}
+
+Web Ui could run on Server-Sent Events (SSE). Message goes in, events stream back - content tokens as the LLM generates them, process updates for the sidebar, confirmation requests when the bot wants to write to Clio.
+
+{{ confrmation messages }}
+
+This was also much less onboarding friction for users to come in and test the bot. I didn't envision the Web App to be the main interface moving forward, but a great first step for the proof of concept and testing. It went from "Link up your Teams account, do the authentication, and tell me what it says back" to "Go to docket.com and uplaod some org documents, let me know if the chatbot read them properly, let me knwo wwhat you thought about what it said back"
 
 ## on Technical Architecture
 
@@ -95,15 +110,15 @@ Durable Objects enforce the sequential execution - when a message arrives, the D
 
 ## on the chunks
 
-The knowledge base divided by jurisdiction and industry would be manually uploaded by me through a tool I built, essentially reading from markdown files. The data was added to Vectorize to make sure it was findable by RAG, and then chunked up and split into D1 databases. The goal was that RAG could "locate" through vector the chunks that it needed to read, and "hold" that context ready in the conversation state to apply if needed later. I'm not sure why this was an advantage - need to crystallize this better
+The knowledge base divided by jurisdiction and practice type would be manually uploaded by me through a tool I built, reading from markdown files organized so the folder path determined the metadata - files in `/kb/jurisdictions/CA/` got tagged with `jurisdiction: "CA"`, files in `/kb/practice-types/family-law/` got `practice_type: "family-law"`. General content and federal jurisdiction always get included for every org. When a California family law firm asks a question, Vectorize returns chunks from general, federal, California, and family law folders.
 
-The org context upload pattern had to match, I built a server-side function with the Cloudflare AI file parsing tool that inserted the information and reran the vector database to prep for LLMs that were all bound together.
+The tricky part I discovered was Vectorize doesn't support `OR` filters. If I want general `OR` federal `OR` California content, I can't write that as one query. So I ran parallel Vectorize queries - one for each filter - then merge results by score and deduplciate. An org with multiple jurisdictions and practice types might trigger 10+ parallel queries, but they're fast and the dedeuplicaiton handles overlap.
 
-The chunks served an extra huge purpose, each chunk could be assigned a metadata filter containing the jurisdiction and industry for each chunk - that allowed the LLM to sort the queried chunks and ignore ones that could be potentially dangerous
+The data was added to Vectorize for semantic search, then chunked at ~500 characters and stored in D1. RAG locates relevant chunks through vector similarity, fetches the full text from D1, and injects it into the system prompt. Token budget caps it at ~3,000 tokens for RAG context - if there's too much relevant content, lower-scored chunks get dropped.
 
-add chart of mapping from AI looking up the vector databases, finding the chunks, filtering the chunks, then reading the chunks.
+For org context uploads, I built the full pipeline: admin uploads a file through the web interface, server validates it (MIME type, magic bytes, 25MB limit), stores the raw file in R2 at `/orgs/{org_id}/docs/{file_id}`. Then Workers AI's `toMarkdown()` parses PDFs, DOCX, XLSX, and other formats into text. The text gets chunked, stored in D1's `org_context_chunks` table, embedded, and upserted to Vectorize with metadata `{ type: "org", org_id, source }`. The `type: "org"` filter keeps org context completely separate from the shared knowledge base in queries. Deletes work by removing all chunks with matching IDs from both D1 and Vectorize, then deleting the raw file from R2. Updates are just delete-then-reupload.
 
-worker receives user message → search Vectorize → get IDs → could fetch full chunks from D1 if needed.
+worker receives user message → search Vectorize → get IDs → fetch full chunks from D1 → inject into prompt.
 
 ## on the tool calls
 
@@ -127,7 +142,8 @@ As something to potentially price out later (plan was everyone in org would have
 
 I had to set up safeguards for Docket to use Clio data.
 
-I discovered later through testing that this should have been taken more seriously - I knew I could get the API to run the full suite of Create/Read/Delete functions. I had to make sure the user consented to it actually being executed and present it to them in a way they understand. The Docket bot had to communicate back to the user before doing an edit, similar to how Claude Code asks before editing code. I tried to emulate that, the pending confirmations were held in Durable Object state with message, the channel adapter had to be modified to work two ways and work quickly, an ez-pass lane had to be set up for this to run fast.
+
+I discovered later through testing that the confirmation flow should have been taken more seriously - I knew I could get the API to run the full suite of Create/Read/Delete functions. I had to make sure the user consented to it actually being executed and present it to them in a way they understand. The Docket bot had to communicate back to the user before doing an edit, similar to how Claude Code asks before editing code. I tried to emulate that, the pending confirmations were held in Durable Object state with message, the channel adapter had to be modified to work two ways and work quickly, an ez-pass lane had to be set up for this to run fast.
 
 ## technical Flow
 
