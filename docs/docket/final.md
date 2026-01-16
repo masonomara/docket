@@ -60,6 +60,14 @@ Most of this was developed with Claude following spec driven development. It was
 
 how I used spec-driven development to explore what could be done - reflection how a lot of this was done through spec-driven development. This is an unfamiliar technology and idea, writing specs helped me understand the high level architecture, being able to recognize problems I would need to solve in the future earlier in the process. I ran a test suite as well, focused more on developing the tests and making sure I understood what they needed to be before proceeding with them. Development moved faster because of it, it's a tool to use, but taking the time to understand when something goes wrong is important
 
+## On Interfaces.
+
+the first version of this proejct was done exclusively for slack, it validated that the slack channel cold be used, and that APi calls coudl be excuted with Salck Bots. frm talking to lawyers, I knew that Microsoft teams was their most popular "chat system for work". FOr Docket to work, I thought we shoudl focus on Teams. I quickly spn up a simialr proof of concept, creating a teams app, permissions granted, havng Slack accept oath from Clio, and the same proces with slack was validated.
+
+During development, I pivote dto focsuing on the web app. I had to create a website anyway for users to create accounts, add and remove memebrs from their orgnaization, upload organizational context, and manage their payment palns int he future., the framework of thsite was built, Teams had a high onbaroding friction for getting users to test it, and Teams felt liek a black box.
+
+It was easier to make the web chat observable, for myself ont he abckend, and for users. I even added some fun UI so users could see the process that the AI infestructure was taking with their messages, soruces for waht the Docket Bot was reading. This was laso much less onbaording friction fo rusers to come in and test the bot. I didnt envision the Web Ap to be the main interface moving forward, but a great first step for the proof of concept and testing.
+
 ## on Technical Architecture
 
 Durable Objects are isolated stateful compute units with their own embedded SQLite storage that is great for tenant data (tenant being a law organization, data that needs to be tightly coupled with state like status, pending actions, conversation messages)
