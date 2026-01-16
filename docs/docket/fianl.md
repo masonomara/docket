@@ -40,7 +40,7 @@ Cloudflare also has an insane Workers AI tool that stored the LLM (the prices ar
 
 D1 handled user and org metadata, auth sessions, KB chunks, invitations, and subscriptions. The Durable Object SQLite held conversations, messages, pending confirmations, and the custom Clio schema caches that each law firm had.
 
-D1 was for cross-tenant global lookups (user and org metadata). DO SQLite is physically isolated - org A's Durable Objects cannot access org B's SQLite. Legal supervisors would be ecstatic.
+D1 was for cross-tenant global lookups (user and org metadata).
 
 ## The Pivot
 
@@ -64,7 +64,7 @@ To set up the link with Teams, I used Microsoft's pre-built bot framework's `OAu
 
 Slack didn't have a built-in SSO helper like Teams did, so I had the Slack bot use a Better Auth magic link - the Slack Bot would send back a URL if they didn't recognize the user, the magic link provided by Better Auth would send the user's Slack ID to the worker where it was stored similarly to the Teams email.
 
-Adding a new channel required some initial setup, but after the auth was created, the messages were normalized by the Channel Interface Adapter before going to the Worker - interface-specific troubles were caught at the Adapter component, the worker remained interface-agnostic.
+Adding a new channel required some initial setup, but after the auth was created, the messages were normalized by the Channel Interface Adapter before going to the Worker, keeping the worker functions interface-agnostic.
 
 ## On Interfaces
 
@@ -122,7 +122,7 @@ As something to potentially price out later (plan was everyone in org would have
 
 I had to set up safeguards for Docket to use Clio data.
 
-I discovered later through testing that the confirmation flow should have been taken more seriously - I knew I could get the API to run the full suite of Create/Read/Delete functions. I had to make sure the user consented to it actually being executed and present it to them in a way they understand. The Docket bot had to communicate back to the user before doing an edit, similar to how Claude Code asks before editing code. I tried to emulate that, the pending confirmations were held in Durable Object state with message, the channel adapter had to be modified to work two ways and work quickly, an ez-pass lane had to be set up for this to run fast.
+I had to make sure the user consented to Create/Read/Delete functions. They had to be actually being executed and present it to them in a way they understand. The Docket bot had to communicate back to the user before doing an edit, similar to how Claude Code asks before editing code. I tried to emulate that, the pending confirmations were held in Durable Object state with message, the channel adapter had to be modified to work two ways and work quickly, an ez-pass lane had to be set up for this to run fast.
 
 ## Agentic Developing
 
@@ -132,30 +132,49 @@ How I used spec-driven development to explore what could be done - reflection ho
 
 ## Technical Flow
 
-CHANNEL INTERFACE
-(Slack, Microsoft Teams, Web UI)
+```mermaid
+flowchart TD
+    subgraph Channels
+        SLACK[Slack]
+        TEAMS[Teams]
+        WEB[Web UI]
+    end
 
-_sends MESSAGE to_
+    subgraph Worker[Worker - Stateless]
+        ADAPTER[Channel Adapter]
+    end
 
-CHANNEL ADAPTER
-extracts user/org context from message, normalizes message structure, queries D1 for `user_id`, `org_id`, and `role`.
+    subgraph DO[Tenant Durable Object - Per Org]
+        SQLITE[(DO SQLite<br/>conversations, messages,<br/>confirmations, Clio schema)]
+        PROCESS[Message Processing]
+    end
 
-_sends NORMALIZED MESSAGE to_
+    subgraph Storage[Bound Storage]
+        D1[(D1<br/>user/org metadata,<br/>KB chunks, auth)]
+        R2[(R2<br/>uploaded files,<br/>audit logs)]
+        VECTORIZE[(Vectorize<br/>KB + org embeddings)]
+    end
 
-WORKER
-using the normalized message information
+    subgraph AI[Workers AI]
+        EMBED[Embedding Model]
+        LLM[LLM]
+    end
 
-_ROUTES to_
+    CLIO[Clio API]
 
-TENANT DURABLE OBJECT
-The DO stores the message in SQLite
-
-- generates EMBEDDING with WORKERS AI
-- Queries VECTORIZE for knowledge base + org context chunks
-- Builds a prompt with a schema for prompt building from the DO memory cache
-- Calls LLM again (WORKERS AI)
-- If needed to make a tool call, validates the user's permissions and executes the Clio API
-- If the command to Clio was a Create/Update/Delete call rather than just a read function, ask the user a follow-up question - similar to how Claude Code asks you to validate before it commits to something {{ screenshot of this }}
+    SLACK --> ADAPTER
+    TEAMS --> ADAPTER
+    WEB --> ADAPTER
+    ADAPTER <--> D1
+    ADAPTER --> DO
+    DO <--> SQLITE
+    PROCESS <--> VECTORIZE
+    PROCESS <--> D1
+    PROCESS <--> EMBED
+    PROCESS <--> LLM
+    PROCESS <--> CLIO
+    R2 <-.-> DO
+```
 
 ## Example Flow
 
@@ -167,7 +186,7 @@ That embedding is sent to the bound Vectorize database twice in parallel - once 
 
 The D1 chunks, the user's message, and the conversation history are queried as parameters for the system prompt that gives the LLM guardrails and instructions. The Clio schema from the memory cache is attached to the prompt so the LLM knows what objects exist in each organization's Clio. All of this is packed into one context window - a conversation on the web UI or a Slack or Teams thread.
 
-Cloudflare's Workers AI runs the LLM. If the LLM decided it should call the Clio API, we validate that the user has permission (right organization, right org context). If it's just a read operation, it's executed. If it's a create/update/delete function, the Worker stores a pending confirmation in the DO storage and a message is sent back to the user, "Are you sure you want to \_\_\_\_?" for them to accept or deny.
+Cloudflare's Workers AI runs the LLM. If the LLM decides to call the Clio API, we validate user permissions. Read operations execute immediately; write operations require confirmation first.
 
 The response from the LLM flows back through the worker to the Channel Adapter again, which reformats the message for the respective Channel and sends it back to the user.
 
