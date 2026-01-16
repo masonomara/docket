@@ -16,7 +16,7 @@ Third, I needed the LLM to be able to be "trained" on organizational context - d
 
 I was introduced to the Cloudflare Workers architecture through MCP work which would come in handy later for tool calls, and their "Workers AI" seemed promising. Their revamped "Durable Objects" also proved extremely helpful.
 
-Durable Objects are stateful storage objects - they bind to multiple different databases like SQL, key-value storage, object storage, vector databases, and cron jobs along with their own Durable Object SQLite - and coordinate access to the same state and order of execution.
+Durable Objects are isolated, single-threaded storage units with their own embedded SQLite. They bind to multiple different databases like SQL, key-value storage, object storage, vector databases, and cron jobs . Durable object automatically coordinate access to all databases and enforce sequential execution.
 
 I designed the Worker to create a Durable Object for each organization. To handle multiple different message types (Slack, Teams, Web UI) I created a channel interface function that receives the messages and normalizes them for the Worker to pass to the Durable Object. Each new interface needed some upfront work to set up the normalizing function, but once the message data was normalized, the Worker infrastructure became interface-agnostic.
 
@@ -26,11 +26,9 @@ I designed the Worker to create a Durable Object for each organization. To handl
 
 The processing worker received the message from the Channel Interface adapter and sent it to the law organization's own Durable Object. Each law organization had their own isolated Durable Object - these storage objects were physically separate so each organization's data was physically separate from another's.
 
-The Durable Object managed conversations and message history, custom field schemas, audit logs, and confirmation states all with its own SQLite storage. Its stateful structure guarantees sequential order of operations which was critical because I was planning on the LLM accessing all bound databases at once.
+The Durable Object managed conversations, message history, custom field schemas, audit logs, and confirmation states with its own SQLite storage. Its stateful structure guarantees sequential order of operations which was critical because the LLM would access all bound databases at once.
 
 ## On Technical Architecture
-
-Durable Objects are isolated stateful compute units with their own embedded SQLite storage that is great for tenant data (tenant being a law organization, data that needs to be tightly coupled with state like status, pending actions, conversation messages).
 
 Workers are stateless servers that are also bound to Durable Objects (stateful data that exists per org) and then attach to external services via bindings, the same services like:
 
@@ -45,13 +43,7 @@ Cloudflare offers D1 storage, R2 Storage, and Vectorize storage that can be boun
 D1 handled user and org metadata, auth sessions, KB chunks, invitations, and subscriptions.
 The Durable Object SQLite held conversations, messages, pending confirmations, and the custom Clio schema caches that each law firm had.
 
-D1 was for cross-tenant global lookups (user and org metadata). DO SQLite is physically isolated, org A's DO literally cannot access other org's SQLite. Legal supervisors would be ecstatic.
-
-Workers are stateless, they receive normalized message data from the channel adapter.
-
-Durable Objects are single-threaded, only one request executes at a time. When a DO wakes from hibernation - on first LLM message - the constructor runs migrations and loads schema inside blockConcurrencyWhile().
-
-Durable Objects enforce the sequential execution - when a message arrives, the DO processes it completely before the next message.
+D1 was for cross-tenant global lookups (user and org metadata). DO SQLite is physically isolated - org A's Durable Objects cannot access org B's SQLite. Legal supervisors would be ecstatic.
 
 ## The Pivot
 
