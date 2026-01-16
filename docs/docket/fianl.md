@@ -28,9 +28,9 @@ The processing worker received the message from the Channel Interface adapter an
 
 The Durable Object managed conversations, message history, custom field schemas, audit logs, and confirmation states with its own SQLite storage. Its stateful structure guarantees sequential order of operations which was critical because the LLM would access all bound databases at once.
 
-## On Technical Architecture
+## Storage Architecture
 
-Workers are stateless servers that are also bound to Durable Objects (stateful data that exists per org) and then attach to external services via bindings, the same services like:
+Workers are stateless servers that are also bound to Durable Objects (stateful data that exists per org) and then attach to external services via bindings:
 
 - D1 (global database stored user and org metadata, chunks of the knowledge base that the LLM would access)
 - R2 database which would store objects that wouldn't be accessed often like uploaded files (which are parsed and embedded into D1), audit logs, and archives.
@@ -38,10 +38,7 @@ Workers are stateless servers that are also bound to Durable Objects (stateful d
 
 Cloudflare also has an insane Workers AI tool that stored the LLM (the prices are unbeatable) and the embedding tool.
 
-Cloudflare offers D1 storage, R2 Storage, and Vectorize storage that can be bound directly to Durable Objects.
-
-D1 handled user and org metadata, auth sessions, KB chunks, invitations, and subscriptions.
-The Durable Object SQLite held conversations, messages, pending confirmations, and the custom Clio schema caches that each law firm had.
+D1 handled user and org metadata, auth sessions, KB chunks, invitations, and subscriptions. The Durable Object SQLite held conversations, messages, pending confirmations, and the custom Clio schema caches that each law firm had.
 
 D1 was for cross-tenant global lookups (user and org metadata). DO SQLite is physically isolated - org A's Durable Objects cannot access org B's SQLite. Legal supervisors would be ecstatic.
 
@@ -85,7 +82,9 @@ Web UI could run on Server-Sent Events (SSE). Message goes in, events stream bac
 
 This was also much less onboarding friction for users to come in and test the bot. I didn't envision the Web App to be the main interface moving forward, but a great first step for the proof of concept and testing. It went from "Link up your Teams account, do the authentication, and tell me what it says back" to "Go to docketadmin.com and upload some org documents, let me know if the chatbot read them properly, let me know what you thought about what it said back."
 
-## On the Chunks
+## The Knowledge Base
+
+Two sources feed RAG: the shared Knowledge Base (jurisdiction and practice content I upload) and org-specific context (documents each firm uploads).
 
 The knowledge base divided by jurisdiction and practice type would be manually uploaded by me through a tool I built, reading from markdown files organized so the folder path determined the metadata - files in `/kb/jurisdictions/CA/` got tagged with `jurisdiction: "CA"`, files in `/kb/practice-types/family-law/` got `practice_type: "family-law"`. General content and federal jurisdiction always get included for every org. When a California family law firm asks a question, Vectorize returns chunks from general, federal, California, and family law folders.
 
@@ -95,9 +94,11 @@ The data was added to Vectorize for semantic search, then chunked at ~500 charac
 
 My friend's documentation was organized and worked really well with Retrieval Augmented Generation (RAG). The knowledge base was processed into Cloudflare's Vector Storage, essentially "training" the data as AI could preprocess the data while warming up. For lawyers, I was nervous to commit to building a knowledge base myself as I am not a lawyer and Docket was not to replace one, just their administrative assistance. I used sample textbooks I could find online and could recognize when content came from there. Didn't work as well, but good enough for trial.
 
+## Org Context Uploads
+
 For org context uploads, I built the full pipeline: admin uploads a file through the web interface, server validates it (MIME type, magic bytes, 25MB limit), stores the raw file in R2 at `/orgs/{org_id}/docs/{file_id}`. Then Workers AI's `toMarkdown()` parses PDFs, DOCX, XLSX, and other formats into text. The text gets chunked, stored in D1's `org_context_chunks` table, embedded, and upserted to Vectorize with metadata `{ type: "org", org_id, source }`. The `type: "org"` filter keeps org context completely separate from the shared knowledge base in queries. Deletes work by removing all chunks with matching IDs from both D1 and Vectorize, then deleting the raw file from R2. Updates are just delete-then-reupload.
 
-Worker receives user message → search Vectorize → get IDs → fetch full chunks from D1 → inject into prompt.
+The semantic vectorize database search and chunk retrieval from D1 works the same way for org context liek it does in the knowledge base: Worker receives user message → search Vectorize → get IDs → fetch full chunks from D1 → inject into prompt.
 
 ## On the Tool Calls
 
