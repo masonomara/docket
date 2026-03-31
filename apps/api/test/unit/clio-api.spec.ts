@@ -138,11 +138,9 @@ describe("buildCreateBody", () => {
   it("wraps data in Clio expected structure", () => {
     const result = buildCreateBody("task", { name: "Review contract" });
 
-    // Clio expects: { data: { task: { ...fields } } }
+    // Clio expects: { data: { ...fields } }
     expect(result.body).toEqual({
-      data: {
-        task: { name: "Review contract" },
-      },
+      data: { name: "Review contract" },
     });
   });
 
@@ -152,11 +150,11 @@ describe("buildCreateBody", () => {
       matter: { id: 123 },
     });
 
-    const taskData = (result.body as { data: { task: unknown } }).data.task;
-
-    expect(taskData).toEqual({
-      name: "Task with matter reference",
-      matter: { id: 123 },
+    expect(result.body).toEqual({
+      data: {
+        name: "Task with matter reference",
+        matter: { id: 123 },
+      },
     });
   });
 
@@ -181,10 +179,9 @@ describe("buildUpdateBody", () => {
   it("wraps data in Clio expected structure", () => {
     const result = buildUpdateBody("matter", "123", { status: "closed" });
 
+    // Clio expects: { data: { ...fields } }
     expect(result.body).toEqual({
-      data: {
-        matter: { status: "closed" },
-      },
+      data: { status: "closed" },
     });
   });
 

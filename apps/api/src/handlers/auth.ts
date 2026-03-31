@@ -1,4 +1,5 @@
 import type { Env } from "../types/env";
+import { errors } from "../lib/errors";
 
 /**
  * Checks if an email exists in the system and whether they have a password set.
@@ -8,23 +9,20 @@ export async function handleCheckEmail(
   request: Request,
   env: Env
 ): Promise<Response> {
-  // Only accept POST requests
   if (request.method !== "POST") {
-    return Response.json({ error: "Method not allowed" }, { status: 405 });
+    return errors.methodNotAllowed();
   }
 
-  // Parse the request body
   let body: { email?: string };
   try {
     body = (await request.json()) as { email?: string };
   } catch {
-    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    return errors.invalidJson();
   }
 
-  // Validate email is present
   const email = body.email?.toLowerCase().trim();
   if (!email) {
-    return Response.json({ error: "Email is required" }, { status: 400 });
+    return errors.missingField("Email");
   }
 
   // Look up the user

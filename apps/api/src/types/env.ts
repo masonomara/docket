@@ -18,4 +18,5 @@ export interface Env {
   RESEND_API_KEY: string;
   FROM_EMAIL?: string;
   ENVIRONMENT?: string;
+  SEED_SECRET?: string;
 }

@@ -25,7 +25,7 @@ export default function AuthPage() {
   // Build redirect URL based on whether there's an invitation
   const redirectUrl = invitationId
     ? `/accept-invite?invitation=${invitationId}`
-    : searchParams.get("redirect") || "/dashboard";
+    : searchParams.get("redirect") || "/admin";
 
   // Auth flow state
   const [step, setStep] = useState<AuthStep>("email");
@@ -354,7 +354,7 @@ export default function AuthPage() {
               onChangeClick={resetToEmailStep}
             />
 
-            <div className={styles.fieldGroup}>
+            <div className="form-group" style={{ marginBottom: "16px" }}>
               <label htmlFor="password" className={styles.label}>
                 Password
               </label>
@@ -365,7 +365,7 @@ export default function AuthPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 disabled={isLoading}
-                className={styles.input}
+                className="form-input"
                 placeholder="Enter your password"
                 autoFocus
               />
@@ -452,7 +452,7 @@ export default function AuthPage() {
             onChangeClick={resetToEmailStep}
           />
 
-          <div className={styles.fieldGroup}>
+          <div className="form-input">
             <label htmlFor="name" className={styles.label}>
               Name
             </label>
@@ -463,13 +463,13 @@ export default function AuthPage() {
               onChange={(e) => setName(e.target.value)}
               required
               disabled={isLoading}
-              className={styles.input}
+              className="form-input"
               placeholder="Enter your name"
               autoFocus
             />
           </div>
 
-          <div className={styles.fieldGroup}>
+          <div className="form-input">
             <label htmlFor="password" className={styles.label}>
               Password
             </label>
@@ -481,7 +481,7 @@ export default function AuthPage() {
               required
               minLength={8}
               disabled={isLoading}
-              className={styles.input}
+              className="form-input"
               placeholder="Create a password"
             />
           </div>
@@ -535,7 +535,7 @@ function EmailField({ email, onChange, disabled, readOnly }: EmailFieldProps) {
     : styles.input;
 
   return (
-    <div className={styles.fieldGroup}>
+    <div className="form-group" style={{ marginBottom: "16px" }}>
       <label htmlFor="email" className={styles.label}>
         Email
       </label>
@@ -547,7 +547,7 @@ function EmailField({ email, onChange, disabled, readOnly }: EmailFieldProps) {
         required
         disabled={disabled}
         readOnly={readOnly}
-        className={inputClassName}
+        className="form-input"
         placeholder="Enter your email"
       />
     </div>
@@ -566,7 +566,7 @@ function ReadOnlyEmailField({
   onChangeClick,
 }: ReadOnlyEmailFieldProps) {
   return (
-    <div className={styles.fieldGroup}>
+    <div className="form-group" style={{ marginBottom: "16px" }}>
       <label htmlFor="email" className={styles.label}>
         Email
       </label>
@@ -577,7 +577,7 @@ function ReadOnlyEmailField({
           value={email}
           readOnly
           disabled
-          className={`${styles.input} ${styles.inputDisabled}`}
+          className="form-input input-disabled"
         />
         {showChangeButton && (
           <button

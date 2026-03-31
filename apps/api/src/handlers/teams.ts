@@ -1,6 +1,7 @@
 import { type ChannelMessage } from "../types";
 import type { Env } from "../types/env";
 import { createLogger, generateRequestId } from "../lib/logger";
+import { errors } from "../lib/errors";
 
 // -----------------------------------------------------------------------------
 // Types
@@ -190,9 +191,8 @@ export async function handleTeamsMessage(
   request: Request,
   env: Env
 ): Promise<Response> {
-  // Teams webhook only accepts POST
   if (request.method !== "POST") {
-    return new Response("Method not allowed", { status: 405 });
+    return errors.methodNotAllowed();
   }
 
   // Parse the incoming activity

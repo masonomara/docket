@@ -179,13 +179,19 @@ async function clearExistingKB(env: Env): Promise<void> {
     id: string;
   }>();
 
-  // Delete vectors in batches
+  // Delete vectors in batches (only IDs that are valid length)
   if (existingChunks.results.length > 0) {
-    const ids = existingChunks.results.map((row) => row.id);
+    const ids = existingChunks.results
+      .map((row) => row.id)
+      .filter((id) => id.length <= 64); // Skip IDs that are too long for Vectorize
 
     for (let i = 0; i < ids.length; i += KB_CONFIG.VECTORIZE_BATCH_SIZE) {
       const batch = ids.slice(i, i + KB_CONFIG.VECTORIZE_BATCH_SIZE);
-      await env.VECTORIZE.deleteByIds(batch);
+      try {
+        await env.VECTORIZE.deleteByIds(batch);
+      } catch {
+        // Ignore delete errors - vectors may not exist
+      }
     }
   }
 
@@ -226,8 +232,12 @@ export async function buildKB(
         currentSection = headerMatch[1];
       }
 
-      // Create a unique, readable ID
-      const chunkId = `kb_${filePath.replace(/\//g, "_")}_${i}`;
+      // Create a unique ID (max 64 bytes for Vectorize)
+      // Use filename + index, truncating filename if needed
+      const baseName = filename.replace(".md", "");
+      const maxBaseLength = 64 - 4 - String(i).length; // "kb_" + "_" + index
+      const truncatedBase = baseName.slice(0, maxBaseLength);
+      const chunkId = `kb_${truncatedBase}_${i}`;
 
       allChunks.push({
         id: chunkId,

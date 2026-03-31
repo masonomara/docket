@@ -4,6 +4,7 @@ import type { OrgMemberRow } from "../types";
 import { orgMemberRowToEntity } from "../types";
 import { getOrgDeletionPreview, deleteOrg } from "../services/org-deletion";
 import { createLogger, generateRequestId } from "../lib/logger";
+import { errors, errorResponse } from "../lib/errors";
 
 // -----------------------------------------------------------------------------
 // Helper Functions
@@ -36,7 +37,6 @@ export async function handleCreateOrg(
   env: Env,
   ctx: AuthContext
 ): Promise<Response> {
-  // Check if user already belongs to an organization
   const existingMembership = await env.DB.prepare(
     "SELECT org_id FROM org_members WHERE user_id = ?"
   )
@@ -44,33 +44,26 @@ export async function handleCreateOrg(
     .first();
 
   if (existingMembership) {
-    return Response.json(
-      { error: "User already belongs to an organization" },
-      { status: 400 }
-    );
+    return errorResponse(400, "User already belongs to an organization", "ALREADY_MEMBER");
   }
 
-  // Parse request body
   let body: {
     name?: string;
     firmSize?: string;
     jurisdictions?: string[];
     practiceTypes?: string[];
+    orgType?: string;
   };
 
   try {
     body = await request.json();
   } catch {
-    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    return errors.invalidJson();
   }
 
-  // Validate required fields
   const orgName = body.name?.trim();
   if (!orgName) {
-    return Response.json(
-      { error: "Organization name is required" },
-      { status: 400 }
-    );
+    return errors.missingField("Organization name");
   }
 
   // Generate IDs and timestamp
@@ -87,14 +80,15 @@ export async function handleCreateOrg(
   try {
     // Create org and membership in a single transaction
     const createOrgStatement = env.DB.prepare(
-      `INSERT INTO org (id, name, jurisdictions, practice_types, firm_size, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO org (id, name, jurisdictions, practice_types, firm_size, org_type, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       orgId,
       orgName,
       body.jurisdictions ? JSON.stringify(body.jurisdictions) : null,
       body.practiceTypes ? JSON.stringify(body.practiceTypes) : null,
       body.firmSize || null,
+      body.orgType || "law-firm",
       now,
       now
     );
@@ -112,10 +106,7 @@ export async function handleCreateOrg(
     });
   } catch (error) {
     log.error("Failed to create org", { error });
-    return Response.json(
-      { error: "Failed to create organization" },
-      { status: 500 }
-    );
+    return errors.internal("Failed to create organization");
   }
 }
 
@@ -134,7 +125,8 @@ export async function handleGetUserOrg(
       o.name as org_name,
       o.jurisdictions as org_jurisdictions,
       o.practice_types as org_practice_types,
-      o.firm_size as org_firm_size
+      o.firm_size as org_firm_size,
+      o.org_type as org_type
     FROM org_members om
     JOIN org o ON o.id = om.org_id
     WHERE om.user_id = ?
@@ -145,6 +137,7 @@ export async function handleGetUserOrg(
     org_jurisdictions: string | null;
     org_practice_types: string | null;
     org_firm_size: string | null;
+    org_type: string | null;
   };
 
   const row = await env.DB.prepare(query)
@@ -165,6 +158,7 @@ export async function handleGetUserOrg(
       jurisdictions: safeParseJsonArray(row.org_jurisdictions),
       practiceTypes: safeParseJsonArray(row.org_practice_types),
       firmSize: row.org_firm_size || undefined,
+      orgType: row.org_type || "law-firm",
     },
     role: membership.role,
     isOwner: membership.isOwner,
@@ -180,29 +174,27 @@ export async function handleUpdateOrg(
   env: Env,
   ctx: AdminContext
 ): Promise<Response> {
-  // Parse request body
   let body: {
     name?: string;
     jurisdictions?: string[];
     practiceTypes?: string[];
     firmSize?: string;
+    orgType?: string;
   };
 
   try {
     body = await request.json();
   } catch {
-    return Response.json({ error: "Invalid request body" }, { status: 400 });
+    return errors.invalidJson();
   }
 
-  // Build dynamic update query
   const updates: string[] = [];
   const values: (string | null)[] = [];
 
-  // Validate and add name update
   if (body.name !== undefined) {
     const trimmedName = body.name.trim();
     if (!trimmedName) {
-      return Response.json({ error: "Name cannot be empty" }, { status: 400 });
+      return errorResponse(400, "Name cannot be empty", "INVALID_FIELD");
     }
     updates.push("name = ?");
     values.push(trimmedName);
@@ -226,9 +218,14 @@ export async function handleUpdateOrg(
     values.push(body.firmSize || null);
   }
 
-  // Ensure there's something to update
+  // Add org type update
+  if (body.orgType !== undefined) {
+    updates.push("org_type = ?");
+    values.push(body.orgType || "law-firm");
+  }
+
   if (updates.length === 0) {
-    return Response.json({ error: "No fields to update" }, { status: 400 });
+    return errorResponse(400, "No fields to update", "INVALID_REQUEST");
   }
 
   // Add updated_at timestamp
@@ -250,10 +247,7 @@ export async function handleUpdateOrg(
     return Response.json({ success: true });
   } catch (error) {
     log.error("Failed to update org", { error });
-    return Response.json(
-      { error: "Failed to update organization" },
-      { status: 500 }
-    );
+    return errors.internal("Failed to update organization");
   }
 }
 
@@ -281,36 +275,29 @@ export async function handleDeleteOrg(
   env: Env,
   ctx: OwnerContext
 ): Promise<Response> {
-  // Parse request body
   let body: { confirmName?: string };
   try {
     body = await request.json();
   } catch {
-    return Response.json({ error: "Invalid request body" }, { status: 400 });
+    return errors.invalidJson();
   }
 
-  // Get the organization to verify the name
   const org = await env.DB.prepare(`SELECT name FROM org WHERE id = ?`)
     .bind(ctx.orgId)
     .first<{ name: string }>();
 
   if (!org) {
-    return Response.json({ error: "Organization not found" }, { status: 404 });
+    return errors.notFound("Organization");
   }
 
-  // Verify name confirmation
   if (body.confirmName !== org.name) {
-    return Response.json(
-      { error: "Organization name does not match" },
-      { status: 400 }
-    );
+    return errorResponse(400, "Organization name does not match", "NAME_MISMATCH");
   }
 
-  // Delete the organization
   const result = await deleteOrg(env.DB, env.R2, ctx.orgId, ctx.user.id, env.TENANT);
 
   if ("error" in result) {
-    return Response.json({ error: result.message }, { status: 400 });
+    return errorResponse(400, result.message, "INVALID_REQUEST");
   }
 
   return Response.json(result);

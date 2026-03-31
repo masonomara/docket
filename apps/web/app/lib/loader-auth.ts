@@ -1,5 +1,5 @@
 import { redirect } from "react-router";
-import { apiFetch, generateRequestId } from "./api";
+import { apiFetch, generateRequestId, ENDPOINTS } from "./api";
 import type { SessionResponse, OrgMembership } from "./types";
 
 // ============================================================================
@@ -12,6 +12,7 @@ import type { SessionResponse, OrgMembership } from "./types";
 interface LoaderArgs {
   request: Request;
   context: unknown;
+  params: Record<string, string | undefined>;
 }
 
 /**
@@ -49,7 +50,7 @@ export interface OrgLoaderContext {
 
 /**
  * Wraps a loader to require authentication. Redirects to /auth if not logged in.
- * The org may or may not exist - use this for pages like /dashboard.
+ * The org may or may not exist - use this for pages like /admin.
  *
  * Usage:
  *   export const loader = protectedLoader(async ({ user, org, fetch }) => {
@@ -82,7 +83,7 @@ export function protectedLoader<T>(
 
 /**
  * Wraps a loader to require both authentication AND org membership.
- * Redirects to /auth if not logged in, /dashboard if no org.
+ * Redirects to /auth if not logged in, /admin if no org.
  *
  * Usage:
  *   export const loader = orgLoader(async ({ user, org, fetch }) => {
@@ -96,10 +97,13 @@ export function protectedLoader<T>(
  *   }, { requireAdmin: true });
  */
 export function orgLoader<T>(
-  loader: (ctx: OrgLoaderContext) => Promise<T> | T,
+  loader: (
+    ctx: OrgLoaderContext,
+    args: { params: Record<string, string | undefined> }
+  ) => Promise<T> | T,
   options: { requireAdmin?: boolean } = {}
 ) {
-  return async ({ request, context }: LoaderArgs): Promise<T> => {
+  return async ({ request, context, params }: LoaderArgs): Promise<T> => {
     const requestId = generateRequestId();
     const cookie = request.headers.get("cookie") || "";
 
@@ -115,7 +119,7 @@ export function orgLoader<T>(
       fetch: (path: string) => apiFetch(context, path, cookie, requestId),
     };
 
-    return loader(loaderContext);
+    return loader(loaderContext, { params });
   };
 }
 
@@ -145,41 +149,33 @@ async function checkAuthRequireOrg(
   requestId: string,
   options: { requireAdmin?: boolean }
 ): Promise<{ user: AuthenticatedUser; org: OrgMembership }> {
-  // Step 1: Check session
-  const sessionResponse = await apiFetch(
-    context,
-    "/api/auth/get-session",
-    cookie,
-    requestId
-  );
+  // Fetch session and org in parallel (no dependency between them)
+  const [sessionResponse, orgResponse] = await Promise.all([
+    apiFetch(context, "/api/auth/get-session", cookie, requestId),
+    apiFetch(context, "/api/user/org", cookie, requestId),
+  ]);
+
+  // Check session
   if (!sessionResponse.ok) {
     throw redirect("/auth");
   }
-
   const session = (await sessionResponse.json()) as SessionResponse | null;
   if (!session?.user) {
     throw redirect("/auth");
   }
 
-  // Step 2: Check org membership
-  const orgResponse = await apiFetch(
-    context,
-    "/api/user/org",
-    cookie,
-    requestId
-  );
+  // Check org membership
   if (!orgResponse.ok) {
-    throw redirect("/dashboard");
+    throw redirect("/admin");
   }
-
   const org = (await orgResponse.json()) as OrgMembership | null;
   if (!org?.org) {
-    throw redirect("/dashboard");
+    throw redirect("/admin");
   }
 
-  // Step 3: Check admin requirement
+  // Check admin requirement
   if (options.requireAdmin && org.role !== "admin") {
-    throw redirect("/dashboard");
+    throw redirect("/admin");
   }
 
   return { user: session.user, org };
@@ -193,30 +189,22 @@ async function checkAuthOptionalOrg(
   cookie: string,
   requestId: string
 ): Promise<{ user: AuthenticatedUser; org: OrgMembership | null }> {
-  // Step 1: Check session
-  const sessionResponse = await apiFetch(
-    context,
-    "/api/auth/get-session",
-    cookie,
-    requestId
-  );
+  // Fetch session and org in parallel (no dependency between them)
+  const [sessionResponse, orgResponse] = await Promise.all([
+    apiFetch(context, "/api/auth/get-session", cookie, requestId),
+    apiFetch(context, "/api/user/org", cookie, requestId),
+  ]);
+
+  // Check session (required)
   if (!sessionResponse.ok) {
     throw redirect("/auth");
   }
-
   const session = (await sessionResponse.json()) as SessionResponse | null;
   if (!session?.user) {
     throw redirect("/auth");
   }
 
-  // Step 2: Try to get org (optional)
-  const orgResponse = await apiFetch(
-    context,
-    "/api/user/org",
-    cookie,
-    requestId
-  );
-
+  // Check org (optional)
   let org: OrgMembership | null = null;
   if (orgResponse.ok) {
     const orgData = (await orgResponse.json()) as OrgMembership | null;
@@ -226,4 +214,89 @@ async function checkAuthOptionalOrg(
   }
 
   return { user: session.user, org };
+}
+
+// ============================================================================
+// Layout Route Loaders (New Streaming Architecture)
+// ============================================================================
+
+/**
+ * Data returned by appLayoutLoader, available to _app layout and children.
+ */
+export interface AppLayoutData {
+  user: AuthenticatedUser;
+  org: OrgMembership | null;
+}
+
+/**
+ * Loader for the _app layout route. Fetches session and org in parallel.
+ * Redirects to /auth if not authenticated.
+ *
+ * Usage in _app.tsx:
+ *   export const loader = appLayoutLoader;
+ */
+export async function appLayoutLoader({
+  request,
+  context,
+}: LoaderArgs): Promise<AppLayoutData> {
+  const requestId = generateRequestId();
+  const cookie = request.headers.get("cookie") || "";
+
+  // Fetch session and org in parallel
+  const [sessionResponse, orgResponse] = await Promise.all([
+    apiFetch(context, ENDPOINTS.auth.session, cookie, requestId),
+    apiFetch(context, ENDPOINTS.user.org, cookie, requestId),
+  ]);
+
+  // Check session
+  if (!sessionResponse.ok) {
+    throw redirect("/auth");
+  }
+  const session = (await sessionResponse.json()) as SessionResponse | null;
+  if (!session?.user) {
+    throw redirect("/auth");
+  }
+
+  // Check org (optional)
+  let org: OrgMembership | null = null;
+  if (orgResponse.ok) {
+    const orgData = (await orgResponse.json()) as OrgMembership | null;
+    if (orgData?.org) {
+      org = orgData;
+    }
+  }
+
+  return { user: session.user, org };
+}
+
+/**
+ * Context passed to child loaders under the _app layout.
+ */
+export interface ChildLoaderContext {
+  fetch: (path: string) => Promise<Response>;
+  params: Record<string, string | undefined>;
+}
+
+/**
+ * Wrapper for child route loaders that need to fetch additional data.
+ * Auth is inherited from parent _app layout - this just provides a fetch helper.
+ *
+ * Usage:
+ *   export const loader = childLoader(async ({ fetch, params }) => {
+ *     const data = await fetch("/api/some-endpoint").then(r => r.json());
+ *     return { data };
+ *   });
+ */
+export function childLoader<T>(
+  loader: (ctx: ChildLoaderContext) => Promise<T> | T
+) {
+  return async ({ request, context, params }: LoaderArgs): Promise<T> => {
+    const requestId = generateRequestId();
+    const cookie = request.headers.get("cookie") || "";
+
+    return loader({
+      fetch: (path: string) => apiFetch(context, path, cookie, requestId),
+      params,
+    });
+  };
 }

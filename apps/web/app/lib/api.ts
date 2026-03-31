@@ -83,6 +83,13 @@ export const ENDPOINTS = {
     connect: "/api/clio/connect",
     disconnect: "/api/clio/disconnect",
   },
+  chat: {
+    send: "/api/chat",
+    conversations: "/api/conversations",
+    conversation: (id: string) => `/api/conversations/${id}`,
+    acceptConfirmation: (id: string) => `/api/confirmations/${id}/accept`,
+    rejectConfirmation: (id: string) => `/api/confirmations/${id}/reject`,
+  },
 } as const;
 
 /**

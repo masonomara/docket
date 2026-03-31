@@ -20,7 +20,7 @@ export const links: LinksFunction = () => [
   },
   {
     rel: "stylesheet",
-    href: "https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&display=swap",
+    href: "https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,100..900&display=swap",
   },
   { rel: "stylesheet", href: globalStyles },
 ];
@@ -58,27 +58,16 @@ export function ErrorBoundary() {
   }
 
   return (
-    <html lang="en">
-      <head>
-        <meta charSet="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>{title}</title>
-        <Links />
-      </head>
-      <body>
-        <main className={styles.page}>
-          <div className={styles.container}>
-            <h1 className="text-large-title" style={{ textAlign: "center" }}>
-              {title}
-            </h1>
-            <p className={styles.subtitle}>{message}</p>
-            <a href="/dashboard" className="btn btn-primary btn-lg btn-lg-fit">
-              Return Home
-            </a>
-          </div>
-        </main>
-        <Scripts />
-      </body>
-    </html>
+    <main className={styles.page}>
+      <div className={styles.container}>
+        <h1 className="text-large-title" style={{ textAlign: "center" }}>
+          {title}
+        </h1>
+        <p className={styles.subtitle}>{message}</p>
+        <a href="/admin" className="btn btn-primary btn-lg btn-lg-fit">
+          Return Home
+        </a>
+      </div>
+    </main>
   );
 }

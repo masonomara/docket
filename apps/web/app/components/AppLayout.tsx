@@ -1,11 +1,13 @@
 import { createContext, useState } from "react";
 import { Link } from "react-router";
 import {
-  LayoutDashboard,
-  Users,
+  ArrowRightFromLineIcon,
+  Bot,
+  Landmark,
   Plug,
-  FileText,
-  CircleUser,
+  Scale,
+  Settings2,
+  Users,
   X,
 } from "lucide-react";
 import type { OrgMembership } from "~/lib/types";
@@ -50,6 +52,12 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
     return "Member";
   }
 
+  function getKnowledgeBaseLabel() {
+    return org?.org?.orgType === "legal-clinic"
+      ? "Clinic Documents"
+      : "Firm Documents";
+  }
+
   function openMenu() {
     setMenuOpen(true);
   }
@@ -79,78 +87,111 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
           </div>
           <button
             type="button"
-            className={`${styles.closeButton} btn-sm btn`}
+            className={styles.closeButton}
             onClick={closeMenu}
             aria-label="Close menu"
           >
-            <span>Close</span>
-            <X size={16} />
+            <ArrowRightFromLineIcon
+              size={22}
+              strokeWidth={1.75}
+              color={"var(--text-secondary)"}
+            />
           </button>
         </div>
 
         {/* Work section */}
         <nav className={styles.section}>
           <div className={styles.sectionLabel}>Work</div>
-          <ul className={styles.navList}>
-            <li>
-              <Link to="/dashboard" className={getNavItemClass("/dashboard")}>
-                {/* <LayoutDashboard
-                  className={styles.navIcon}
-                  strokeWidth={1.75}
-                /> */}
-                Dashboard
-              </Link>
-            </li>
-          </ul>
+          <div className={styles.navList}>
+            {org === null ? (
+              <div>
+                <Link to="/admin" className={getNavItemClass("/admin")}>
+                  <Landmark
+                    size={17}
+                    strokeWidth={1.75}
+                    className={styles.navIcon}
+                  />
+                  Get Started
+                </Link>
+              </div>
+            ) : (
+              <div>
+                <Link to="/chat" className={getNavItemClass("/chat")}>
+                  <Bot
+                    size={17}
+                    strokeWidth={1.75}
+                    className={styles.navIcon}
+                  />
+                  Docketbot
+                </Link>
+              </div>
+            )}
+          </div>
         </nav>
 
         {/* Admin-only management section */}
         {isAdmin && (
           <nav className={styles.section}>
             <div className={styles.sectionLabel}>Manage</div>
-            <ul className={styles.navList}>
-              <li>
+            <div className={styles.navList}>
+              <div>
                 <Link
                   to="/org/context"
                   className={getNavItemClass("/org/context")}
                 >
-                  {/* <FileText className={styles.navIcon} strokeWidth={1.75} /> */}
-                  Knowledge Base
+                  <Scale
+                    size={17}
+                    strokeWidth={1.75}
+                    className={styles.navIcon}
+                  />
+                  {getKnowledgeBaseLabel()}
                 </Link>
-              </li>
-              <li>
+              </div>
+              <div>
                 <Link to="/org/clio" className={getNavItemClass("/org/clio")}>
-                  {/* <Plug className={styles.navIcon} strokeWidth={1.75} /> */}
+                  <Plug
+                    size={17}
+                    strokeWidth={1.75}
+                    className={styles.navIcon}
+                  />
                   Clio Connection
                 </Link>
-              </li>
-              <li>
+              </div>
+              <div>
                 <Link
                   to="/org/members"
                   className={getNavItemClass("/org/members")}
                 >
-                  {/* <Users className={styles.navIcon} /> */}
+                  <Users
+                    size={17}
+                    strokeWidth={1.75}
+                    className={styles.navIcon}
+                  />
                   Members
                 </Link>
-              </li>
-            </ul>
+              </div>
+            </div>
           </nav>
         )}
 
         {/* Account section */}
         <nav className={styles.section}>
           <div className={styles.sectionLabel}>Account</div>
-          <ul className={styles.navList}>
-            <li>
+          <div className={styles.navList}>
+            <div>
               <Link
                 to="/account/settings"
                 className={getNavItemClass("/account/settings")}
               >
-                {/* <CircleUser className={styles.navIcon} strokeWidth={1.75} /> */}
+                <Settings2
+                  size={17}
+                  strokeWidth={1.75}
+                  className={styles.navIcon}
+                />
                 User Settings
               </Link>
-            </li>
-          </ul>
+            </div>
+          </div>
         </nav>
 
         <div className={styles.orgInfoDivider} />
@@ -176,7 +217,10 @@ export function AppLayout({ children, org, currentPath }: AppLayoutProps) {
 
       {/* Main content area */}
       <main className={styles.content}>
-        <div className={styles.contentInner}>
+        <div
+          className={styles.contentInner}
+          style={currentPath === "/chat" ? { padding: "0px" } : undefined}
+        >
           <PageLayoutContext.Provider value={{ onMenuOpen: openMenu }}>
             {children}
           </PageLayoutContext.Provider>

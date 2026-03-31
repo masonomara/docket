@@ -137,7 +137,7 @@ export default function ResetPasswordPage() {
         {errorMessage && <div className={styles.errorBox}>{errorMessage}</div>}
 
         <form onSubmit={handleSubmit}>
-          <div className={styles.fieldGroup}>
+          <div className="form-input">
             <label htmlFor="password" className={styles.label}>
               New Password
             </label>
@@ -153,7 +153,7 @@ export default function ResetPasswordPage() {
             />
           </div>
 
-          <div className={styles.fieldGroup}>
+          <div className="form-input">
             <label htmlFor="confirmPassword" className={styles.label}>
               Confirm Password
             </label>

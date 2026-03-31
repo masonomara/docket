@@ -6,7 +6,7 @@
     "dev": "wrangler dev",
     "deploy": "npm run kb:manifest && wrangler d1 migrations apply docket-db --remote && wrangler deploy",
     "typecheck": "tsc --noEmit",
-    "test": "vitest",
+    "test": "CLOUDFLARE_ACCOUNT_ID=c3278867a149c1a3bbd5a876014fdfd1 vitest",
     "test:e2e": "vitest --config vitest.e2e.config.mts",
     "kb:manifest": "npx tsx scripts/generate-kb-manifest.ts"
   },
@@ -17,7 +17,7 @@
     "zod": "^4.2.1"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.8.19",
+    "@cloudflare/vitest-pool-workers": "^0.11.1",
     "@types/node": "^25.0.3",
     "typescript": "^5.5.2",
     "vitest": "~3.2.0",

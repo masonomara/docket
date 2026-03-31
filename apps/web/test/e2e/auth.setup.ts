@@ -38,22 +38,29 @@ setup("authenticate", async ({ page }) => {
   }
 
   // First, check if we're already logged in
-  await page.goto("/dashboard");
-  await page.waitForTimeout(2000);
+  await page.goto("/admin");
+  await page.waitForLoadState("networkidle");
 
-  const alreadyLoggedIn = page.url().includes("/dashboard");
-  if (alreadyLoggedIn) {
+  // Check URL after navigation completes
+  if (page.url().includes("/admin")) {
+    // Already logged in - save state and exit
     await page.context().storageState({ path: AUTH_STATE_FILE });
     return;
   }
 
-  // Navigate to auth page and enter email
+  // Navigate to auth page
   await page.goto("/auth");
-  await page.waitForTimeout(1000);
+  await page.waitForLoadState("domcontentloaded");
 
-  await page.getByLabel(/email/i).fill(TEST_USER.email);
+  // Wait for email input to be ready
+  const emailInput = page.getByLabel(/email/i);
+  await expect(emailInput).toBeVisible();
+
+  await emailInput.fill(TEST_USER.email);
   await page.getByRole("button", { name: "Continue", exact: true }).click();
-  await page.waitForTimeout(1500);
+
+  // Wait for next page to load - could be login, signup, or OAuth message
+  await page.waitForLoadState("networkidle");
 
   // Determine which auth flow we're in
   const isLoginPage = await page
@@ -81,13 +88,19 @@ setup("authenticate", async ({ page }) => {
 
   // Handle new account signup
   if (isSignupPage) {
-    await page.getByLabel(/name/i).fill(TEST_USER.name);
-    await page.getByLabel(/password/i).fill(TEST_USER.password);
+    const nameInput = page.getByLabel(/name/i);
+    const passwordInput = page.getByLabel(/password/i);
+
+    await expect(nameInput).toBeVisible();
+    await nameInput.fill(TEST_USER.name);
+    await passwordInput.fill(TEST_USER.password);
     await page.getByRole("button", { name: /sign up/i }).click();
-    await page.waitForTimeout(2000);
+
+    // Wait for navigation after signup
+    await page.waitForLoadState("networkidle");
 
     // Check if we made it to dashboard
-    if (page.url().includes("/dashboard")) {
+    if (page.url().includes("/admin")) {
       await page.context().storageState({ path: AUTH_STATE_FILE });
       return;
     }
@@ -108,9 +121,13 @@ setup("authenticate", async ({ page }) => {
 
   // Handle existing account login
   if (isLoginPage) {
-    await page.getByLabel(/password/i).fill(TEST_USER.password);
+    const passwordInput = page.getByLabel(/password/i);
+    await expect(passwordInput).toBeVisible();
+    await passwordInput.fill(TEST_USER.password);
     await page.getByRole("button", { name: /log in/i }).click();
-    await expect(page).toHaveURL("/dashboard", { timeout: 10000 });
+
+    // Wait for redirect to admin
+    await expect(page).toHaveURL(/\/admin/, { timeout: 10000 });
   }
 
   // If we got here without handling a known state, something went wrong

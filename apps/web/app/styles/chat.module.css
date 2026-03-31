@@ -1,0 +1,865 @@
+/* =============================================================================
+   Chat Layout - Three Column Grid
+   ============================================================================= */
+
+.chatLayout {
+  display: grid;
+  grid-template-columns: 255px 1fr clamp(255px, 20vw, 510px);
+  height: 100svh;
+  min-height: 100svh;
+  max-height: 100svh;
+  width: 100%;
+  overflow: hidden;
+  background: var(--surface-1);
+}
+
+/* =============================================================================
+   Chat Sidebar (Left Column)
+   ============================================================================= */
+
+.mobileChatHeader {
+  display: none;
+}
+
+.chatSidebarOverlay {
+  display: none;
+}
+
+.menuButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  outline: none;
+  border: none;
+  background: none;
+  height: 44px;
+  width: 44px;
+  margin: -6px;
+}
+
+.chatSidebarHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.chatSidebarCloseButton {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 8px;
+}
+.chatSideBarMobileHeader {
+  display: none;
+}
+
+.chatSidebarCloseButton:hover {
+  background: var(--surface-3);
+}
+
+.chatSidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+  overflow: hidden;
+  padding: 12px;
+  border-right: 1px solid var(--border-default);
+  background: var(--surface-1);
+}
+.sectionLabel {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
+  color: var(--text-tertiary);
+  padding: 12px 8px 2px;
+  border-top: 1px solid var(--border-default);
+}
+.chatSidebarList {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.chatSidebarItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  height: 32px;
+  margin-bottom: 4px;
+}
+
+.chatSidebarItem:hover {
+  background: var(--surface-3);
+}
+
+.chatSidebarItemActive {
+  background: var(--surface-3);
+}
+
+.chatSidebarItemContent {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.chatSidebarItemTitle {
+  font-size: 14px;
+  line-height: 19px;
+  font-weight: 400;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chatSidebarItemMeta {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-tertiary);
+}
+
+.chatSidebarItemDelete {
+  opacity: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-tertiary);
+  font-size: 18px;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: 4px;
+
+  flex-shrink: 0;
+  margin-right: -4px;
+}
+
+.chatSidebarItem:hover .chatSidebarItemDelete,
+.chatSidebarItem:focus-within .chatSidebarItemDelete,
+.chatSidebarItemDelete:focus {
+  opacity: 1;
+}
+
+.chatSidebarItemDelete:hover,
+.chatSidebarItemDelete:focus {
+  color: var(--text-primary);
+}
+
+.chatSidebarEmpty {
+  padding: 16px;
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: 14px;
+  line-height: 19px;
+}
+
+.newChatButton {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 8px;
+  width: 100%;
+  border-radius: 6px;
+  color: var(--text-primary);
+  text-decoration: none;
+  font-size: 14px;
+  line-height: 19px;
+  outline: none;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+.newChatButton:hover {
+  color: var(--text-primary);
+  background-color: var(--surface-3);
+}
+
+/* Nav icons */
+.newChatButtonIcon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--text-primary);
+}
+
+.newChatButton:hover .newChatButtonIcon,
+.newChatButtonActive .newChatButtonIcon {
+  color: var(--text-primary);
+}
+
+/* =============================================================================
+   Chat Main (Center Column)
+   ============================================================================= */
+
+.chatMain {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background: var(--surface-1);
+}
+
+.chatMessages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  margin-bottom: -6px;
+}
+
+.chatMessages::-webkit-scrollbar {
+  width: 5px;
+}
+
+/* Track */
+.chatMessages::-webkit-scrollbar-track {
+  background: var(--surface-1);
+  width: 10px;
+}
+
+/* Handle */
+.chatMessages::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: 100px;
+}
+
+/* Handle on hover */
+.chatMessages::-webkit-scrollbar-thumb:hover {
+  background: var(--border-input-hover);
+}
+
+.chatInput::-webkit-scrollbar {
+  width: 5px;
+}
+
+/* Track */
+.chatInput::-webkit-scrollbar-track {
+  background: var(--surface-1);
+  width: 10px;
+}
+
+/* Handle */
+.chatInput::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: 100px;
+}
+
+/* Handle on hover */
+.chatInput::-webkit-scrollbar-thumb:hover {
+  background: var(--border-input-hover);
+}
+.chatMessagesEmpty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* =============================================================================
+   Chat Messages
+   ============================================================================= */
+
+.chatMessage {
+  max-width: 80%;
+  padding: 11px 16px;
+  border-radius: 12px;
+  font-size: 16px;
+  line-height: 21px;
+  word-wrap: break-word;
+}
+
+.chatMessageUser {
+  align-self: flex-end;
+  background: var(--surface-3);
+  color: var(--text-primary);
+}
+
+.chatMessageAssistant {
+  align-self: flex-start;
+  color: var(--text-primary);
+  max-width: 100%;
+  padding-left: 0px;
+  padding-right: 0px;
+}
+
+.chatMessageError {
+  background: var(--error-highlight);
+  color: var(--error-primary);
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+.chatMessageContent {
+  white-space: pre-wrap;
+}
+
+.chatMessageTyping {
+  animation: blink 1s step-end infinite;
+  margin-left: 2px;
+}
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+/* =============================================================================
+   Confirmation Card
+   ============================================================================= */
+
+.chatConfirmation {
+  align-self: flex-start;
+  max-width: 100%;
+  background: var(--surface-1);
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: -8px;
+  margin-bottom: 16px;
+}
+
+.chatConfirmationHeader {
+  font-size: 14px;
+  line-height: 19px;
+  font-weight: 575;
+  color: var(--text-primary);
+}
+
+.chatConfirmationParams {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--surface-2);
+  border-radius: 8px;
+}
+
+.chatConfirmationParam {
+  display: flex;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.chatConfirmationParamKey {
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.chatConfirmationParamValue {
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.chatConfirmationActions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* =============================================================================
+   Chat Input Area
+   ============================================================================= */
+
+.chatInputAreaWrapper {
+  padding: 0px 22px 16px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  position: relative;
+  flex-direction: column;
+  width: 100%;
+}
+.chatInputFade {
+  width: 100%;
+  position: absolute;
+  top: -10px;
+  left: 0px;
+  right: 0px;
+  content-fit: stretch;
+}
+.chatInputArea {
+  padding: 0px 0px 0px;
+  display: flex;
+  align-items: flex-end;
+  position: relative;
+  flex-direction: column;
+  width: 100%;
+}
+
+.chatInputWrapper {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: fit-content;
+}
+
+.chatInput {
+  border: none;
+  padding: 20px 15px 57px;
+  background: var(--container);
+  color: var(--text-primary);
+  background: var(--container);
+  border-radius: 12px;
+  outline: 1px solid var(--border-default);
+  width: 100%;
+  position: relative;
+  box-shadow:
+    rgba(0, 0, 0, 0.05) 0px 2.5px 5px -2.5px,
+    rgba(0, 0, 0, 0.03) 0px 1.5px 3px -1.5px;
+}
+.textAreaWrapperBottomRow {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
+  gap: 15px;
+  align-items: center;
+  padding: 4px 15px 15px;
+  position: absolute;
+  bottom: 1px;
+  left: 1px;
+  right: 1px;
+  border-radius: 12px;
+}
+
+.chatInput:focus {
+  outline: 1px solid var(--border-input-hover);
+  outline-offset: 0px;
+  border: none;
+}
+.chatInput::placeholder {
+  color: var(--text-tertiary);
+}
+
+.chatInput:disabled {
+  background: var(--container);
+}
+
+.chatInputSubmit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  height: 32px;
+  max-height: 32px;
+  min-width: 32px;
+  width: 32px;
+  max-width: 32px;
+  border-radius: 8px;
+  outline: none;
+  border: none;
+  background-color: var(--text-primary);
+  cursor: pointer;
+}
+
+.chatInputSubmit:disabled {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  height: 32px;
+  max-height: 32px;
+  min-width: 32px;
+  width: 32px;
+  max-width: 32px;
+  border-radius: 8px;
+  background-color: var(--text-tertiary);
+  pointer-events: none;
+}
+
+.chatNote {
+  width: calc(100% - 22px);
+  text-align: center;
+}
+
+/* =============================================================================
+   Chat Error
+   ============================================================================= */
+
+.chatError {
+  margin: 0 16px;
+  padding: 12px 16px;
+  background: var(--error-highlight);
+  color: var(--error-primary);
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 19px;
+}
+
+/* =============================================================================
+   Process Log (Right Column)
+   ============================================================================= */
+
+.viewProcessLogButton {
+  display: none;
+}
+
+.processLogOverlay {
+  display: none;
+}
+
+.processLog {
+  border-left: 1px solid var(--border-default);
+  overflow-y: auto;
+  background: var(--surface-1);
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-mono);
+}
+
+.processLogHeaderRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px 0;
+}
+
+.processLogHeader {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 575;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.processLogCloseButton {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 8px;
+  margin: -8px;
+}
+
+.processLogCloseButton:hover {
+  background: var(--surface-2);
+}
+
+.processLogEvents {
+  flex: 1;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+.processLogEmpty {
+  color: var(--text-tertiary);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.processLogEvent {
+  display: flex;
+  flex-direction: column;
+}
+
+.processLogEventHeader {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 36px;
+}
+
+.processLogEventDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--success-primary);
+  flex-shrink: 0;
+}
+
+.processLogEventDotActive {
+  background: var(--warning-primary);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.processLogEventLabel {
+  flex: 1;
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.processLogEventTiming {
+  font-size: 12px;
+  line-height: 14px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+/* =============================================================================
+   Inline Details (cards shown under events)
+   ============================================================================= */
+
+.inlineSources {
+  margin-left: 3px;
+
+  gap: 8px;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border-default);
+}
+
+.sourceCard {
+  position: relative;
+}
+
+.sourceCard::before {
+  content: "";
+  position: absolute;
+  left: -17px;
+  top: 8px;
+  width: 12px;
+  height: 1px;
+  background: var(--border-default);
+}
+
+/* Last card gets the L-shape (no line continuing below) */
+.sourceCard:last-child::after {
+  content: "";
+  position: absolute;
+  left: -17px;
+  top: 8px;
+  bottom: -9px;
+  width: 1px;
+  background: var(--surface-1);
+}
+
+.sourceCard:last-child {
+  margin-bottom: 8px;
+}
+
+.sourceTitle {
+  color: var(--text-primary);
+}
+
+.sourceExcerpt {
+  color: var(--text-tertiary);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-left: 01em;
+}
+
+/* =============================================================================
+   Responsive - Hide process log on medium screens
+   ============================================================================= */
+
+@media (max-width: 1240px) {
+  .chatLayout {
+    grid-template-columns: 260px 1fr;
+  }
+
+  .viewProcessLogButton {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 32px;
+    align-self: flex-start;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    color: var(--text-tertiary);
+    font-size: 14px;
+    line-height: 19px;
+    cursor: pointer;
+    padding: 0px 4px;
+    margin-left: -4px;
+    margin-top: -22px;
+  }
+
+  .viewProcessLogButton:hover {
+    background: var(--surface-2);
+    color: var(--text-primary);
+  }
+
+  .processLogOverlay {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 98;
+  }
+
+  .processLog {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    min-width: 255px;
+    width: calc(100vw - 40px);
+    max-width: 355px;
+    z-index: 99;
+    transform: translateX(100%);
+    transition: transform 0.2s ease;
+    border-left: 1px solid var(--border-default);
+  }
+
+  .processLog::-webkit-scrollbar {
+    width: 5px;
+  }
+
+  /* Track */
+  .processLog::-webkit-scrollbar-track {
+    background: var(--surface-1);
+    width: 10px;
+  }
+
+  /* Handle */
+  .processLog::-webkit-scrollbar-thumb {
+    background: var(--border-default);
+    border-radius: 100px;
+  }
+
+  /* Handle on hover */
+  .processLog::-webkit-scrollbar-thumb:hover {
+    background: var(--border-input-hover);
+  }
+
+  .processLogOpen {
+    transform: translateX(0);
+  }
+
+  .processLogCloseButton {
+    display: flex;
+  }
+  .processLogHeaderRow {
+    display: none;
+  }
+  .processLogMobileHeader {
+    display: flex;
+    justify-content: space-between;
+    flex-direction: row;
+    align-items: center;
+    padding: 0px 8px;
+    padding-right: 16px !important;
+    width: 100%;
+  }
+
+  .processLogCloseButton {
+    display: flex;
+  }
+}
+
+/* =============================================================================
+   Responsive - Hide sidebar on small screens
+   ============================================================================= */
+
+@media (max-width: 768px) {
+  .chatLayout {
+    grid-template-columns: 1fr;
+  }
+
+  .chatSidebarOverlay {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 98;
+  }
+
+  .chatSideBarMobileHeader {
+    display: flex;
+    justify-content: space-between;
+    flex-direction: row;
+    align-items: center;
+    padding: 0px 8px;
+  }
+  .chatSidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    min-width: 255px;
+    width: calc(100vw - 40px);
+    max-width: 355px;
+    z-index: 99;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    background: var(--surface-1);
+    border-right: 1px solid var(--border-default);
+  }
+
+  .chatSidebarOpen {
+    transform: translateX(0);
+  }
+
+  .chatSidebarCloseButton {
+    display: flex;
+  }
+
+  .mobileChatHeader {
+    display: flex;
+    position: fixed;
+    justify-content: space-between;
+    align-items: center;
+    top: 0px;
+    left: 0px;
+    right: 0px;
+    padding: 12px 20px;
+    gap: 12px;
+    background: var(--surface-1);
+    z-index: 50;
+  }
+  .chatMessages {
+    margin-top: 54px;
+  }
+}
+
+/* =============================================================================
+   Accessibility - Reduced Motion
+   ============================================================================= */
+
+@media (prefers-reduced-motion: reduce) {
+  .chatMessageTyping,
+  .processLogEventDotActive {
+    animation: none;
+  }
+
+  .chatSidebar,
+  .processLog {
+    transition: none;
+  }
+}

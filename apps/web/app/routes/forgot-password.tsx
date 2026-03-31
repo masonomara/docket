@@ -74,7 +74,7 @@ export default function ForgotPasswordPage() {
         {errorMessage && <div className={styles.errorBox}>{errorMessage}</div>}
 
         <form onSubmit={handleSubmit}>
-          <div className={styles.fieldGroup}>
+          <div>
             <label htmlFor="email" className={styles.label}>
               Email
             </label>
@@ -85,7 +85,7 @@ export default function ForgotPasswordPage() {
               onChange={(e) => setEmail(e.target.value)}
               required
               disabled={isLoading}
-              className={styles.input}
+              className="form-input"
             />
           </div>
 

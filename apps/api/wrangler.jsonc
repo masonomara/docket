@@ -5,8 +5,16 @@
   "main": "src/index.ts",
   "compatibility_date": "2025-09-06",
   "compatibility_flags": ["nodejs_compat"],
-  "observability": { "enabled": true },
-  "rules": [{ "type": "Text", "globs": ["**/*.md"], "fallthrough": true }],
+  "observability": {
+    "enabled": true,
+  },
+  "rules": [
+    {
+      "type": "Text",
+      "globs": ["**/*.md"],
+      "fallthrough": true,
+    },
+  ],
   "d1_databases": [
     {
       "binding": "DB",
@@ -23,17 +31,43 @@
       "preview_bucket_name": "docket-storage-preview",
     },
   ],
-  "vectorize": [{ "binding": "VECTORIZE", "index_name": "docket-kb" }],
-  "ai": { "binding": "AI" },
+  "vectorize": [
+    {
+      "binding": "VECTORIZE",
+      "index_name": "docket-kb",
+      "remote": true,
+    },
+  ],
+  "ai": {
+    "binding": "AI",
+    "remote": true,
+  },
   "durable_objects": {
-    "bindings": [{ "name": "TENANT", "class_name": "TenantDO" }],
+    "bindings": [
+      {
+        "name": "TENANT",
+        "class_name": "TenantDO",
+      },
+    ],
   },
   "migrations": [
-    { "tag": "v1", "new_classes": ["TenantDO"] },
-    { "tag": "v2", "deleted_classes": ["TenantDO"] },
-    { "tag": "v3", "new_sqlite_classes": ["TenantDO"] },
+    {
+      "tag": "v1",
+      "new_classes": ["TenantDO"],
+    },
+    {
+      "tag": "v2",
+      "deleted_classes": ["TenantDO"],
+    },
+    {
+      "tag": "v3",
+      "new_sqlite_classes": ["TenantDO"],
+    },
   ],
   "routes": [
-    { "pattern": "api.docketadmin.com/*", "zone_name": "docketadmin.com" },
+    {
+      "pattern": "api.docketadmin.com/*",
+      "zone_name": "docketadmin.com",
+    },
   ],
 }

@@ -11,6 +11,7 @@ import {
   getInvitationById,
   acceptInvitationById,
 } from "../services/invitations";
+import { errors, errorResponse, getStatusForError } from "../lib/errors";
 
 // -----------------------------------------------------------------------------
 // Helper Functions
@@ -26,18 +27,6 @@ async function parseJsonBody<T>(request: Request): Promise<T | null> {
 
 function isValidRole(role: unknown): role is OrgRole {
   return role === "admin" || role === "member";
-}
-
-function getErrorStatusCode(errorType: string): number {
-  const statusMap: Record<string, number> = {
-    user_not_member: 404,
-    is_owner: 400,
-    db_error: 500,
-    not_owner: 403,
-    target_not_member: 404,
-    target_not_admin: 400,
-  };
-  return statusMap[errorType] || 500;
 }
 
 interface MemberRow {
@@ -101,19 +90,15 @@ export async function handleRemoveMember(
   ctx: AdminContext,
   targetUserId: string
 ): Promise<Response> {
-  // Prevent self-removal
   if (targetUserId === ctx.user.id) {
-    return Response.json(
-      { error: "Cannot remove yourself. Use leave organization instead." },
-      { status: 400 }
-    );
+    return errorResponse(400, "Cannot remove yourself. Use leave organization instead.", "CANNOT_REMOVE_SELF");
   }
 
   const result = await removeUserFromOrg(env.DB, targetUserId, ctx.orgId, env.TENANT);
 
   if (result.success === false) {
-    const status = getErrorStatusCode(result.error);
-    return Response.json({ error: result.message }, { status });
+    const status = getStatusForError(result.error);
+    return errorResponse(status, result.message, "INVALID_REQUEST");
   }
 
   return Response.json({ success: true });
@@ -129,27 +114,22 @@ export async function handleUpdateMemberRole(
   ctx: AdminContext,
   targetUserId: string
 ): Promise<Response> {
-  // Parse and validate request body
   const body = await parseJsonBody<{ role?: OrgRole }>(request);
   if (!body) {
-    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    return errors.invalidJson();
   }
 
   if (!isValidRole(body.role)) {
-    return Response.json(
-      { error: "Role must be 'admin' or 'member'" },
-      { status: 400 }
-    );
+    return errorResponse(400, "Role must be 'admin' or 'member'", "INVALID_FIELD");
   }
 
-  // Check target user's current membership
   const targetMembership = await getOrgMembership(env.DB, targetUserId, ctx.orgId);
   if (!targetMembership) {
-    return Response.json({ error: "User is not a member" }, { status: 404 });
+    return errors.notFound("User");
   }
 
   if (targetMembership.isOwner) {
-    return Response.json({ error: "Cannot change the owner's role" }, { status: 400 });
+    return errorResponse(400, "Cannot change the owner's role", "CANNOT_MODIFY_OWNER");
   }
 
   // Update the role
@@ -169,50 +149,40 @@ export async function handleTransferOwnership(
   env: Env,
   ctx: AdminContext
 ): Promise<Response> {
-  // Only the owner can transfer ownership
   if (!ctx.isOwner) {
     logAuthzFailure("transferOwnership", "Not owner", {
       userId: ctx.user.id,
       orgId: ctx.orgId,
     });
-    return Response.json(
-      { error: "Only the owner can transfer ownership" },
-      { status: 403 }
-    );
+    return errorResponse(403, "Only the owner can transfer ownership", "NOT_OWNER");
   }
 
-  // Parse and validate request body
   const body = await parseJsonBody<{ toUserId?: string; confirmName?: string }>(request);
   if (!body) {
-    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    return errors.invalidJson();
   }
 
   if (!body.toUserId) {
-    return Response.json({ error: "Target user ID is required" }, { status: 400 });
+    return errors.missingField("Target user ID");
   }
 
   if (!body.confirmName) {
-    return Response.json(
-      { error: "Organization name confirmation is required" },
-      { status: 400 }
-    );
+    return errors.missingField("Organization name confirmation");
   }
 
-  // Verify organization name matches
   const org = await env.DB.prepare(`SELECT name FROM org WHERE id = ?`)
     .bind(ctx.orgId)
     .first<{ name: string }>();
 
   if (!org || body.confirmName !== org.name) {
-    return Response.json({ error: "Name does not match" }, { status: 400 });
+    return errorResponse(400, "Name does not match", "NAME_MISMATCH");
   }
 
-  // Perform the transfer
   const result = await transferOwnership(env.DB, ctx.orgId, ctx.user.id, body.toUserId);
 
   if (result.success === false) {
-    const status = getErrorStatusCode(result.error);
-    return Response.json({ error: result.message }, { status });
+    const status = getStatusForError(result.error);
+    return errorResponse(status, result.message, "INVALID_REQUEST");
   }
 
   return Response.json({ success: true });
@@ -231,25 +201,20 @@ export async function handleSendInvitation(
   env: Env,
   ctx: AdminContext
 ): Promise<Response> {
-  // Parse and validate request body
   const body = await parseJsonBody<{ email?: string; role?: OrgRole }>(request);
   if (!body) {
-    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    return errors.invalidJson();
   }
 
   const email = body.email?.toLowerCase().trim();
   if (!email || !email.includes("@")) {
-    return Response.json({ error: "Valid email is required" }, { status: 400 });
+    return errorResponse(400, "Valid email is required", "INVALID_FIELD");
   }
 
   if (!isValidRole(body.role)) {
-    return Response.json(
-      { error: "Role must be 'admin' or 'member'" },
-      { status: 400 }
-    );
+    return errorResponse(400, "Role must be 'admin' or 'member'", "INVALID_FIELD");
   }
 
-  // Check if user is already a member
   const existingMember = await env.DB.prepare(
     `SELECT 1 FROM org_members om
      JOIN user u ON u.id = om.user_id
@@ -259,28 +224,20 @@ export async function handleSendInvitation(
     .first();
 
   if (existingMember) {
-    return Response.json(
-      { error: "This user is already a member of your organization" },
-      { status: 400 }
-    );
+    return errorResponse(400, "This user is already a member of your organization", "ALREADY_MEMBER");
   }
 
-  // Check for existing pending invitation
   const hasPending = await hasPendingInvitation(env.DB, email, ctx.orgId);
   if (hasPending) {
-    return Response.json(
-      { error: "A pending invitation already exists for this email" },
-      { status: 400 }
-    );
+    return errorResponse(400, "A pending invitation already exists for this email", "ALREADY_EXISTS");
   }
 
-  // Get organization name for the invitation email
   const org = await env.DB.prepare(`SELECT name FROM org WHERE id = ?`)
     .bind(ctx.orgId)
     .first<{ name: string }>();
 
   if (!org) {
-    return Response.json({ error: "Organization not found" }, { status: 404 });
+    return errors.notFound("Organization");
   }
 
   // Send the invitation
@@ -354,23 +311,18 @@ export async function handleRevokeInvitation(
   ctx: AdminContext,
   invitationId: string
 ): Promise<Response> {
-  // Verify the invitation belongs to this organization
   const invitation = await env.DB.prepare(`SELECT org_id FROM invitations WHERE id = ?`)
     .bind(invitationId)
     .first<{ org_id: string }>();
 
   if (!invitation || invitation.org_id !== ctx.orgId) {
-    return Response.json({ error: "Invitation not found" }, { status: 404 });
+    return errors.notFound("Invitation");
   }
 
-  // Revoke the invitation
   const revoked = await revokeInvitation(env.DB, invitationId);
 
   if (!revoked) {
-    return Response.json(
-      { error: "Invitation not found or already accepted" },
-      { status: 404 }
-    );
+    return errorResponse(404, "Invitation not found or already accepted", "INVITATION_NOT_FOUND");
   }
 
   return Response.json({ success: true });
@@ -388,7 +340,7 @@ export async function handleGetInvitation(
   const invitation = await getInvitationById(env.DB, invitationId);
 
   if (!invitation) {
-    return Response.json({ error: "Invitation not found" }, { status: 404 });
+    return errors.notFound("Invitation");
   }
 
   return Response.json({
@@ -412,7 +364,6 @@ export async function handleAcceptInvitation(
   ctx: AuthContext,
   invitationId: string
 ): Promise<Response> {
-  // Check if user already belongs to an organization
   const existingMembership = await env.DB.prepare(
     `SELECT org_id FROM org_members WHERE user_id = ?`
   )
@@ -420,34 +371,23 @@ export async function handleAcceptInvitation(
     .first<{ org_id: string }>();
 
   if (existingMembership) {
-    return Response.json(
-      { error: "You already belong to an organization" },
-      { status: 400 }
-    );
+    return errorResponse(400, "You already belong to an organization", "ALREADY_MEMBER");
   }
 
-  // Get the invitation
   const invitation = await getInvitationById(env.DB, invitationId);
 
   if (!invitation) {
-    return Response.json({ error: "Invitation not found" }, { status: 404 });
+    return errors.notFound("Invitation");
   }
 
   if (invitation.isAccepted) {
-    return Response.json(
-      { error: "This invitation has already been accepted" },
-      { status: 400 }
-    );
+    return errorResponse(400, "This invitation has already been accepted", "INVITATION_ACCEPTED");
   }
 
   if (invitation.isExpired) {
-    return Response.json(
-      { error: "This invitation has expired" },
-      { status: 400 }
-    );
+    return errorResponse(400, "This invitation has expired", "INVITATION_EXPIRED");
   }
 
-  // Verify email matches
   const userEmail = ctx.user.email.toLowerCase();
   const invitationEmail = invitation.email.toLowerCase();
 
@@ -456,17 +396,17 @@ export async function handleAcceptInvitation(
       userId: ctx.user.id,
       email: ctx.user.email,
     });
-    return Response.json(
-      { error: "This invitation was sent to a different email address. Please log in with the correct account." },
-      { status: 403 }
+    return errorResponse(
+      403,
+      "This invitation was sent to a different email address. Please log in with the correct account.",
+      "EMAIL_MISMATCH"
     );
   }
 
-  // Accept the invitation
   const result = await acceptInvitationById(env.DB, invitationId, ctx.user.id);
 
   if (!result) {
-    return Response.json({ error: "Failed to accept invitation" }, { status: 500 });
+    return errors.internal("Failed to accept invitation");
   }
 
   return Response.json({

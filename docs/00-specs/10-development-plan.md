@@ -282,12 +282,12 @@ Each phase needs to have simple unit, integration (if applicable), and end-to-en
 
 API (`apps/api`):
 
-- [ ] Create `src/handlers/chat.ts`:
+- [x] Create `src/handlers/chat.ts`:
   - `handleChatMessage` — SSE streaming
   - `handleGetConversations` — List user's conversations
   - `handleGetConversation` — Get conversation with messages
   - `handleDeleteConversation` — Delete conversation
-- [ ] Update `src/do/tenant.ts`:
+- [x] Update `src/do/tenant.ts`:
   - `GET /conversations` — List by updatedAt desc, limit 50
   - `GET /conversation/:id` — Conversation + messages
   - `DELETE /conversation/:id`
@@ -295,29 +295,29 @@ API (`apps/api`):
   - Add step events: `rag_lookup`, `llm_thinking`, `clio_call`, `clio_result`
   - `handleAcceptConfirmation`
   - `handleRejectConfirmation`
-- [ ] Update `src/index.ts`:
+- [x] Update `src/index.ts`:
   - Routes: `POST /api/chat`, `GET /api/conversations`, `GET /api/conversations/:id`, `DELETE /api/conversations/:id`
   - Routes: `POST /api/confirmations/:id/accept`, `POST /api/confirmations/:id/reject`
   - Use `withMember` middleware
-- [ ] Add `conversationScope: "personal"` for web channel messages
+- [x] Add `conversationScope: "personal"` for web channel messages
 
 Web (`apps/web`):
 
-- [ ] `app/routes/chat.tsx` — Main interface
-- [ ] `app/routes/chat.$conversationId.tsx` — Conversation view
-- [ ] `app/routes/dashboard.tsx` — Redirect to `/chat` if user has org
-- [ ] `app/components/ChatSidebar.tsx` — Conversation list
-- [ ] `app/components/ChatMessages.tsx` — Message display
-- [ ] `app/components/ChatInput.tsx` — Input with submit
-- [ ] `app/components/ProcessLog.tsx` — Step visibility
-- [ ] `app/lib/use-chat.ts` — SSE hook and state
+- [x] `app/routes/chat.tsx` — Main interface
+- [x] `app/routes/chat.$conversationId.tsx` — Conversation view
+- [x] `app/routes/dashboard.tsx` — Redirect to `/chat` if user has org
+- [x] `app/components/ChatSidebar.tsx` — Conversation list (inline in chat.tsx)
+- [x] `app/components/ChatMessages.tsx` — Message display (inline in chat.$conversationId.tsx)
+- [x] `app/components/ChatInput.tsx` — Input with submit (inline in chat.$conversationId.tsx)
+- [x] `app/components/ProcessLog.tsx` — Step visibility (inline in chat.$conversationId.tsx)
+- [x] `app/lib/use-chat.ts` — SSE hook and state
 
 Testing:
 
-- [ ] Unit: `handleChatMessage` SSE format
-- [ ] Unit: Conversation CRUD
-- [ ] Integration: Full message flow with mocked AI
-- [ ] Manual: Multi-tab behavior
+- [x] Unit: `handleChatMessage` SSE format
+- [x] Unit: Conversation CRUD
+- [x] Integration: Full message flow with mocked AI
+- [x] Manual: Multi-tab behavior
 
 ## Phase 10: Teams Adapter
 
@@ -361,6 +361,7 @@ Testing:
 - [ ] UPL mitigation: output filtering for legal advice patterns
 - [ ] UPL mitigation: prepend disclaimer to all responses
 - [ ] Demo deployed
+- [ ] Research an dintegratte Third-Party Observability Options for LLM
 
 ## Phase 12: Compliance Review
 

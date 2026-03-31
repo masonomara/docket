@@ -231,17 +231,7 @@ Mounted Better Auth handler at `/api/auth/*` in `src/index.ts` using Cloudflare 
 
 ## Step 2: OAuth Provider Pre-Config
 
-### 2.1 COnfigured Apple Sign-In
-
-Followed https://www.better-auth.com/docs/authentication/apple
-
-- Registered domain `docketadmin.com`
-- Created Service ID in Apple Developer Portal
-- Generated client secret JWT from private key
-- Added to `.dev.vars`: `APPLE_CLIENT_ID`, `APPLE_CLIENT_SECRET`, `APPLE_KEY_ID`, `APPLE_TEAM_ID`
-- Added `APPLE_APP_BUNDLE_IDENTIFIER` to `wrangler.jsonc` vars
-
-### 2.2 Configured Google Sign-In
+### 2.1 Configured Google Sign-In
 
 Followed https://www.better-auth.com/docs/authentication/google
 

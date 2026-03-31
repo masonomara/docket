@@ -18,7 +18,7 @@
   justify-content: space-between;
   align-items: flex-start;
   gap: 16px;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 }
 
 /* Title and subtitle container */
@@ -80,6 +80,14 @@
   /* Show menu button on mobile */
   .menuButton {
     display: flex;
+    align-items: center;
+    justify-content: center;
+    outline: none;
+    border: none;
+    background: none;
+    height: 44px;
+    width: 44px;
+    margin: -6px;
   }
 
   /* Hide desktop actions, show mobile actions */

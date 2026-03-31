@@ -110,6 +110,47 @@ npx wrangler d1 migrations apply docket-db --local
 npx wrangler d1 migrations apply docket-db --remote
 ```
 
+## Knowledge Base Architecture
+
+The system has two sources of RAG context:
+
+### Shared Knowledge Base (developer-managed)
+
+| Component        | Location                      | Purpose                 |
+| ---------------- | ----------------------------- | ----------------------- |
+| Source files     | `apps/api/kb/*.md`            | Markdown content        |
+| Bundled manifest | `src/services/kb-manifest.ts` | Auto-generated imports  |
+| D1 table         | `kb_chunks`                   | Chunk text and metadata |
+| Vectorize        | `type: "kb"` vectors          | Semantic search         |
+
+### Org Context (org admin-managed)
+
+| Component    | Location                  | Purpose                 |
+| ------------ | ------------------------- | ----------------------- |
+| Source files | R2 via `/api/org/context` | Uploaded documents      |
+| D1 table     | `org_context_chunks`      | Chunk text and metadata |
+| Vectorize    | `type: "org"` + `org_id`  | Per-org semantic search |
+
+### Reseeding the Shared KB
+
+When KB markdown files change, reseed to update D1 and Vectorize:
+
+```bash
+cd apps/api
+
+# 1. Regenerate the manifest (bundles MD files into worker)
+npm run kb:manifest
+
+# 2. Deploy the worker
+npx wrangler deploy
+
+# 3. Trigger the seed (clears and rebuilds kb_chunks + vectors)
+curl -X POST https://api.docketadmin.com/internal/seed-kb \
+  -H "X-Seed-Secret: $SEED_SECRET"
+```
+
+The seed only affects shared KB data. Org context is untouched.
+
 ## User Roles
 
 - **Owner** — Full Clio access, can manage the organization and transfer ownership
